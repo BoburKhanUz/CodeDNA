@@ -1,0 +1,10 @@
+# Normalize line endings; analyzer fixtures depend on exact bytes.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.woff binary
+*.woff2 binary

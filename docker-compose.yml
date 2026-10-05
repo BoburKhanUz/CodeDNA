@@ -1,0 +1,51 @@
+# CodeDNA — Docker Compose (Phase 01: backing services only)
+#
+# This file intentionally contains ONLY real, off-the-shelf backing services.
+# Application containers (nginx, backend/php-fpm, queue worker, scheduler,
+# frontend, analyzer, S3-compatible storage emulator) are added in Phase 02
+# once there is something real to run. See docker/README.md.
+#
+# Usage:
+#   cp .env.example .env      # then set DB_PASSWORD
+#   make infra-up             # or: docker compose up -d
+#
+# Ports are bound to 127.0.0.1 only; nothing is exposed on other interfaces.
+
+name: ${COMPOSE_PROJECT_NAME:-codedna}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-codedna}
+      POSTGRES_USER: ${DB_USERNAME:-codedna}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (see .env.example)}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Persistence enabled so queued jobs survive a container restart in development.
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:

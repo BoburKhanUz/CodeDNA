@@ -6,8 +6,8 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 00 (specification) complete. No application code
-exists yet. Everything below is the target architecture.
+**Current status:** Phase 01 (monorepo foundation) complete. No application
+code exists yet. Everything below is the target architecture.
 
 ## System context
 
@@ -90,8 +90,8 @@ at a time:
 | Phase | Scope | Status |
 |---|---|---|
 | 00 | Product definition, technical specification, ADRs | Done |
-| 01 | Monorepo foundation | Next |
-| 02 | Docker infrastructure | — |
+| 01 | Monorepo foundation | Done |
+| 02 | Docker infrastructure | Next |
 | 03 | Laravel backend foundation | — |
 | 04 | Next.js frontend foundation | — |
 | 05 | Database and domain model | — |

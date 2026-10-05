@@ -1,0 +1,11 @@
+// markdownlint configuration for CodeDNA documentation.
+{
+  "config": {
+    "default": true,
+    // Prose and wide tables/diagrams make a hard line length counterproductive.
+    "MD013": false,
+    // Table column alignment style is not enforced.
+    "MD060": false
+  },
+  "ignores": ["**/node_modules/**", "**/vendor/**", "**/.venv/**"]
+}

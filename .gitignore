@@ -1,0 +1,70 @@
+# ---------------------------------------------------------------------------
+# Secrets and local environment — never commit
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# ---------------------------------------------------------------------------
+# OS / editor
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~
+
+# ---------------------------------------------------------------------------
+# Backend (Laravel, Phase 03)
+# ---------------------------------------------------------------------------
+backend/vendor/
+backend/storage/*.key
+backend/storage/logs/
+backend/storage/framework/cache/
+backend/storage/framework/sessions/
+backend/storage/framework/views/
+backend/bootstrap/cache/*.php
+backend/public/storage
+backend/.phpunit.result.cache
+backend/.phpunit.cache/
+
+# ---------------------------------------------------------------------------
+# Frontend (Next.js, Phase 04)
+# ---------------------------------------------------------------------------
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+*.tsbuildinfo
+next-env.d.ts
+
+# ---------------------------------------------------------------------------
+# Analyzer (Python, Phase 08)
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---------------------------------------------------------------------------
+# Local data, uploads and archives (source code is sensitive)
+# ---------------------------------------------------------------------------
+/data/
+/tmp/
+*.zip
+*.log
