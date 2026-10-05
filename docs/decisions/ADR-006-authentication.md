@@ -45,7 +45,7 @@ API calls, so **CORS is not used** in this topology.
 
 | Environment | Browser origin | Routing |
 |---|---|---|
-| Local (Docker) | `http://localhost:8080` | Nginx → Next.js / Laravel |
+| Local (Docker) | `http://localhost` (port 80; configurable via `NGINX_HOST_PORT`) | Nginx → Next.js / Laravel |
 | Production | `https://app.<your-domain>` | Nginx → Next.js / Laravel |
 
 **Supported fallback: split origins on the same site** (for example
@@ -71,7 +71,7 @@ when running natively without Docker):
 | `SESSION_SAME_SITE` | `lax` | `lax` |
 | `SESSION_HTTP_ONLY` | `true` | `true` |
 | `SESSION_DOMAIN` | unset (host-only) | unset for single origin; parent domain only for split origins |
-| `SANCTUM_STATEFUL_DOMAINS` | `localhost:8080,localhost:3000` | `app.<your-domain>` |
+| `SANCTUM_STATEFUL_DOMAINS` | `localhost,localhost:3000` | `app.<your-domain>` |
 
 Production also requires HTTPS everywhere, HSTS at the edge, and the trusted
 proxy configured so Laravel sees the original scheme.
@@ -110,8 +110,8 @@ otherwise later.
 - XSS can't steal sessions through storage access. CSRF is handled by the
   XSRF token together with `SameSite=Lax`.
 - The single-origin topology removes CORS misconfiguration as a risk class,
-  but it requires the Nginx router in local development, which comes in
-  Phase 02. Native, non-Docker development uses the documented split-origin
+  but it requires the Nginx router in local development, which Phase 02
+  provides ([infrastructure.md](../architecture/infrastructure.md)). Native, non-Docker development uses the documented split-origin
   fallback.
 
 ## Alternatives considered

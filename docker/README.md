@@ -1,15 +1,20 @@
-# docker/ — Container build contexts
+# docker/ — Development container configuration
 
-**Status: placeholders.** Dockerfiles and configuration are created in
-**Phase 02** (Docker infrastructure). Until then only `docker-compose.yml`
-at the repository root exists, running PostgreSQL 16 and Redis 7.
+Used by the root `docker-compose.yml`. Full documentation:
+[docs/architecture/infrastructure.md](../docs/architecture/infrastructure.md).
 
-| Directory | Phase 02 content |
+| Path | Purpose |
 |---|---|
-| `nginx/` | Single-origin router: `/api/*`, `/sanctum/*` → Laravel; everything else → Next.js ([ADR-006](../docs/decisions/ADR-006-authentication.md)) |
-| `php/` | PHP-FPM image for the Laravel API, queue worker and scheduler |
-| `node/` | Node image for Next.js |
-| `python/` | Analyzer image: non-root, read-only root filesystem, limited temp directory ([analyzer.md](../docs/architecture/analyzer.md#source-intake-and-safety)) |
+| `php/Dockerfile` | Backend image: PHP 8.4-FPM, pdo_pgsql, intl, pcntl, phpredis, Composer. Build context `backend/`. |
+| `php/conf.d/` | PHP ini (upload limits, OPcache revalidation) and FPM pool overrides |
+| `php/entrypoint.sh` | Runs `composer install` when `composer.lock` changes, then PHP-FPM |
+| `php/healthcheck.sh` | Calls Laravel's `/up` over FastCGI |
+| `node/Dockerfile` | Frontend image: Node 22 LTS for the Next.js 16 dev server. Build context `frontend/`. |
+| `node/entrypoint.sh` | Runs `npm ci` when `package-lock.json` changes, then `next dev` |
+| `python/Dockerfile` | Analyzer image: Python 3.11 with hash-locked FastAPI/Uvicorn. Build context `analyzer/`. |
+| `nginx/conf.d/default.conf` | Single-origin router (mounted read-only) |
+| `nginx/snippets/laravel-fastcgi.conf` | FastCGI hand-off to Laravel's front controller |
+| `minio/init.sh` | Idempotent bucket and bucket-scoped app user provisioning (`minio-init`) |
 
-The analyzer container will be attached only to a private network and will
-publish no host port ([ADR-005](../docs/decisions/ADR-005-service-communication.md)).
+These are **development** images: source is bind-mounted and nothing is
+optimized for production. Production images come in Phase 25.

@@ -28,6 +28,11 @@ against them in tests.
 | `POST` | `/internal/v1/analyze` | HMAC | Analyze one source snapshot (synchronous) |
 | `GET` | `/internal/v1/health` | none | Liveness/readiness for container health checks. Returns only `status`, `versions` and non-sensitive `limits`. |
 
+> **Implementation status (Phase 02):** only `GET /internal/v1/health` exists.
+> It currently returns `status` and `versions.analyzer`. The other version
+> fields and `limits` are added with the components they describe (Phases
+> 08–11).
+
 ## 3. Request authentication (HMAC)
 
 ### Headers (all required on `POST /internal/v1/analyze`)

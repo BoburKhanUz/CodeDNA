@@ -27,6 +27,7 @@ REQUIRED_DOCS = [
     "docs/architecture/backend.md",
     "docs/architecture/analyzer.md",
     "docs/architecture/data-flow.md",
+    "docs/architecture/infrastructure.md",
     "docs/api/README.md",
     "docs/api/internal-analyzer-contract.md",
     "docs/decisions/ADR-001-stack.md",
@@ -50,7 +51,19 @@ REQUIRED_FOUNDATION = [
     "docker/README.md",
     "packages/README.md",
     "scripts/README.md",
+    "scripts/setup.sh",
+    "scripts/verify-infra.sh",
     ".github/workflows/ci.yml",
+    # Phase 02 — Docker development environment
+    "docker/php/Dockerfile",
+    "docker/node/Dockerfile",
+    "docker/python/Dockerfile",
+    "docker/nginx/conf.d/default.conf",
+    "docker/nginx/snippets/laravel-fastcgi.conf",
+    "docker/minio/init.sh",
+    "backend/.dockerignore",
+    "frontend/.dockerignore",
+    "analyzer/.dockerignore",
 ]
 
 # Variable names that must never carry a value in .env.example.

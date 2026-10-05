@@ -1,8 +1,7 @@
 # CodeDNA — developer commands
 #
-# Phase 01 provides repository/documentation checks and the backing services
-# (PostgreSQL, Redis). Application targets (backend, frontend, analyzer tests)
-# are added in the phases that create those applications.
+# Docker development environment (Phase 02) plus repository checks.
+# Run `make help` for the list of targets.
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -11,9 +10,16 @@ SHELL := /bin/bash
 MARKDOWNLINT_CLI2_VERSION := 0.23.3
 YAMLLINT_VERSION          := 1.38.0
 ACTIONLINT_PY_VERSION     := 1.7.12.25
+SHELLCHECK_PY_VERSION     := 0.11.0.1
+HADOLINT_PY_VERSION       := 2.15.1.2
 GITLEAKS_VERSION          := v8.30.1
 
 COMPOSE := docker compose
+
+# Placeholder values that only let `docker compose config` interpolate the
+# file in CI/checks; nothing is started with them.
+COMPOSE_CHECK_ENV := APP_KEY=check DB_PASSWORD=check MINIO_ROOT_PASSWORD=check \
+	SOURCE_STORAGE_ACCESS_KEY_ID=check SOURCE_STORAGE_SECRET_ACCESS_KEY=check
 
 .PHONY: help
 help: ## Show available targets
@@ -21,18 +27,59 @@ help: ## Show available targets
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 # ---------------------------------------------------------------------------
-# Setup
+# Docker development environment
 # ---------------------------------------------------------------------------
-.PHONY: env
-env: ## Create .env from .env.example if it does not exist
-	@if [ -f .env ]; then echo ".env already exists — not overwriting"; \
-	else cp .env.example .env && echo "Created .env — now set DB_PASSWORD (and other secrets as phases require)"; fi
+.PHONY: setup
+setup: ## One-time setup: create .env with local secrets, build images
+	./scripts/setup.sh
+	$(COMPOSE) build
+
+.PHONY: build
+build: ## Rebuild the development images
+	$(COMPOSE) build
+
+.PHONY: up
+up: ## Start all services and wait until they are healthy
+	$(COMPOSE) up -d --wait
+
+.PHONY: down
+down: ## Stop and remove containers (named volumes/data are kept)
+	$(COMPOSE) down
+
+.PHONY: ps
+ps: ## Show service status and health
+	$(COMPOSE) ps -a
+
+.PHONY: logs
+logs: ## Follow logs (all services, or one: make logs s=backend)
+	$(COMPOSE) logs -f --tail=100 $(s)
+
+.PHONY: shell-backend
+shell-backend: ## Open a shell in the backend (Laravel) container
+	$(COMPOSE) exec backend bash
+
+.PHONY: shell-frontend
+shell-frontend: ## Open a shell in the frontend (Next.js) container
+	$(COMPOSE) exec frontend bash
+
+.PHONY: shell-analyzer
+shell-analyzer: ## Open a shell in the analyzer container
+	$(COMPOSE) exec analyzer bash
+
+.PHONY: test
+test: ## Run the existing test suites inside the running containers
+	$(COMPOSE) exec -T analyzer pytest
+	$(COMPOSE) exec -T backend php artisan test
+
+.PHONY: verify
+verify: ## Runtime smoke test of the running environment (routing, networking, storage)
+	./scripts/verify-infra.sh
 
 # ---------------------------------------------------------------------------
 # Repository checks (same checks as CI)
 # ---------------------------------------------------------------------------
 .PHONY: check
-check: check-repo lint-docs lint-yaml lint-workflows compose-config ## Run all foundation checks
+check: check-repo lint-docs lint-yaml lint-workflows lint-shell lint-docker compose-config ## Run all static checks
 
 .PHONY: check-repo
 check-repo: ## Required files, Markdown links/anchors, .env.example hygiene
@@ -50,26 +97,19 @@ lint-yaml: ## Lint YAML (requires yamllint)
 lint-workflows: ## Lint GitHub Actions workflows (requires actionlint)
 	actionlint
 
+.PHONY: lint-shell
+lint-shell: ## Lint shell scripts (requires shellcheck)
+	shellcheck scripts/*.sh docker/*/*.sh
+
+.PHONY: lint-docker
+lint-docker: ## Lint Dockerfiles (requires hadolint)
+	hadolint docker/*/Dockerfile
+
 .PHONY: compose-config
 compose-config: ## Validate docker-compose.yml without starting anything
-	DB_PASSWORD=compose-config-check $(COMPOSE) --env-file .env.example config --quiet
+	$(COMPOSE_CHECK_ENV) $(COMPOSE) --env-file .env.example config --quiet
 
 .PHONY: scan-secrets
-scan-secrets: ## Scan git history and working tree for secrets (requires gitleaks)
+scan-secrets: ## Scan git history and uncommitted changes for secrets (requires gitleaks)
 	gitleaks git --redact --no-banner .
-	gitleaks dir --redact --no-banner .
-
-# ---------------------------------------------------------------------------
-# Backing services (PostgreSQL 16, Redis 7)
-# ---------------------------------------------------------------------------
-.PHONY: infra-up
-infra-up: ## Start PostgreSQL and Redis (requires .env with DB_PASSWORD)
-	$(COMPOSE) up -d --wait
-
-.PHONY: infra-down
-infra-down: ## Stop backing services (data volumes are kept)
-	$(COMPOSE) down
-
-.PHONY: infra-ps
-infra-ps: ## Show backing service status
-	$(COMPOSE) ps
+	gitleaks git --pre-commit --redact --no-banner .

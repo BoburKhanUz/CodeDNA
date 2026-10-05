@@ -1,0 +1,264 @@
+# Infrastructure — Local Docker Development Environment
+
+This document describes the Phase 02 development environment: services,
+routing, networks, volumes, environment variables, and day-to-day operation.
+Production deployment is a later phase (Phase 25). Nothing here is a
+production configuration.
+
+Related: [ADR-001](../decisions/ADR-001-stack.md) (versions),
+[ADR-003](../decisions/ADR-003-storage.md) (storage),
+[ADR-005](../decisions/ADR-005-service-communication.md) (analyzer isolation),
+[ADR-006](../decisions/ADR-006-authentication.md) (single origin).
+
+## Topology
+
+```text
+  Browser ── http://localhost  (127.0.0.1:80)
+     │
+     ▼
+ ┌────────┐  /api/*  /sanctum/*  /up    ┌────────────────────────┐
+ │ nginx  │ ──────────────────────────► │ backend                │
+ │        │                             │ Laravel 13 · PHP-FPM   │
+ │        │  everything else + HMR WS   └──┬──────┬──────┬───────┘
+ │        │ ─────────┐                     │      │      │  HTTP (internal)
+ └────────┘          ▼                     ▼      ▼      ▼
+              ┌────────────┐          postgres  redis  analyzer (FastAPI)
+              │ frontend   │                             │ pre-signed GET
+              │ Next.js 16 │          backend (S3) ──► minio ◄──┘
+              └────────────┘                             ▲
+                                                 minio-init (one-shot)
+
+  network codedna           : nginx, frontend, backend, postgres, redis, minio
+  network codedna-internal  : backend, analyzer, minio, minio-init  (no internet)
+```
+
+The analyzer is **not** routed by Nginx and shares no network with Nginx or
+the frontend. Only the backend calls it. The analyzer's only outbound
+traffic is to MinIO, for pre-signed downloads
+([ADR-005](../decisions/ADR-005-service-communication.md)).
+
+## Services
+
+| Service | Image / build | Purpose | Host port | Networks | Healthcheck |
+|---|---|---|---|---|---|
+| `nginx` | `nginx:1.28-alpine` | Single-origin router | `127.0.0.1:80` | codedna | `GET /nginx-health` |
+| `frontend` | `docker/node/Dockerfile` → `codedna-frontend:dev` | Next.js 16 dev server (bootstrap page only) | — | codedna | HTTP `GET /` on :3000 |
+| `backend` | `docker/php/Dockerfile` → `codedna-backend:dev` | Laravel 13 on PHP-FPM 8.4 (stock skeleton) | — | codedna, codedna-internal | Laravel `/up` over FastCGI (`codedna-healthcheck`) |
+| `analyzer` | `docker/python/Dockerfile` → `codedna-analyzer:dev` | FastAPI; only `GET /internal/v1/health` | — | codedna-internal | `GET /internal/v1/health` |
+| `postgres` | `postgres:16-alpine` | Primary database | `127.0.0.1:5432` | codedna | `pg_isready` |
+| `redis` | `redis:7.4-alpine` | Cache, queues, sessions | `127.0.0.1:6379` | codedna | `redis-cli ping` |
+| `minio` | `cgr.dev/chainguard/minio` (digest-pinned) | Local S3-compatible storage | `127.0.0.1:9000` (API), `127.0.0.1:9001` (console) | codedna, codedna-internal | `GET /minio/health/live` |
+| `minio-init` | `cgr.dev/chainguard/minio-client` (digest-pinned) | One-shot: bucket and bucket-scoped app user | — | codedna-internal | exits 0 |
+
+All host ports are bound to **127.0.0.1 only** and can be changed in `.env`
+(`*_HOST_PORT`). Backend, frontend and analyzer publish no host ports.
+
+Containers reach each other by **service name** (`postgres:5432`,
+`redis:6379`, `minio:9000`, `analyzer:8000`, `backend:9000`,
+`frontend:3000`), never by `localhost`.
+
+## Single-origin routing (Nginx)
+
+Configuration: `docker/nginx/conf.d/default.conf` and
+`docker/nginx/snippets/laravel-fastcgi.conf`, mounted read-only.
+
+| Path | Destination | Notes |
+|---|---|---|
+| `/api/*` | Laravel (`backend:9000`, FastCGI → `public/index.php`) | Unknown API routes return Laravel JSON 404s |
+| `/sanctum/*` | Laravel | Reserved for the CSRF cookie endpoint (Phase 06) |
+| `/up` | Laravel | Laravel's built-in health route |
+| `/internal/*` | **404 at Nginx** | The internal analyzer API is never public |
+| `/nginx-health` | Nginx | Nginx liveness |
+| everything else | Next.js (`frontend:3000`) | Includes the hot-reload WebSocket (`/_next/hmr`) |
+
+Other settings: `client_max_body_size 55m` (50 MiB archive limit plus
+multipart overhead; matches PHP's `post_max_size`), `server_tokens off`,
+forwarded headers (`X-Forwarded-For`, `-Proto`, `-Host`), and upstream names
+resolved per request through Docker DNS, so recreating a container never needs
+an Nginx restart.
+
+## Networks
+
+| Network | Type | Members | Why |
+|---|---|---|---|
+| `codedna` | bridge | nginx, frontend, backend, postgres, redis, minio | Main development network; allows host port publishing |
+| `codedna-internal` | bridge, `internal: true` | backend, analyzer, minio, minio-init | **No route to the internet.** Isolates the analyzer, which will process untrusted code |
+
+`make verify` asserts the isolation: Nginx and the frontend cannot reach
+the analyzer, and the analyzer cannot reach the internet.
+
+## Volumes
+
+| Volume (project `codedna`) | Mounted at | Contents |
+|---|---|---|
+| `codedna_postgres_data` | `postgres:/var/lib/postgresql/data` | Database |
+| `codedna_redis_data` | `redis:/data` | Append-only file (queued jobs survive restarts) |
+| `codedna_minio_data` | `minio:/data` | Object storage |
+| `codedna_frontend_node_modules` | `frontend:/app/node_modules` | Linux-native npm packages, kept apart from the host |
+
+Source code is bind-mounted: `./backend` → `/var/www/backend`,
+`./frontend` → `/app`, `./analyzer` → `/app` (read-only).
+`backend/vendor/` is created on the host by the backend container and is
+git-ignored.
+
+## Container hardening (development baseline)
+
+- App containers run as **non-root**. Backend and frontend run as your host
+  UID/GID (`HOST_UID`/`HOST_GID`), so files they write to bind mounts stay
+  yours. The analyzer runs as a fixed UID 10001.
+- The analyzer additionally has a read-only root filesystem, a 256 MiB
+  `/tmp` tmpfs, all Linux capabilities dropped, `no-new-privileges`, and
+  1 GiB memory, 2 CPU and 256 PID limits.
+- No container is privileged. No service mounts the Docker socket.
+- Interactive API docs (`/docs`, `/openapi.json`) are disabled in the
+  analyzer.
+
+## Environment variables
+
+`.env` (created by `make setup`, git-ignored) is read by Docker Compose for
+interpolation. Each container receives **only** the variables listed for it
+in `docker-compose.yml`, never the whole file. For example, MinIO root
+credentials reach only `minio` and `minio-init`.
+
+| Variable | Required | Used by | Notes |
+|---|---|---|---|
+| `HOST_UID`, `HOST_GID` | generated | image builds | Your `id -u`/`id -g` (1000 when running as root) |
+| `NGINX_HOST_PORT`, `POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`, `MINIO_API_HOST_PORT`, `MINIO_CONSOLE_HOST_PORT` | defaults | compose | Host ports (127.0.0.1) |
+| `APP_KEY` | **yes**, generated | backend | `base64:` + 32 random bytes |
+| `APP_NAME`, `APP_ENV`, `APP_DEBUG`, `APP_URL`, `LOG_LEVEL` | defaults | backend | `APP_URL=http://localhost` |
+| `DB_DATABASE`, `DB_USERNAME` | defaults | postgres, backend | |
+| `DB_PASSWORD` | **yes**, generated | postgres, backend | |
+| `SESSION_DRIVER` | default `redis` | backend | ADR-006 |
+| `MINIO_ROOT_USER` | **yes** (default in template) | minio, minio-init | Admin only; never used by the app |
+| `MINIO_ROOT_PASSWORD` | **yes**, generated | minio, minio-init | |
+| `SOURCE_STORAGE_REGION`, `SOURCE_STORAGE_BUCKET` | defaults | backend, minio, minio-init | `us-east-1`, `codedna` locally |
+| `SOURCE_STORAGE_ACCESS_KEY_ID`, `SOURCE_STORAGE_SECRET_ACCESS_KEY` | **yes**, generated | backend, minio-init | Bucket-scoped application user |
+| `ANALYZER_HMAC_SECRET` | generated | — | Used from Phase 08 |
+| `FRONTEND_WATCH_POLLING` | default `false` | frontend | Polling file watcher fallback |
+
+Fixed in `docker-compose.yml` (not configurable in `.env`, because they are
+properties of the Docker network): `DB_HOST=postgres`, `REDIS_HOST=redis`,
+`SOURCE_STORAGE_ENDPOINT=http://minio:9000`,
+`ANALYZER_URL=http://analyzer:8000`, plus the `pgsql`/`phpredis`/`redis`
+driver selections.
+
+Variables marked `[Phase NN]` in `.env.example` are documented but not
+consumed yet. Compose stops with a clear `Set X in .env` error if a required
+variable is missing.
+
+**Why `SOURCE_STORAGE_*` and not `AWS_*` / `MINIO_*`:** the application talks
+to MinIO and R2 through one provider-neutral configuration. Shell-level
+`AWS_*` variables, which are common on developer machines, would silently
+override `.env` during Compose interpolation and could also be picked up
+implicitly by AWS SDKs.
+
+## Day-to-day operation
+
+```bash
+make setup           # once: .env with random local secrets + build images
+make up              # start everything; waits until all services are healthy
+open http://localhost
+make ps              # status and health
+make logs            # follow all logs;  make logs s=backend  for one service
+make shell-backend   # bash in the Laravel container (artisan, composer)
+make shell-frontend  # bash in the Next.js container (npm)
+make shell-analyzer  # bash in the analyzer container
+make test            # analyzer pytest + Laravel's test runner, in containers
+make verify          # runtime smoke test (see below)
+make down            # stop and remove containers; volumes are kept
+make build           # rebuild images after Dockerfile or requirements changes
+```
+
+To delete **all local data** (database, Redis, MinIO, node_modules volume),
+run `docker compose down -v`.
+
+The first `make up` takes longer. The backend runs `composer install` and
+the frontend runs `npm ci`, and both re-run automatically when
+`composer.lock` or `package-lock.json` change.
+
+### Hot reload
+
+| App | Mechanism |
+|---|---|
+| Next.js | `next dev` with HMR over WebSocket through Nginx. Set `FRONTEND_WATCH_POLLING=true` if changes are missed. |
+| Laravel | Source bind-mounted; OPcache revalidates every request |
+| Analyzer | `uvicorn --reload` watching `/app/app` |
+
+Analyzer dependency changes need `make build`, because packages are baked
+into the image and the analyzer has no internet access at runtime.
+
+## MinIO usage and local S3 configuration
+
+- **Console:** <http://localhost:9001>. Log in with `MINIO_ROOT_USER` and
+  `MINIO_ROOT_PASSWORD` from `.env`.
+- **Bucket:** `codedna` (`SOURCE_STORAGE_BUCKET`). It is private, with no
+  anonymous access.
+- **Application user:** `SOURCE_STORAGE_ACCESS_KEY_ID`. Its policy only allows
+  `s3:GetBucketLocation`, `s3:ListBucket`, `s3:GetObject`, `s3:PutObject` and
+  `s3:DeleteObject` on that bucket. It cannot create buckets or administer
+  MinIO.
+- **Provisioning:** `docker/minio/init.sh`, run by `minio-init` on every
+  `make up`. It is idempotent: it creates the bucket if missing, replaces the
+  policy, upserts the user, and attaches the policy only if it isn't
+  already attached.
+- **Endpoint for containers:** `http://minio:9000`, path-style, region
+  `us-east-1`. Pre-signed URLs are generated for host `minio`, so they are
+  valid inside the Docker networks, where the analyzer uses them, but not
+  from the host browser. That is intentional: browsers never download
+  source archives.
+- **From the host:** the API is at `http://127.0.0.1:9000`, for example with
+  the `mc` or `aws` CLI using the application credentials.
+
+### MinIO image
+
+Upstream MinIO no longer publishes freely pullable container images (the
+`minio/minio` and `minio/mc` repositories reject anonymous pulls), and the
+Bitnami images have been withdrawn. The environment therefore uses
+**Chainguard's maintained builds of upstream MinIO**
+(`cgr.dev/chainguard/minio`, `cgr.dev/chainguard/minio-client`, `-dev`
+variants that include a shell for healthchecks and the init script). They
+are **pinned by digest** for reproducibility. Chainguard's free tier
+publishes only `latest` tags, so to update:
+
+```bash
+docker pull cgr.dev/chainguard/minio:latest-dev
+docker image inspect cgr.dev/chainguard/minio:latest-dev --format '{{index .RepoDigests 0}}'
+# put the new digest in docker-compose.yml, then: make up && make verify
+```
+
+Because only the standard S3 API is used, the local server can be swapped for
+any S3-compatible alternative without application changes.
+
+## Runtime verification (`make verify`)
+
+`scripts/verify-infra.sh` checks the following against the running stack,
+and prints no secrets:
+
+1. All services are healthy and `minio-init` exited 0.
+2. Routing: `/nginx-health`, `/` (Next.js), `/up` (Laravel), `/api/*`
+   (Laravel JSON 404), `/internal/*` (404 at Nginx).
+3. Networking: backend → analyzer and MinIO; Laravel → PostgreSQL
+   (`artisan db:show`) and Redis (cache round-trip); Nginx and the frontend
+   **cannot** reach the analyzer; the analyzer **cannot** reach the internet.
+4. Storage, using the application credentials: upload; bucket creation is
+   denied; a pre-signed GET URL is generated and **downloaded by the
+   analyzer**; the unsigned URL is rejected; the object is deleted.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `Set DB_PASSWORD in .env` (or similar) | Run `make setup`, or fill the variable in `.env` |
+| Port 80 (or 5432/6379/9000/9001) already in use | Change the matching `*_HOST_PORT` in `.env`. For Nginx also set `APP_URL` (e.g. `http://localhost:8080`), then `make up` |
+| `backend`/`frontend` not healthy on first start | Dependencies are still installing: `make logs s=backend` / `s=frontend` |
+| Permission denied writing `backend/storage` or `frontend/.next` | `HOST_UID`/`HOST_GID` in `.env` must match `id -u`/`id -g`; then `make build && make up` |
+| Frontend changes not picked up | Set `FRONTEND_WATCH_POLLING=true` in `.env`, then `make up` |
+| Analyzer dependency missing after editing requirements | `make build && make up` |
+| `minio-init` failed | `make logs s=minio-init`. Check that `MINIO_ROOT_PASSWORD` and `SOURCE_STORAGE_SECRET_ACCESS_KEY` are at least 8 characters |
+| Changed `MINIO_ROOT_*` or `DB_PASSWORD` after first start | The existing volume keeps the old credentials. Restore the old values, or reset data with `docker compose down -v` |
+| Stale Next.js dependencies after switching branches | `docker compose down`, `docker volume rm codedna_frontend_node_modules`, then `make up` |
+
+## Not included yet (later phases)
+
+Queue worker and scheduler containers (Phase 10), TLS and production images
+(Phase 25), and the R2 configuration (Phase 07/25).

@@ -1,0 +1,22 @@
+# Build context for docker/php/Dockerfile. The development image copies no
+# application source (it is bind-mounted); this keeps the context small and
+# guarantees secrets and generated files never enter an image.
+.git
+.env
+.env.*
+vendor
+node_modules
+public/build
+public/hot
+public/storage
+storage/logs
+storage/framework/cache
+storage/framework/sessions
+storage/framework/views
+storage/*.key
+bootstrap/cache/*.php
+.phpunit.cache
+.phpunit.result.cache
+coverage
+tmp
+*.log

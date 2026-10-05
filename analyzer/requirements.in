@@ -1,0 +1,5 @@
+# Runtime dependencies. Compile with:
+#   pip-compile --generate-hashes --strip-extras -o requirements.txt requirements.in
+# Phase 02 baseline only; Tree-sitter and the analysis stack arrive in Phases 08/09.
+fastapi
+uvicorn

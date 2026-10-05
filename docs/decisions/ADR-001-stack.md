@@ -1,6 +1,6 @@
 # ADR-001: Technology Stack
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-10-05, Phase 02: major versions confirmed — see “Amendment”)
 - **Date:** 2026-10-05
 - **Deciders:** Project owner, lead architect
 - **Related:** [ADR-002](ADR-002-analysis-engine.md), [ADR-005](ADR-005-service-communication.md), [ADR-006](ADR-006-authentication.md)
@@ -23,14 +23,14 @@ framework.
 
 | Layer | Technology | Version line | Notes |
 |---|---|---|---|
-| Frontend | Next.js (App Router), React, TypeScript | Next.js **15.x** | Tailwind CSS + shadcn/ui |
-| Backend | Laravel, PHP | Laravel **12.x**, PHP **8.3+** | REST API under `/api/v1` |
+| Frontend | Next.js (App Router), React, TypeScript | Next.js **16.x**, React 19, Node **22 LTS** | Tailwind CSS + shadcn/ui |
+| Backend | Laravel, PHP | Laravel **13.x**, PHP **8.4** (framework minimum 8.3) | REST API under `/api/v1` |
 | Analyzer | Python, FastAPI | Python **3.11**, FastAPI current stable | Internal-only HTTP service |
 | Parsing | Tree-sitter via `py-tree-sitter` | current stable | See ADR-002 |
 | Database | PostgreSQL | **16** | Owned exclusively by Laravel |
 | Queue / cache / sessions | Redis | **7** | Laravel queues only (see ADR-005) |
-| Object storage | S3-compatible API | — | Cloudflare R2 in production (ADR-003) |
-| Runtime packaging | Docker, Docker Compose, Nginx | — | Phase 02 |
+| Object storage | S3-compatible API | — | MinIO locally, Cloudflare R2 in production (ADR-003) |
+| Runtime packaging | Docker, Docker Compose, Nginx | Nginx **1.28** | [infrastructure.md](../architecture/infrastructure.md) |
 | CI | GitHub Actions | — | |
 
 ### Testing and quality tooling
@@ -54,15 +54,34 @@ framework.
 - Analyzer dependencies (especially Tree-sitter grammars) are pinned exactly,
   because a grammar change can change analysis output (see ADR-004).
 
-### Version check performed on 2026-10-05
+### Amendment — major versions confirmed (2026-10-05, Phase 02)
 
-When this ADR was written, the newest stable lines were **Laravel 13.x**
-(latest 12.x: 12.69.3) and **Next.js 16.x** (latest 15.x: 15.5.27,
-published under npm's `backport` tag). Laravel 12 and Next.js 15 are still
-supported but are no longer the newest major lines. The project owner
-approved Laravel 12 and Next.js 15. This ADR records that decision and
-leaves the major-line question open until Phase 03/04 starts. See
-“Open questions”.
+The audit found that Laravel 13.x and Next.js 16.x had become the current
+stable lines. Laravel 12 and Next.js 15 were still supported but no longer
+the newest. The project owner chose the **current stable lines**: Laravel
+13.x and Next.js 16.x. The table above reflects that decision. Laravel 12 and
+Next.js 15 are not used.
+
+Exact versions selected in Phase 02. Lockfiles and image tags are the source
+of truth.
+
+| Component | Version | Pinned by |
+|---|---|---|
+| Laravel framework | 13.34.0 (skeleton `laravel/laravel` 13.10) | `backend/composer.lock` |
+| PHP | 8.4.26 (`php:8.4-fpm-trixie`) | `docker/php/Dockerfile` |
+| Composer | 2.10.3 | `composer:2.10` image |
+| Next.js / React | 16.3.8 / 19.2.8 | `frontend/package-lock.json` |
+| Node.js | 22.23 LTS (`node:22-trixie-slim`) | `docker/node/Dockerfile` |
+| Python | 3.11.17 (`python:3.11-slim-trixie`) | `docker/python/Dockerfile` |
+| FastAPI / Uvicorn | 0.142.2 / 0.54.0 | `analyzer/requirements.txt` (hashes) |
+| PostgreSQL | 16.15 (`postgres:16-alpine`) | `docker-compose.yml` |
+| Redis | 7.4.11 (`redis:7.4-alpine`) | `docker-compose.yml` |
+| Nginx | 1.28.3 (`nginx:1.28-alpine`) | `docker-compose.yml` |
+| MinIO | RELEASE.2026-09-22 (Chainguard build, digest-pinned) | `docker-compose.yml` |
+
+PHP 8.4 was chosen over 8.3 because it is the newer, fully supported release
+and Laravel 13 supports it. Base image tags pin the major/minor line. Patch
+updates arrive with image rebuilds.
 
 ## Consequences
 
@@ -86,7 +105,4 @@ leaves the major-line question open until Phase 03/04 starts. See
 
 ## Open questions
 
-- **Major lines for Phase 03/04:** stay on Laravel 12 / Next.js 15 as approved,
-  or start on Laravel 13 / Next.js 16? Recommendation: start on the newest
-  stable lines, so the project doesn't begin with an immediate major upgrade.
-  This needs explicit owner confirmation before Phase 03.
+None. The major-line question was resolved by the amendment above.

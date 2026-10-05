@@ -1,0 +1,12 @@
+[project]
+name = "codedna-analyzer"
+dynamic = ["version"]
+requires-python = ">=3.11,<3.12"
+description = "CodeDNA code analysis engine (internal service)"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["error"]
+# The source tree is mounted read-only in the analyzer container.
+addopts = "-p no:cacheprovider"

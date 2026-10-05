@@ -6,8 +6,9 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 01 (monorepo foundation) complete. No application
-code exists yet. Everything below is the target architecture.
+**Current status:** Phase 02 (Docker infrastructure) complete. The local
+environment runs every component, but the applications are stock bootstraps
+with no product features yet. Everything below is the target architecture.
 
 ## System context
 
@@ -38,7 +39,7 @@ code exists yet. Everything below is the target architecture.
 | Backend | `backend/` | Auth, domain, persistence, orchestration, authorization, business rules | [backend.md](backend.md) |
 | Analyzer | `analyzer/` | Parsing, IR, metrics, features, deterministic DNA scoring | [analyzer.md](analyzer.md) |
 | AI interpretation | (Phase 15) | Explaining stored deterministic results; never producing scores | ADR to be written in Phase 15 |
-| Infrastructure | `docker/`, `docker-compose.yml`, `.github/` | Containers, routing, CI | (Phase 02) |
+| Infrastructure | `docker/`, `docker-compose.yml`, `.github/` | Containers, routing, CI | [infrastructure.md](infrastructure.md) |
 | Contracts | `packages/api-contracts/` | OpenAPI (public) and JSON Schema (internal analyzer) | [api/](../api/README.md) |
 
 ## Boundaries (non-negotiable)
@@ -62,7 +63,7 @@ machine, timeouts and retries, and data classification.
 
 | Environment | Public origin | Notes |
 |---|---|---|
-| Local (Docker, Phase 02+) | `http://localhost:8080` | Nginx single origin. The analyzer has no published port. |
+| Local (Docker) | `http://localhost` | Nginx single origin; MinIO storage. The analyzer has no published port ([infrastructure.md](infrastructure.md)). |
 | Local (native, no Docker) | `localhost:3000` (Next.js) + `localhost:8000` (Laravel) | Split-origin fallback ([ADR-006](../decisions/ADR-006-authentication.md)) |
 | Production | `https://app.<your-domain>` | Nginx single origin, TLS, R2 storage |
 
@@ -91,8 +92,8 @@ at a time:
 |---|---|---|
 | 00 | Product definition, technical specification, ADRs | Done |
 | 01 | Monorepo foundation | Done |
-| 02 | Docker infrastructure | Next |
-| 03 | Laravel backend foundation | — |
+| 02 | Docker infrastructure | Done |
+| 03 | Laravel backend foundation | Next |
 | 04 | Next.js frontend foundation | — |
 | 05 | Database and domain model | — |
 | 06 | Authentication and developer profile | — |

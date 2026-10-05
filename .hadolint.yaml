@@ -1,0 +1,10 @@
+# Hadolint configuration for docker/*/Dockerfile.
+failure-threshold: warning
+ignored:
+  # `COPY --from=<name>` refers to named build contexts supplied through
+  # `additional_contexts` in docker-compose.yml, not to build stages.
+  - DL3022
+  # Development images track the Debian stable release of the pinned base
+  # image; exact apt package pins would break on every security update.
+  # Revisit for production images (Phase 25).
+  - DL3008

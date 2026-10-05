@@ -1,6 +1,6 @@
 # ADR-003: Source Code Storage
 
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-10-05, Phase 02: local storage = MinIO)
 - **Date:** 2026-10-05
 - **Related:** [ADR-005](ADR-005-service-communication.md), [Data flow](../architecture/data-flow.md)
 
@@ -15,9 +15,21 @@ local filesystem doesn't work with more than one container.
 ## Decision
 
 1. **Source archives live in S3-compatible object storage**, accessed only
-   through the S3 API. **Production uses Cloudflare R2.** Local development
-   uses an S3-compatible emulator chosen in Phase 02. Automated tests use
-   Laravel's fake storage disk and analyzer-side fixtures.
+   through standard S3 API semantics: path-style addressing and SigV4
+   pre-signed URLs.
+
+   | Environment | Storage | Endpoint |
+   |---|---|---|
+   | Local development | **MinIO** (Docker service `minio`) | `http://minio:9000`, region `us-east-1` |
+   | Production | **Cloudflare R2** | `https://<account-id>.r2.cloudflarestorage.com`, region `auto` |
+   | Automated tests | Laravel's fake storage disk and analyzer-side fixtures | — |
+
+   Only configuration differs between environments (`SOURCE_STORAGE_*`).
+   Application code must not use MinIO-specific APIs such as the admin API
+   or MinIO SDK extensions. Bucket and credential provisioning is
+   infrastructure, not application code: `docker/minio/init.sh` does it
+   locally, and the R2 bucket and scoped API token are configured at
+   deployment (Phase 25).
 2. **The unit of storage is an immutable *source snapshot***: one archive
    (ZIP in the MVP) plus metadata stored in PostgreSQL. The metadata includes
    the object key, SHA-256, size in bytes, origin (upload/provider), and the
@@ -64,5 +76,8 @@ local filesystem doesn't work with more than one container.
   metrics. This affects re-analysis (ADR-004). Proposed default: keep until
   the user deletes the project, with a later per-user option for
   "analyze and discard". Needs a product decision before Phase 07.
-- **Local S3 emulator choice** (Phase 02): it must support pre-signed URLs and
-  have a maintained, freely distributed container image.
+- ~~Local S3 emulator choice~~ **Resolved in Phase 02: MinIO.** Upstream MinIO
+  no longer publishes freely pullable container images. The project uses
+  Chainguard's maintained build of upstream MinIO, pinned by digest (see
+  [infrastructure.md](../architecture/infrastructure.md#minio-image)).
+  Pre-signed URL download by the analyzer is verified by `make verify`.

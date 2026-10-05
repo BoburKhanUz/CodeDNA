@@ -1,8 +1,9 @@
-# CodeDNA CI — Phase 01: repository and documentation foundation only.
+# CodeDNA CI — Phase 02: repository checks, secret scan, and a full Docker
+# development-environment build + runtime smoke test.
 #
-# No application test suites exist yet. Jobs for the backend (Phase 03),
-# frontend (Phase 04) and analyzer (Phase 08) are added in those phases.
-# Tool versions are kept in sync with the Makefile.
+# Application-level CI (backend Phase 03, frontend Phase 04, analyzer
+# Phase 08) is added in those phases. Tool versions are kept in sync with the
+# Makefile.
 
 name: CI
 
@@ -22,6 +23,8 @@ env:
   MARKDOWNLINT_CLI2_VERSION: "0.23.3"
   YAMLLINT_VERSION: "1.38.0"
   ACTIONLINT_PY_VERSION: "1.7.12.25"
+  SHELLCHECK_PY_VERSION: "0.11.0.1"
+  HADOLINT_PY_VERSION: "2.15.1.2"
   GITLEAKS_VERSION: "v8.30.1"
 
 jobs:
@@ -51,8 +54,13 @@ jobs:
       - name: Lint Markdown
         run: npx --yes "markdownlint-cli2@${MARKDOWNLINT_CLI2_VERSION}" "**/*.md"
 
-      - name: Install YAML and workflow linters
-        run: python3 -m pip install "yamllint==${YAMLLINT_VERSION}" "actionlint-py==${ACTIONLINT_PY_VERSION}"
+      - name: Install linters
+        run: >-
+          python3 -m pip install
+          "yamllint==${YAMLLINT_VERSION}"
+          "actionlint-py==${ACTIONLINT_PY_VERSION}"
+          "shellcheck-py==${SHELLCHECK_PY_VERSION}"
+          "hadolint-py==${HADOLINT_PY_VERSION}"
 
       - name: Lint YAML
         run: yamllint --strict .
@@ -60,11 +68,14 @@ jobs:
       - name: Lint GitHub Actions workflows
         run: actionlint
 
+      - name: Lint shell scripts
+        run: make lint-shell
+
+      - name: Lint Dockerfiles
+        run: make lint-docker
+
       - name: Validate docker-compose.yml
-        env:
-          # Placeholder only so interpolation succeeds; nothing is started.
-          DB_PASSWORD: compose-config-check
-        run: docker compose --env-file .env.example config --quiet
+        run: make compose-config
 
   secrets:
     name: Secret scan
@@ -84,10 +95,47 @@ jobs:
           cache: false
 
       - name: Install gitleaks
-        run: go install "github.com/zricethezav/gitleaks/v8@${GITLEAKS_VERSION}"
+        run: |
+          go install "github.com/zricethezav/gitleaks/v8@${GITLEAKS_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Scan git history
-        run: "$(go env GOPATH)/bin/gitleaks git --redact --no-banner --verbose ."
+        run: gitleaks git --redact --no-banner --verbose .
 
       - name: Scan working tree
-        run: "$(go env GOPATH)/bin/gitleaks dir --redact --no-banner --verbose ."
+        run: gitleaks dir --redact --no-banner --verbose .
+
+  infrastructure:
+    name: Docker environment (build + runtime smoke test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Generate local .env (random throwaway secrets)
+        run: ./scripts/setup.sh
+
+      - name: Build images
+        run: docker compose build
+
+      - name: Start environment and wait for health
+        run: docker compose up -d --wait --wait-timeout 600
+
+      - name: Runtime smoke test
+        run: make verify
+
+      - name: Test suites
+        run: make test
+
+      - name: Service status and logs (on failure)
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

@@ -1,0 +1,16 @@
+# Build context for docker/node/Dockerfile. The development image copies no
+# application source (it is bind-mounted); this keeps the context small and
+# guarantees secrets and generated files never enter an image.
+.git
+.env
+.env.*
+node_modules
+.next
+out
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
+next-env.d.ts
+tmp
+*.log

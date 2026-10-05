@@ -1,29 +1,177 @@
-# CodeDNA — Docker Compose (Phase 01: backing services only)
+# CodeDNA — local development environment (Phase 02).
 #
-# This file intentionally contains ONLY real, off-the-shelf backing services.
-# Application containers (nginx, backend/php-fpm, queue worker, scheduler,
-# frontend, analyzer, S3-compatible storage emulator) are added in Phase 02
-# once there is something real to run. See docker/README.md.
+#   make setup   # once: creates .env with random local secrets, builds images
+#   make up      # start everything and wait until healthy
+#   open http://localhost
 #
-# Usage:
-#   cp .env.example .env      # then set DB_PASSWORD
-#   make infra-up             # or: docker compose up -d
+# Topology (docs/architecture/infrastructure.md):
+#   browser -> nginx -> frontend (Next.js) | backend (Laravel, PHP-FPM)
+#   backend -> postgres, redis, minio, analyzer
+#   analyzer lives ONLY on the internal network: no internet access, not
+#   reachable from Nginx, no published port (ADR-005).
 #
-# Ports are bound to 127.0.0.1 only; nothing is exposed on other interfaces.
+# Host ports are bound to 127.0.0.1 only. This file is for development, not
+# production.
 
 name: ${COMPOSE_PROJECT_NAME:-codedna}
 
 services:
+  nginx:
+    image: nginx:1.28-alpine
+    ports:
+      - "127.0.0.1:${NGINX_HOST_PORT:-80}:80"
+    volumes:
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./docker/nginx/snippets:/etc/nginx/snippets:ro
+    depends_on:
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
+    networks:
+      - codedna
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/nginx-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/node/Dockerfile
+      additional_contexts:
+        node: ./docker/node
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    image: codedna-frontend:dev
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Set to "true" if file changes are not picked up (some Docker Desktop setups).
+      WATCHPACK_POLLING: ${FRONTEND_WATCH_POLLING:-false}
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    networks:
+      - codedna
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/').then(r => process.exit(r.status < 500 ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      # First start installs node_modules and compiles the first page.
+      start_period: 300s
+      start_interval: 5s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/php/Dockerfile
+      additional_contexts:
+        php: ./docker/php
+      args:
+        HOST_UID: ${HOST_UID:-1000}
+        HOST_GID: ${HOST_GID:-1000}
+    image: codedna-backend:dev
+    environment:
+      APP_NAME: ${APP_NAME:-CodeDNA}
+      APP_ENV: ${APP_ENV:-local}
+      APP_KEY: ${APP_KEY:?Set APP_KEY in .env (run `make setup`)}
+      APP_DEBUG: ${APP_DEBUG:-true}
+      APP_URL: ${APP_URL:-http://localhost}
+      LOG_CHANNEL: stderr
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_DATABASE: ${DB_DATABASE:-codedna}
+      DB_USERNAME: ${DB_USERNAME:-codedna}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (run `make setup`)}
+      REDIS_CLIENT: phpredis
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DRIVER: ${SESSION_DRIVER:-redis}
+      # S3-compatible source storage (ADR-003): MinIO locally, Cloudflare R2 in production.
+      SOURCE_STORAGE_ENDPOINT: http://minio:9000
+      SOURCE_STORAGE_REGION: ${SOURCE_STORAGE_REGION:-us-east-1}
+      SOURCE_STORAGE_BUCKET: ${SOURCE_STORAGE_BUCKET:-codedna}
+      SOURCE_STORAGE_USE_PATH_STYLE: "true"
+      SOURCE_STORAGE_ACCESS_KEY_ID: ${SOURCE_STORAGE_ACCESS_KEY_ID:?Set SOURCE_STORAGE_ACCESS_KEY_ID in .env (run `make setup`)}
+      SOURCE_STORAGE_SECRET_ACCESS_KEY: ${SOURCE_STORAGE_SECRET_ACCESS_KEY:?Set SOURCE_STORAGE_SECRET_ACCESS_KEY in .env (run `make setup`)}
+      ANALYZER_URL: http://analyzer:8000
+    volumes:
+      - ./backend:/var/www/backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - codedna
+      - codedna-internal
+    healthcheck:
+      test: ["CMD", "codedna-healthcheck"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      # First start runs `composer install`.
+      start_period: 300s
+      start_interval: 5s
+
+  analyzer:
+    build:
+      context: ./analyzer
+      dockerfile: ../docker/python/Dockerfile
+    image: codedna-analyzer:dev
+    volumes:
+      - ./analyzer:/app:ro
+    # Hardened: the analyzer will process untrusted source code (ADR-002/005).
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 256
+    networks:
+      - codedna-internal
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/internal/v1/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+      start_interval: 2s
+
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${DB_DATABASE:-codedna}
       POSTGRES_USER: ${DB_USERNAME:-codedna}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (see .env.example)}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (run `make setup`)}
     ports:
-      - "127.0.0.1:${DB_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - codedna
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
@@ -32,13 +180,15 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
-    # Persistence enabled so queued jobs survive a container restart in development.
+    image: redis:7.4-alpine
+    # Append-only persistence so queued jobs survive a container restart.
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
     volumes:
-      - redis-data:/data
+      - redis_data:/data
+    networks:
+      - codedna
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -46,6 +196,65 @@ services:
       retries: 10
     restart: unless-stopped
 
+  minio:
+    # Upstream MinIO no longer publishes freely pullable images; this is
+    # Chainguard's maintained build of upstream MinIO, pinned by digest.
+    # See docs/architecture/infrastructure.md#minio-image.
+    image: cgr.dev/chainguard/minio:latest-dev@sha256:f4420fd36b8ea52655addd4bf3458c16ce78af7d0ceb605cf25039b8488a63f4
+    command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env (run `make setup`)}
+      MINIO_SITE_REGION: ${SOURCE_STORAGE_REGION:-us-east-1}
+      MINIO_BROWSER_REDIRECT: "false"
+    ports:
+      - "127.0.0.1:${MINIO_API_HOST_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - codedna
+      - codedna-internal
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # One-shot: creates the bucket and the bucket-scoped application user.
+  # Idempotent; runs on every `up` and exits.
+  minio-init:
+    image: cgr.dev/chainguard/minio-client:latest-dev@sha256:7341127e324e0e8d7f399e199d0890564f5af9f5770e8b8956e2c620ed1d302d
+    entrypoint: ["sh", "/scripts/init.sh"]
+    environment:
+      MC_CONFIG_DIR: /tmp/.mc
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env (run `make setup`)}
+      SOURCE_STORAGE_BUCKET: ${SOURCE_STORAGE_BUCKET:-codedna}
+      SOURCE_STORAGE_ACCESS_KEY_ID: ${SOURCE_STORAGE_ACCESS_KEY_ID:?Set SOURCE_STORAGE_ACCESS_KEY_ID in .env (run `make setup`)}
+      SOURCE_STORAGE_SECRET_ACCESS_KEY: ${SOURCE_STORAGE_SECRET_ACCESS_KEY:?Set SOURCE_STORAGE_SECRET_ACCESS_KEY in .env (run `make setup`)}
+    volumes:
+      - ./docker/minio/init.sh:/scripts/init.sh:ro
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - codedna-internal
+    restart: "no"
+
+networks:
+  # Main development network.
+  codedna:
+    name: codedna
+  # Internal-only network (no route to the internet): backend <-> analyzer,
+  # backend/analyzer <-> minio (pre-signed URL downloads).
+  codedna-internal:
+    name: codedna-internal
+    internal: true
+
 volumes:
-  postgres-data:
-  redis-data:
+  postgres_data:
+  redis_data:
+  minio_data:
+  frontend_node_modules:
