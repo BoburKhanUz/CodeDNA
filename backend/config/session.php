@@ -18,7 +18,7 @@ return [
     |
     */
 
-    'driver' => env('SESSION_DRIVER', 'database'),
+    'driver' => env('SESSION_DRIVER', 'redis'),
 
     /*
     |--------------------------------------------------------------------------
@@ -156,7 +156,7 @@ return [
     |
     */
 
-    'domain' => env('SESSION_DOMAIN'),
+    'domain' => env('SESSION_DOMAIN') ?: null,
 
     /*
     |--------------------------------------------------------------------------
@@ -182,7 +182,8 @@ return [
     |
     */
 
-    'http_only' => env('SESSION_HTTP_ONLY', true),
+    // Always HttpOnly: session cookies must never be readable by JavaScript (ADR-006).
+    'http_only' => true,
 
     /*
     |--------------------------------------------------------------------------

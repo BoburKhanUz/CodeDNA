@@ -45,6 +45,43 @@ check "GET /api/* -> Laravel (JSON 404)" bash -c \
 check "GET /internal/v1/health -> 404 from Nginx (analyzer not exposed)" bash -c \
     "[[ \$(curl -s -o /dev/null -w '%{http_code}' '$base/internal/v1/health') == 404 ]] && ! curl -s '$base/internal/v1/health' | grep -q '\"status\"'"
 
+echo "Backend API through Nginx (Phase 03)"
+check "GET /api/v1/health -> 200, database and redis ok" bash -c \
+    "curl -fsS '$base/api/v1/health' | grep -q '\"checks\":{\"database\":\"ok\",\"redis\":\"ok\"}'"
+
+# Browser-style Sanctum SPA flow. CSRF is skipped inside PHPUnit, so this is
+# where enforcement is verified end to end. The probe user is deleted afterwards.
+jar=$(mktemp)
+probe_email="verify-$$-$RANDOM@example.invalid"
+probe_password="verify-$RANDOM-$RANDOM-pass"
+origin="Origin: http://localhost"
+api() { # api METHOD PATH [JSON] -> prints "<status>"
+    local method=$1 path=$2 body=${3:-}
+    local xsrf
+    xsrf=$(awk '$6 == "XSRF-TOKEN" {print $7}' "$jar" | python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.stdin.read().strip()))')
+    curl -s -o /dev/null -w '%{http_code}' -b "$jar" -c "$jar" -X "$method" -H "$origin" \
+        -H 'Accept: application/json' -H 'Content-Type: application/json' \
+        ${xsrf:+-H "X-XSRF-TOKEN: $xsrf"} ${body:+-d "$body"} "$base$path"
+}
+# `check` runs commands in a child shell, which needs the helper and its inputs.
+export jar origin base
+export -f api
+register_body="{\"name\":\"Verify\",\"email\":\"$probe_email\",\"password\":\"$probe_password\",\"password_confirmation\":\"$probe_password\"}"
+check "GET /sanctum/csrf-cookie -> 204 + XSRF-TOKEN cookie" bash -c \
+    "[[ \$(curl -s -o /dev/null -w '%{http_code}' -c '$jar' -H '$origin' '$base/sanctum/csrf-cookie') == 204 ]] && grep -q XSRF-TOKEN '$jar'"
+check "session cookie is HttpOnly" grep -qE '^#HttpOnly_.*codedna-session' "$jar"
+check "POST without X-XSRF-TOKEN -> 419 (CSRF enforced)" bash -c \
+    "[[ \$(curl -s -o /dev/null -w '%{http_code}' -b '$jar' -X POST -H '$origin' -H 'Accept: application/json' '$base/api/v1/auth/logout') == 419 ]]"
+check "POST /api/v1/auth/register -> 201" bash -c "[[ \$(api POST /api/v1/auth/register '$register_body') == 201 ]]"
+check "GET /api/v1/me with session -> 200" bash -c "[[ \$(api GET /api/v1/me) == 200 ]]"
+check "POST /api/v1/auth/logout -> 204" bash -c "[[ \$(api POST /api/v1/auth/logout) == 204 ]]"
+check "GET /api/v1/me after logout -> 401" bash -c "[[ \$(api GET /api/v1/me) == 401 ]]"
+check "POST /api/v1/auth/login -> 200" bash -c \
+    "[[ \$(api POST /api/v1/auth/login '{\"email\":\"$probe_email\",\"password\":\"$probe_password\"}') == 200 ]]"
+rm -f "$jar"
+check "remove probe user" "${compose[@]}" exec -T postgres sh -c \
+    "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -qc \"DELETE FROM users WHERE email = '$probe_email'\""
+
 echo "Internal networking"
 check "backend -> analyzer:8000 health" in_service backend curl -fsS http://analyzer:8000/internal/v1/health
 check "backend -> minio:9000 health" in_service backend curl -fsS http://minio:9000/minio/health/live

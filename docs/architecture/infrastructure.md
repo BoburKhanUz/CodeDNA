@@ -43,7 +43,7 @@ traffic is to MinIO, for pre-signed downloads
 |---|---|---|---|---|---|
 | `nginx` | `nginx:1.28-alpine` | Single-origin router | `127.0.0.1:80` | codedna | `GET /nginx-health` |
 | `frontend` | `docker/node/Dockerfile` → `codedna-frontend:dev` | Next.js 16 dev server (bootstrap page only) | — | codedna | HTTP `GET /` on :3000 |
-| `backend` | `docker/php/Dockerfile` → `codedna-backend:dev` | Laravel 13 on PHP-FPM 8.4 (stock skeleton) | — | codedna, codedna-internal | Laravel `/up` over FastCGI (`codedna-healthcheck`) |
+| `backend` | `docker/php/Dockerfile` → `codedna-backend:dev` | Laravel 13 API on PHP-FPM 8.4 ([backend.md](backend.md)) | — | codedna, codedna-internal | Laravel `/up` over FastCGI (`codedna-healthcheck`) |
 | `analyzer` | `docker/python/Dockerfile` → `codedna-analyzer:dev` | FastAPI; only `GET /internal/v1/health` | — | codedna-internal | `GET /internal/v1/health` |
 | `postgres` | `postgres:16-alpine` | Primary database | `127.0.0.1:5432` | codedna | `pg_isready` |
 | `redis` | `redis:7.4-alpine` | Cache, queues, sessions | `127.0.0.1:6379` | codedna | `redis-cli ping` |
@@ -65,8 +65,8 @@ Configuration: `docker/nginx/conf.d/default.conf` and
 | Path | Destination | Notes |
 |---|---|---|
 | `/api/*` | Laravel (`backend:9000`, FastCGI → `public/index.php`) | Unknown API routes return Laravel JSON 404s |
-| `/sanctum/*` | Laravel | Reserved for the CSRF cookie endpoint (Phase 06) |
-| `/up` | Laravel | Laravel's built-in health route |
+| `/sanctum/*` | Laravel | `GET /sanctum/csrf-cookie` (Sanctum SPA auth) |
+| `/up` | Laravel | Liveness (no dependency checks); readiness is `GET /api/v1/health` |
 | `/internal/*` | **404 at Nginx** | The internal analyzer API is never public |
 | `/nginx-health` | Nginx | Nginx liveness |
 | everything else | Next.js (`frontend:3000`) | Includes the hot-reload WebSocket (`/_next/hmr`) |
@@ -125,10 +125,13 @@ credentials reach only `minio` and `minio-init`.
 | `HOST_UID`, `HOST_GID` | generated | image builds | Your `id -u`/`id -g` (1000 when running as root) |
 | `NGINX_HOST_PORT`, `POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`, `MINIO_API_HOST_PORT`, `MINIO_CONSOLE_HOST_PORT` | defaults | compose | Host ports (127.0.0.1) |
 | `APP_KEY` | **yes**, generated | backend | `base64:` + 32 random bytes |
-| `APP_NAME`, `APP_ENV`, `APP_DEBUG`, `APP_URL`, `LOG_LEVEL` | defaults | backend | `APP_URL=http://localhost` |
+| `APP_NAME`, `APP_ENV`, `APP_DEBUG`, `APP_URL`, `APP_VERSION`, `LOG_LEVEL`, `LOG_STDERR_FORMATTER` | defaults | backend | `APP_URL=http://localhost`; JSON logs via `LOG_STDERR_FORMATTER` |
 | `DB_DATABASE`, `DB_USERNAME` | defaults | postgres, backend | |
 | `DB_PASSWORD` | **yes**, generated | postgres, backend | |
-| `SESSION_DRIVER` | default `redis` | backend | ADR-006 |
+| `SESSION_DRIVER`, `SESSION_LIFETIME`, `SESSION_DOMAIN`, `SESSION_SECURE_COOKIE`, `SESSION_SAME_SITE` | defaults | backend | Redis sessions, ADR-006 |
+| `SANCTUM_STATEFUL_DOMAINS` | default `localhost,localhost:3000` | backend | Browser origins that get session auth |
+| `TRUSTED_PROXIES` | default private ranges | backend | Proxies allowed to set `X-Forwarded-*` |
+| `CORS_ALLOWED_ORIGINS` | default empty (CORS closed) | backend | Split-origin fallback only |
 | `MINIO_ROOT_USER` | **yes** (default in template) | minio, minio-init | Admin only; never used by the app |
 | `MINIO_ROOT_PASSWORD` | **yes**, generated | minio, minio-init | |
 | `SOURCE_STORAGE_REGION`, `SOURCE_STORAGE_BUCKET` | defaults | backend, minio, minio-init | `us-east-1`, `codedna` locally |
@@ -139,8 +142,9 @@ credentials reach only `minio` and `minio-init`.
 Fixed in `docker-compose.yml` (not configurable in `.env`, because they are
 properties of the Docker network): `DB_HOST=postgres`, `REDIS_HOST=redis`,
 `SOURCE_STORAGE_ENDPOINT=http://minio:9000`,
-`ANALYZER_URL=http://analyzer:8000`, plus the `pgsql`/`phpredis`/`redis`
-driver selections.
+`ANALYZER_URL=http://analyzer:8000`, `MAIL_MAILER=log`, plus the
+`pgsql`/`phpredis`/`redis` driver selections. The backend refuses to boot
+with an invalid configuration (see [backend.md](backend.md#configuration-and-logging)).
 
 Variables marked `[Phase NN]` in `.env.example` are documented but not
 consumed yet. Compose stops with a clear `Set X in .env` error if a required
@@ -156,14 +160,16 @@ implicitly by AWS SDKs.
 
 ```bash
 make setup           # once: .env with random local secrets + build images
-make up              # start everything; waits until all services are healthy
+make up              # start everything, wait until healthy, run migrations
+make migrate         # apply Laravel migrations to the development database
 open http://localhost
 make ps              # status and health
 make logs            # follow all logs;  make logs s=backend  for one service
 make shell-backend   # bash in the Laravel container (artisan, composer)
 make shell-frontend  # bash in the Next.js container (npm)
 make shell-analyzer  # bash in the analyzer container
-make test            # analyzer pytest + Laravel's test runner, in containers
+make test            # analyzer pytest + backend PHPUnit (dedicated codedna_test DB)
+make lint-backend    # Laravel Pint style check
 make verify          # runtime smoke test (see below)
 make down            # stop and remove containers; volumes are kept
 make build           # rebuild images after Dockerfile or requirements changes
@@ -175,6 +181,17 @@ run `docker compose down -v`.
 The first `make up` takes longer. The backend runs `composer install` and
 the frontend runs `npm ci`, and both re-run automatically when
 `composer.lock` or `package-lock.json` change.
+
+### Databases and Redis allocation
+
+| Purpose | PostgreSQL database | Redis DB |
+|---|---|---|
+| Development | `codedna` | 0 (sessions, queues), 1 (cache, rate limits) |
+| Backend tests | `codedna_test` (created by `make test`) | 14, 15 (prefix `codedna-test-`) |
+
+Tests never touch the development database. `phpunit.xml` pins the test
+database, and the test bootstrap refuses any database whose name does not
+end in `_test`.
 
 ### Hot reload
 
@@ -240,7 +257,12 @@ and prints no secrets:
 3. Networking: backend → analyzer and MinIO; Laravel → PostgreSQL
    (`artisan db:show`) and Redis (cache round-trip); Nginx and the frontend
    **cannot** reach the analyzer; the analyzer **cannot** reach the internet.
-4. Storage, using the application credentials: upload; bucket creation is
+4. Backend API through Nginx: `/api/v1/health` reports database and Redis
+   `ok`. Then a real browser-style Sanctum flow: CSRF cookie, `419` without
+   `X-XSRF-TOKEN`, register, `/me` with the session, logout, `/me` → `401`,
+   login. It also checks that the session cookie is HttpOnly. The probe user
+   is deleted afterwards.
+5. Storage, using the application credentials: upload; bucket creation is
    denied; a pre-signed GET URL is generated and **downloaded by the
    analyzer**; the unsigned URL is rejected; the object is deleted.
 
@@ -251,6 +273,8 @@ and prints no secrets:
 | `Set DB_PASSWORD in .env` (or similar) | Run `make setup`, or fill the variable in `.env` |
 | Port 80 (or 5432/6379/9000/9001) already in use | Change the matching `*_HOST_PORT` in `.env`. For Nginx also set `APP_URL` (e.g. `http://localhost:8080`), then `make up` |
 | `backend`/`frontend` not healthy on first start | Dependencies are still installing: `make logs s=backend` / `s=frontend` |
+| Backend fails with `Invalid CodeDNA configuration` | The message lists each problem (e.g. missing `APP_KEY`, non-Redis driver). Fix `.env`, then `make up` |
+| `relation "users" does not exist` | Migrations not applied: `make migrate` |
 | Permission denied writing `backend/storage` or `frontend/.next` | `HOST_UID`/`HOST_GID` in `.env` must match `id -u`/`id -g`; then `make build && make up` |
 | Frontend changes not picked up | Set `FRONTEND_WATCH_POLLING=true` in `.env`, then `make up` |
 | Analyzer dependency missing after editing requirements | `make build && make up` |

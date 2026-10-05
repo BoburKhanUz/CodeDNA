@@ -1,0 +1,109 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Auth;
+
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
+use Tests\TestCase;
+
+/**
+ * End-to-end session behavior with real Redis sessions. In-memory session and
+ * guard state is discarded between requests, so each request is authenticated
+ * only by the session its cookie points to, as in production.
+ */
+final class SessionLifecycleTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private string $cookie;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->useRedisSessions();
+        $this->cookie = (string) config('session.cookie');
+        User::factory()->create(['email' => 'linus@example.com']);
+    }
+
+    /**
+     * @param  array<string, string>  $data
+     */
+    private function request(string $method, string $uri, ?string $sessionId, array $data = []): TestResponse
+    {
+        $this->forgetSessionState();
+        // Test-client cookies otherwise persist between requests.
+        $this->defaultCookies = [];
+        $this->unencryptedCookies = [];
+        $client = $this->fromBrowser()->withCredentials();
+        if ($sessionId !== null) {
+            $client = $client->withCookie($this->cookie, $sessionId);
+        }
+
+        return $client->json($method, $uri, $data);
+    }
+
+    private function sessionIdFrom(TestResponse $response): string
+    {
+        $id = $response->getCookie($this->cookie)?->getValue();
+        $this->assertIsString($id);
+
+        return $id;
+    }
+
+    private function sessionExists(string $id): bool
+    {
+        $this->forgetSessionState();
+
+        return $this->app['session']->driver()->getHandler()->read($id) !== '';
+    }
+
+    private function login(?string $sessionId = null): TestResponse
+    {
+        return $this->request('POST', '/api/v1/auth/login', $sessionId, [
+            'email' => 'linus@example.com',
+            'password' => 'password',
+        ]);
+    }
+
+    public function test_the_session_cookie_authenticates_later_requests(): void
+    {
+        $sessionId = $this->sessionIdFrom($this->login()->assertOk());
+
+        $this->request('GET', '/api/v1/me', $sessionId)
+            ->assertOk()
+            ->assertJsonPath('data.email', 'linus@example.com');
+        $this->request('GET', '/api/v1/me', null)->assertUnauthorized();
+        $this->request('GET', '/api/v1/me', Str::random(40))->assertUnauthorized();
+    }
+
+    public function test_login_regenerates_the_session_id(): void
+    {
+        // An anonymous session exists before login (e.g. from /sanctum/csrf-cookie).
+        $anonymousId = $this->sessionIdFrom($this->request('GET', '/api/v1/health', null)->assertOk());
+        $this->assertTrue($this->sessionExists($anonymousId));
+
+        $authenticatedId = $this->sessionIdFrom($this->login($anonymousId)->assertOk());
+
+        $this->assertNotSame($anonymousId, $authenticatedId, 'session fixation: the ID must change on login');
+        $this->assertFalse($this->sessionExists($anonymousId), 'the pre-login session is destroyed');
+        $this->request('GET', '/api/v1/me', $anonymousId)->assertUnauthorized();
+        $this->request('GET', '/api/v1/me', $authenticatedId)->assertOk();
+    }
+
+    public function test_logout_invalidates_the_session(): void
+    {
+        $sessionId = $this->sessionIdFrom($this->login()->assertOk());
+
+        $response = $this->request('POST', '/api/v1/auth/logout', $sessionId)->assertNoContent();
+
+        $this->assertNotSame($sessionId, $this->sessionIdFrom($response), 'a fresh session ID is issued');
+        $this->assertFalse($this->sessionExists($sessionId), 'the authenticated session is destroyed');
+        $this->request('GET', '/api/v1/me', $sessionId)
+            ->assertUnauthorized()
+            ->assertJsonPath('error.code', 'AUTHENTICATION_REQUIRED');
+    }
+}

@@ -1,6 +1,6 @@
 # ADR-006: Authentication — Laravel Sanctum (SPA Cookies, Tokens Later)
 
-- **Status:** Accepted
+- **Status:** Accepted (implemented in Phase 03; see docs/api/README.md#authentication-browser-sanctum-spa)
 - **Date:** 2026-10-05
 - **Related:** [API conventions](../api/README.md), [Backend architecture](../architecture/backend.md)
 
@@ -22,8 +22,8 @@ Authentication tokens must never be readable by JavaScript or stored in
 - Login is `POST /api/v1/auth/login`. The session is regenerated on login and
   invalidated on logout (`POST /api/v1/auth/logout`). Registration logs the
   user in.
-- Login and registration are rate limited per IP and per identifier
-  (email).
+- Login is rate limited per email+IP and per IP. Registration is rate
+  limited per IP (docs/api/README.md#rate-limiting).
 
 ### 2. CSRF handling
 
@@ -69,7 +69,7 @@ when running natively without Docker):
 | `SESSION_DRIVER` | `redis` | `redis` |
 | `SESSION_SECURE_COOKIE` | `false` (HTTP on localhost) | `true` |
 | `SESSION_SAME_SITE` | `lax` | `lax` |
-| `SESSION_HTTP_ONLY` | `true` | `true` |
+| HttpOnly session cookie | always (not configurable) | always (not configurable) |
 | `SESSION_DOMAIN` | unset (host-only) | unset for single origin; parent domain only for split origins |
 | `SANCTUM_STATEFUL_DOMAINS` | `localhost,localhost:3000` | `app.<your-domain>` |
 

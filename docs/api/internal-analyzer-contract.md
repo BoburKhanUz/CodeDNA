@@ -61,11 +61,11 @@ random bytes, encoded as hex or base64.
 
 ### Verification rules (analyzer)
 
-1. Reject with `401 invalid_signature` if any header is missing or malformed.
-2. Reject with `401 stale_timestamp` if `|now − timestamp| > 300` seconds.
+1. Reject with `401 INVALID_SIGNATURE` if any header is missing or malformed.
+2. Reject with `401 STALE_TIMESTAMP` if `|now − timestamp| > 300` seconds.
 3. Compute the signature with the current secret, and also with
    `ANALYZER_HMAC_SECRET_PREVIOUS` if that is set (used during rotation).
-   Compare in **constant time**. Reject with `401 invalid_signature` if
+   Compare in **constant time**. Reject with `401 INVALID_SIGNATURE` if
    neither matches.
 4. The body is parsed only **after** verification succeeds.
 
@@ -107,12 +107,12 @@ retryable.
 
 | Field | Rules |
 |---|---|
-| `contract_version` | Must have major `1`. Otherwise `400 unsupported_contract_version`. |
+| `contract_version` | Must have major `1`. Otherwise `400 UNSUPPORTED_CONTRACT_VERSION`. |
 | `analysis_run_id` | ULID. Must equal `Idempotency-Key`. |
 | `attempt` | Integer ≥ 1. Informational (logging). |
 | `source.type` / `source.format` | Only `archive` / `zip` in v1.0 |
 | `source.url` | Pre-signed GET URL (ADR-003). Its host must be in `ANALYZER_ALLOWED_SOURCE_HOSTS`, and it must be HTTPS except for hosts explicitly allowed for local development. Redirects are **not** followed. |
-| `source.sha256`, `source.size_bytes` | Verified after download. A mismatch → `422 source_checksum_mismatch`. |
+| `source.sha256`, `source.size_bytes` | Verified after download. A mismatch → `422 SOURCE_CHECKSUM_MISMATCH`. |
 | `options.languages` | Optional subset of supported languages. Omitted means all supported languages. |
 
 ### Successful response — `200 OK`
@@ -156,7 +156,7 @@ retryable.
     "secrets": [ { "path": "config/app.php", "line": 42, "rule": "generic-api-key" } ],
     "parse_errors": [ { "path": "src/Broken.php", "error_nodes": 3 } ]
   },
-  "warnings": [ { "code": "partial_parse", "path": "src/Broken.php" } ],
+  "warnings": [ { "code": "PARTIAL_PARSE", "path": "src/Broken.php" } ],
   "result_hash": "<64 hex SHA-256 of canonical JSON of deterministic sections>",
   "diagnostics": { "duration_ms": 8421 }
 }
@@ -182,12 +182,14 @@ Rules:
 
 ## 5. Errors
 
-All error responses use this shape:
+Error codes use the same `UPPER_SNAKE_CASE` vocabulary style as the public
+API ([docs/api/README.md](README.md#error-codes)). The internal envelope
+adds `retryable`. All error responses use this shape:
 
 ```json
 {
   "error": {
-    "code": "source_too_large",
+    "code": "SOURCE_TOO_LARGE",
     "message": "Archive exceeds the maximum allowed size.",
     "retryable": false,
     "request_id": "6f1c2a4e-1d3b-4c55-9a7e-2b8f0c9d1e23",
@@ -201,30 +203,30 @@ secrets, file contents, internal hostnames or stack traces.
 
 | HTTP | `code` | `retryable` | Meaning |
 |---|---|---|---|
-| 400 | `unsupported_contract_version` | false | Unknown contract major |
-| 401 | `invalid_signature` | false | Missing or bad HMAC headers or signature |
-| 401 | `stale_timestamp` | false | Timestamp outside ±300 s |
-| 409 | `run_in_progress` | true | The same `Idempotency-Key` is already being processed |
-| 413 | `source_too_large` | false | Archive or extracted size limit exceeded |
-| 413 | `too_many_files` | false | File count limit exceeded |
-| 422 | `invalid_request` | false | Body fails schema validation |
-| 422 | `source_host_not_allowed` | false | URL host not in the allow-list |
-| 422 | `source_checksum_mismatch` | false | Size or SHA-256 differs from the request |
-| 422 | `invalid_archive` | false | Corrupt archive, path traversal, absolute paths, symlinks, nested-archive bomb |
-| 422 | `no_supported_files` | false | Nothing analyzable after filtering |
-| 502 | `source_fetch_failed` | true | Storage returned an error or the connection failed |
-| 503 | `analyzer_busy` | true | Concurrency limit reached; includes a `Retry-After` header |
-| 504 | `analysis_timeout` | false | Hard time limit exceeded. Deterministic input means a retry would time out again. |
-| 500 | `internal_error` | true | Unexpected failure (bug); details are only in the analyzer logs |
+| 400 | `UNSUPPORTED_CONTRACT_VERSION` | false | Unknown contract major |
+| 401 | `INVALID_SIGNATURE` | false | Missing or bad HMAC headers or signature |
+| 401 | `STALE_TIMESTAMP` | false | Timestamp outside ±300 s |
+| 409 | `RUN_IN_PROGRESS` | true | The same `Idempotency-Key` is already being processed |
+| 413 | `SOURCE_TOO_LARGE` | false | Archive or extracted size limit exceeded |
+| 413 | `TOO_MANY_FILES` | false | File count limit exceeded |
+| 422 | `INVALID_REQUEST` | false | Body fails schema validation |
+| 422 | `SOURCE_HOST_NOT_ALLOWED` | false | URL host not in the allow-list |
+| 422 | `SOURCE_CHECKSUM_MISMATCH` | false | Size or SHA-256 differs from the request |
+| 422 | `INVALID_ARCHIVE` | false | Corrupt archive, path traversal, absolute paths, symlinks, nested-archive bomb |
+| 422 | `NO_SUPPORTED_FILES` | false | Nothing analyzable after filtering |
+| 502 | `SOURCE_FETCH_FAILED` | true | Storage returned an error or the connection failed |
+| 503 | `ANALYZER_BUSY` | true | Concurrency limit reached; includes a `Retry-After` header |
+| 504 | `ANALYSIS_TIMEOUT` | false | Hard time limit exceeded. Deterministic input means a retry would time out again. |
+| 500 | `INTERNAL_ERROR` | true | Unexpected failure (bug); details are only in the analyzer logs |
 
 Transport failures, such as a connection refused, a Laravel-side timeout or
 a response signature that fails verification, are treated by Laravel as
-retryable with the code `analyzer_unreachable`.
+retryable with the code `ANALYZER_UNREACHABLE`.
 
 ## 6. Idempotency
 
 - The analyzer keeps an in-memory set of in-flight `Idempotency-Key`s. A
-  concurrent duplicate gets `409 run_in_progress`.
+  concurrent duplicate gets `409 RUN_IN_PROGRESS`.
 - The analyzer does **not** cache completed results. Because analysis is
   deterministic (ADR-004), repeating a request is safe and returns the same
   `result_hash`.

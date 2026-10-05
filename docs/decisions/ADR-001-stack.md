@@ -37,7 +37,7 @@ framework.
 
 | Component | Tests | Lint / format / static analysis |
 |---|---|---|
-| Backend | Pest (on PHPUnit) | Laravel Pint, Larastan |
+| Backend | PHPUnit 12 (Pest planned — see Phase 03 note) | Laravel Pint (Larastan planned) |
 | Frontend | Vitest + Testing Library, Playwright (E2E) | ESLint, Prettier, `tsc --noEmit` |
 | Analyzer | pytest (unit, golden/regression fixtures) | Ruff (lint + format), mypy (strict) |
 | Repository | — | markdownlint, yamllint, actionlint, gitleaks |
@@ -82,6 +82,16 @@ of truth.
 PHP 8.4 was chosen over 8.3 because it is the newer, fully supported release
 and Laravel 13 supports it. Base image tags pin the major/minor line. Patch
 updates arrive with image rebuilds.
+
+### Phase 03 note — backend test and analysis tooling
+
+Pest 5 (which requires PHPUnit 13) and Larastan could not be installed in
+the Phase 03 build environment, because its network policy blocks their
+GitHub-hosted package downloads. The backend tests are therefore written
+for **PHPUnit 12**, Laravel's default runner. Pest runs PHPUnit test
+classes unchanged, so adopting it later needs no rewrite. Larastan (static
+analysis) is still the plan and should be added in an environment that can
+download it. Until then, `make lint-backend` runs Laravel Pint only.
 
 ## Consequences
 

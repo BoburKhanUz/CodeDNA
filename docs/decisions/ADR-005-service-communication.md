@@ -42,7 +42,7 @@ analyzer must never be reachable from the public internet.
      or for transport failures. Non-retryable errors fail the run
      immediately.
    - **Idempotency:** the `analysis_run_id` is sent as the `Idempotency-Key`.
-     The analyzer rejects a concurrent duplicate with `409 run_in_progress`.
+     The analyzer rejects a concurrent duplicate with `409 RUN_IN_PROGRESS`.
      Laravel persists results idempotently: a run that is already in a
      terminal state ignores later results.
    - **Correlation:** every request carries an `X-Request-ID`. It is logged by
@@ -62,7 +62,7 @@ analyzer must never be reachable from the public internet.
   one place (Laravel) that owns state.
 - The PHP worker is occupied for the duration of an analysis. Worker
   concurrency must be sized for this, and the analyzer limits its own
-  concurrency (`503 analyzer_busy`, which is retryable).
+  concurrency (`503 ANALYZER_BUSY`, which is retryable).
 - **Evolution path:** if analyses outgrow synchronous calls, switch to an
   asynchronous contract (`202 Accepted` plus a signed callback to Laravel, or
   polling) as `/internal/v2`, without changing the public API or the

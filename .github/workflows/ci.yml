@@ -121,14 +121,17 @@ jobs:
       - name: Build images
         run: docker compose build
 
-      - name: Start environment and wait for health
-        run: docker compose up -d --wait --wait-timeout 600
+      - name: Start environment, wait for health, run migrations
+        run: make up
 
       - name: Runtime smoke test
         run: make verify
 
-      - name: Test suites
+      - name: Test suites (analyzer pytest, backend PHPUnit)
         run: make test
+
+      - name: Backend code style (Laravel Pint)
+        run: make lint-backend
 
       - name: Service status and logs (on failure)
         if: failure()

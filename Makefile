@@ -39,8 +39,13 @@ build: ## Rebuild the development images
 	$(COMPOSE) build
 
 .PHONY: up
-up: ## Start all services and wait until they are healthy
+up: ## Start all services, wait until healthy, apply database migrations
 	$(COMPOSE) up -d --wait
+	$(MAKE) --no-print-directory migrate
+
+.PHONY: migrate
+migrate: ## Apply Laravel database migrations (development database)
+	$(COMPOSE) exec -T backend php artisan migrate --no-interaction
 
 .PHONY: down
 down: ## Stop and remove containers (named volumes/data are kept)
@@ -67,9 +72,14 @@ shell-analyzer: ## Open a shell in the analyzer container
 	$(COMPOSE) exec analyzer bash
 
 .PHONY: test
-test: ## Run the existing test suites inside the running containers
+test: ## Run all test suites inside the running containers
 	$(COMPOSE) exec -T analyzer pytest
-	$(COMPOSE) exec -T backend php artisan test
+	./scripts/ensure-test-database.sh
+	$(COMPOSE) exec -T backend vendor/bin/phpunit
+
+.PHONY: lint-backend
+lint-backend: ## Check backend code style (Laravel Pint) in the running container
+	$(COMPOSE) exec -T backend vendor/bin/pint --test
 
 .PHONY: verify
 verify: ## Runtime smoke test of the running environment (routing, networking, storage)

@@ -67,12 +67,12 @@ API calls go through Nginx straight to Laravel, not through the Next.js server.
 - `completed` and `failed` are **terminal and immutable**.
 - An analysis's displayed status is the status of its **latest run**.
 - Failed runs store a `failure_code` (from the contract's error codes plus
-  `analyzer_unreachable`, `analysis_stale` and `dispatch_failed`), a
+  `ANALYZER_UNREACHABLE`, `ANALYSIS_STALE` and `DISPATCH_FAILED`), a
   user-safe `failure_message`, `request_id`, `attempts` and `failed_at`.
 - **Recovery:** the user (or later an admin action) creates a new run for the
   same analysis via `POST /api/v1/analyses/{id}/runs`. Earlier runs are kept.
 - **Stale sweeper:** a scheduled Laravel command marks runs as
-  `failed (analysis_stale)` if they have been `processing` for longer than
+  `failed (ANALYSIS_STALE)` if they have been `processing` for longer than
   the job timeout plus a grace period. This covers crashed workers.
 
 ## Persistence of a result (one transaction)

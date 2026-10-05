@@ -8,6 +8,7 @@ secrets.
 |---|---|---|
 | `check_repo.py` | Required files exist; Markdown links and anchors resolve; `.env.example` has no secret values; no real `.env` files are tracked | `make check-repo`, CI |
 | `setup.sh` | Creates `.env` from `.env.example` and generates random local secrets for empty required values. Idempotent: never changes values that are already set | `make setup`, CI |
+| `ensure-test-database.sh` | Creates the `codedna_test` PostgreSQL database if missing (idempotent) | `make test`, CI |
 | `verify-infra.sh` | Runtime smoke test of the running Docker environment: health, routing, network isolation, PostgreSQL/Redis from Laravel, S3 and pre-signed URLs | `make verify`, CI |
 
 Run: `python3 scripts/check_repo.py` (add `--docs-only` to check only the

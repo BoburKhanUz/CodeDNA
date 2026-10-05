@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'default' => env('QUEUE_CONNECTION', 'database'),
+    'default' => env('QUEUE_CONNECTION', 'redis'),
 
     /*
     |--------------------------------------------------------------------------
@@ -70,7 +70,9 @@ return [
             'queue' => env('REDIS_QUEUE', 'default'),
             'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
             'block_for' => null,
-            'after_commit' => false,
+            // Jobs dispatched inside a database transaction are pushed only after it
+            // commits, so workers never see rows that might still be rolled back.
+            'after_commit' => true,
         ],
 
         'deferred' => [
@@ -103,7 +105,7 @@ return [
     */
 
     'batching' => [
-        'database' => env('DB_CONNECTION', 'sqlite'),
+        'database' => env('DB_CONNECTION', 'pgsql'),
         'table' => 'job_batches',
     ],
 
@@ -122,7 +124,7 @@ return [
 
     'failed' => [
         'driver' => env('QUEUE_FAILED_DRIVER', 'database-uuids'),
-        'database' => env('DB_CONNECTION', 'sqlite'),
+        'database' => env('DB_CONNECTION', 'pgsql'),
         'table' => 'failed_jobs',
     ],
 

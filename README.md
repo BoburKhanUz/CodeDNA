@@ -18,13 +18,15 @@ ASSESS ─► ANALYZE ─► IDENTIFY GAPS ─► LEARN ─► PRACTICE ─► R
 | 00 | Product specification, architecture, ADRs | ✅ Done |
 | 01 | Monorepo foundation | ✅ Done |
 | 02 | Docker infrastructure | ✅ Done |
-| 03 | Laravel backend foundation | ⏭ Next |
+| 03 | Laravel backend foundation | ✅ Done |
+| 04 | Next.js frontend foundation | ⏭ Next |
 
 **No product features exist yet.** The Docker environment runs every
 component: Nginx, Laravel 13, Next.js 16, the FastAPI analyzer, PostgreSQL
-16, Redis 7 and MinIO. The applications are minimal bootstraps (stock
-Laravel skeleton, one placeholder page, one health endpoint). The full plan
-is in [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
+16, Redis 7 and MinIO. The Laravel API provides registration, login, logout,
+`/api/v1/me` and `/api/v1/health` (see [API reference](docs/api/README.md)).
+The frontend and analyzer are still minimal bootstraps. The full plan is in
+[docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance
 
@@ -73,7 +75,7 @@ recommended. For the static checks you also need Python 3.11+ and Node 22+.
 ```bash
 git clone https://github.com/BoburKhanUz/CodeDNA.git && cd CodeDNA
 make setup     # creates .env with random LOCAL secrets, builds the images
-make up        # starts all services and waits until they are healthy
+make up        # starts all services, waits until healthy, runs migrations
 ```
 
 Open <http://localhost>.
@@ -81,7 +83,8 @@ Open <http://localhost>.
 | URL | Service |
 |---|---|
 | <http://localhost> | Next.js (through Nginx) |
-| <http://localhost/up> | Laravel health route (through Nginx) |
+| <http://localhost/api/v1/health> | API readiness (database, Redis) |
+| <http://localhost/up> | Laravel liveness route (through Nginx) |
 | <http://localhost:9001> | MinIO console (credentials in `.env`) |
 | `127.0.0.1:5432` / `127.0.0.1:6379` | PostgreSQL / Redis, for local tools |
 
@@ -92,7 +95,8 @@ marked `[required]` first. Compose refuses to start without them.
 ```bash
 make ps / make logs / make logs s=backend
 make shell-backend | shell-frontend | shell-analyzer
-make test      # test suites inside the containers
+make test      # analyzer pytest + backend PHPUnit (dedicated test DB)
+make lint-backend  # Laravel Pint style check
 make verify    # runtime smoke test: routing, networking, isolation, S3
 make down      # stop (data volumes are kept)
 make check     # static checks run in CI

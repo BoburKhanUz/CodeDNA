@@ -6,9 +6,11 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 02 (Docker infrastructure) complete. The local
-environment runs every component, but the applications are stock bootstraps
-with no product features yet. Everything below is the target architecture.
+**Current status:** Phase 03 (Laravel backend foundation) complete. The
+local environment runs every component. The backend provides
+authentication (Sanctum SPA sessions), the versioned API skeleton,
+standard errors and health checks. No business domain exists yet. Everything
+below is the target architecture.
 
 ## System context
 
@@ -93,8 +95,8 @@ at a time:
 | 00 | Product definition, technical specification, ADRs | Done |
 | 01 | Monorepo foundation | Done |
 | 02 | Docker infrastructure | Done |
-| 03 | Laravel backend foundation | Next |
-| 04 | Next.js frontend foundation | — |
+| 03 | Laravel backend foundation | Done |
+| 04 | Next.js frontend foundation | Next |
 | 05 | Database and domain model | — |
 | 06 | Authentication and developer profile | — |
 | 07 | Projects and repository management (ZIP upload) | — |

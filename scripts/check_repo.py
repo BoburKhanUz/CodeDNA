@@ -53,6 +53,7 @@ REQUIRED_FOUNDATION = [
     "scripts/README.md",
     "scripts/setup.sh",
     "scripts/verify-infra.sh",
+    "scripts/ensure-test-database.sh",
     ".github/workflows/ci.yml",
     # Phase 02 — Docker development environment
     "docker/php/Dockerfile",
