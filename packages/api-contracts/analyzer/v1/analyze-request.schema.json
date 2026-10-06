@@ -27,7 +27,8 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": { "enum": ["c", "cpp", "csharp", "go", "java", "javascript", "php", "python", "rust", "typescript"] }
-        }
+        },
+        "result_type": { "enum": ["foundation", "static_analysis"] }
       }
     }
   }

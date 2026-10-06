@@ -124,7 +124,8 @@ The analyzer side exists (Phases 08–09): given a signed request with a
 short-lived pre-signed GET URL plus `source_hash` and `size_bytes`, it
 downloads the object from an allow-listed host, re-checks size and SHA-256,
 applies its own extraction limits (the upload inspection does not replace
-them), discovers files, parses them and returns a versioned
+them), discovers files and returns a versioned **foundation result**, or,
+when asked for `static_analysis`, also parses them and returns a
 **static-analysis result** with IR 1.1, metrics and findings
 ([analyzer.md](analyzer.md), [contract](../api/internal-analyzer-contract.md)).
 `make verify` exercises this path from the backend container. What is

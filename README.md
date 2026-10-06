@@ -36,7 +36,7 @@ MinIO; nothing is executed or analyzed) at
 [frontend](docs/architecture/frontend.md) and the [API reference](docs/api/README.md)).
 The internal analyzer (Phases 08–09) can securely fetch, extract and
 inventory a snapshot, parse ten languages with Tree-sitter (nothing is
-executed) and return a versioned static-analysis result (IR 1.1,
+executed) and, on request, return a versioned static-analysis result (IR 1.1,
 deterministic metrics and structural findings; see
 [metrics-v1.md](docs/architecture/metrics-v1.md)), but nothing calls it from
 the product yet and it computes no scores; analysis runs and DNA

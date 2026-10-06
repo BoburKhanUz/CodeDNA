@@ -25,6 +25,7 @@ from tests.support import PATH, FakeFetcher, encode, request_body, resolver, sig
 from tests.test_parsing_languages import ERRORS, EXPECTED, FIXTURES
 
 ANALYZER_ROOT = Path(__file__).resolve().parents[1]
+STATIC = {"result_type": "static_analysis"}
 
 CANARIES = {
     "src/leak.py": (
@@ -64,7 +65,7 @@ def fixture_archive(order: list[str] | None = None) -> bytes:
 
 
 def post(settings: Settings, archive: bytes) -> dict:  # type: ignore[type-arg]
-    raw = encode(request_body(archive))
+    raw = encode(request_body(archive, options=STATIC))
     with TestClient(create_app(settings, resolver=resolver("172.18.0.5"), fetcher=FakeFetcher(archive))) as client:
         response = client.post(PATH, content=raw, headers=signed_headers(raw))
     assert response.status_code == 200, response.text
@@ -99,7 +100,7 @@ def test_the_result_hash_is_identical_across_processes_and_hash_seeds(tmp_path: 
         "from app.services.analysis import analyze\n"
         "from tests.support import FakeFetcher, encode, make_settings, request_body, resolver\n"
         "archive = open(sys.argv[2], 'rb').read()\n"
-        "request = parse_request(encode(request_body(archive)))\n"
+        "request = parse_request(encode(request_body(archive, options={'result_type': 'static_analysis'})))\n"
         "result = analyze(request, make_settings(sys.argv[1]), resolver=resolver('172.18.0.5'), fetcher=FakeFetcher(archive))\n"
         "print(result['result_hash'], hashlib.sha256(canonical_json(result)).hexdigest())\n"
     )

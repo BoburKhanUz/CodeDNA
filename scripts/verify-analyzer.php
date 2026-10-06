@@ -89,6 +89,7 @@ try {
             'sha256' => hash('sha256', $zip),
             'size_bytes' => strlen($zip),
         ],
+        'options' => ['result_type' => 'static_analysis'],
     ];
 
     [$first, $firstId] = $call($payload);
@@ -109,6 +110,21 @@ try {
     $check('no scores, features or source text in the result',
         ! isset($data['dna']) && ! isset($data['features']) && ! str_contains($first->body(), 'echo')
         && ! str_contains($first->body(), 'X-Amz'));
+
+    // Without options.result_type the Phase 08 foundation result is unchanged.
+    $foundationPayload = $payload;
+    unset($foundationPayload['options']);
+    $foundationPayload['analysis_run_id'] = strtolower((string) Str::ulid());
+    $foundationPayload['source']['url'] = $disk->temporaryUrl($key, now()->addMinutes(5));
+    [$foundationResponse] = $call($foundationPayload);
+    $foundation = $foundationResponse->json();
+    $check('default request -> Phase 08 foundation result (IR 1.0, no parsing or metrics)',
+        $foundationResponse->status() === 200 && ($foundation['result_type'] ?? null) === 'foundation'
+        && ($foundation['versions']['ir'] ?? null) === '1.0' && array_key_exists('metrics', $foundation['versions'] ?? [])
+        && $foundation['versions']['metrics'] === null && ! isset($foundation['parsing']) && ! isset($foundation['metrics']));
+    $check('static_analysis keeps the foundation inventory unchanged',
+        ($foundation['source'] ?? null) === ($data['source'] ?? 'missing')
+        && ($foundation['languages'] ?? null) === ($data['languages'] ?? 'missing'));
 
     // A fresh URL and request ID for the same run: same deterministic result.
     $payload['attempt'] = 2;

@@ -9,7 +9,9 @@ extraction into per-run workspaces, deterministic file discovery,
 extension-based language detection (Phase 08), and bounded Tree-sitter
 parsing of ten languages into **IR 1.1**, deterministic **static metrics**
 and **structural findings** in a versioned, hashed `static_analysis` result
-(Phase 09). Features and DNA scoring arrive in Phase 11. Nothing in a result
+(Phase 09). The Phase 08 `foundation` result remains the default and is
+unchanged; `static_analysis` is an additional result type a request opts
+into (see "Result types"). Features and DNA scoring arrive in Phase 11. Nothing in a result
 is a score: metrics are measurements ([metrics-v1.md](metrics-v1.md)), and
 no AI model is involved.
 
@@ -374,13 +376,31 @@ code (a 1 MiB file parses in about 1 s), and a result that contains one says
 so in `parsing.files`; Laravel should not treat such a result as
 reproducible.
 
-How the parse is bounded: Tree-sitter's C runtime checks a time budget while
-parsing (`Parser.timeout_micros`). The newer cancellation API (a progress
-callback) **crashes the Python binding** (segmentation fault, reproduced with
-0.25.2 and 0.26.0), and 0.26 removed `timeout_micros`. The runtime is
-therefore pinned to 0.25.2 and uses the deprecated, working timeout; the
-deprecation warning (that exact message only) is filtered once at import. Upgrading the runtime
-requires an equivalent, tested per-file bound.
+#### Intentional compatibility workaround: `timeout_micros` on Tree-sitter 0.25.2
+
+The per-file time bound uses Tree-sitter's C-level parse timeout
+(`Parser.timeout_micros`). This is a deliberate, documented workaround:
+
+- **Runtime pinned to `tree-sitter` 0.25.2** (Python binding), the newest
+  release that still has `timeout_micros`; 0.26 removed it.
+- **`timeout_micros` is retained intentionally** although upstream marks it
+  deprecated: it is the only per-file bound that works from Python. When it
+  expires the binding raises `ValueError`, the parser is reset and reused,
+  and the file is `PARSE_TIMEOUT` (tested with a 1 ms budget on ~1 MiB).
+- **The replacement API is unsafe here:** the recommended cancellation
+  mechanism (`parse(..., progress_callback=...)`) crashed the interpreter with
+  a segmentation fault in both 0.25.2 and 0.26.0 during Phase 09 testing; a
+  crash would take down the analyzer worker, so it is not used.
+- **Only the exact deprecation warning is suppressed:**
+  `DeprecationWarning` with the message "Use the progress_callback in
+  parse()", filtered once at import in `app/parsing/parser.py` (not with
+  `warnings.catch_warnings()`, which is unsafe with concurrent runs in
+  threads), and mirrored in the pytest configuration, which otherwise turns
+  every warning into an error.
+- **Any future Tree-sitter upgrade must revisit this**: it must provide an
+  equivalent per-file bound that is proven not to crash (the
+  `PARSE_TIMEOUT` test in `tests/test_parsing_limits.py` must keep passing),
+  and the pin, this section and the warning filter must be updated together.
 
 Measured inside the analyzer container (2 CPUs, 1.5 GiB): whole pipeline
 with a simulated download (extraction, discovery, parsing, IR, metrics,
@@ -607,13 +627,44 @@ definition file. The rules (Decimal arithmetic, evidence minimums, statuses,
 and so on) are in [ADR-004](../decisions/ADR-004-dna-scoring.md). Formulas
 are documented in `docs/architecture/dna-scoring-v1.md` (Phase 11).
 
-## Analysis result
+## Result types
 
-A `200` response has `result_type: "static_analysis"` (Phase 09). It
-contains every field of the Phase 08 foundation result with unchanged
-meaning (run ID, `versions`, the `analysis` configuration, `source` counts
-and sizes, per-language `files`/`bytes`/`lines`, the IR file records,
-`result_hash`, `diagnostics`), with these additive changes:
+```text
+FOUNDATION         (Phase 08, default; foundation-result.schema.json)
+   fetch → verify → extract → discover → inventory (IR 1.0)
+   │  every foundation field kept, same meaning
+   ▼
+STATIC ANALYSIS    (Phase 09, options.result_type = "static_analysis";
+   │                static-analysis-result.schema.json)
+   │  + parse → IR 1.1 → metrics 1.0 → findings 1.0
+   ▼
+future DNA / competency analysis (Phase 11+; adds features and scores)
+```
+
+The request chooses the result type (`options.result_type`, default
+`"foundation"`). A request without the option gets exactly the Phase 08
+foundation result: nothing is parsed, the IR is 1.0, the schema and tests of
+Phase 08 are unchanged. Each later layer only adds fields; contract tests
+(`tests/test_result_types.py`) prove both results validate against their
+schemas, that `static_analysis` keeps every foundation field and value,
+that the static-analysis schema does not redefine a foundation field, and
+that both result types hash deterministically. The result type is part of a
+run's identity, so one run ID cannot produce both (`409 RUN_CONFLICT`).
+
+### Foundation result
+
+A `200` response with `result_type: "foundation"` contains the run ID,
+`versions` (`analyzer`, `ir` = `"1.0"`, and `metrics`/`scoring` as `null`),
+the `analysis` configuration that shaped it (requested languages, ignored
+directories, max file size), `source` counts and sizes, per-language
+`files`/`bytes`/`lines`, the IR 1.0 file records, `result_hash` and
+`diagnostics`. It contains **no metrics, features, DNA scores or findings**.
+
+### Static-analysis result
+
+A `200` response with `result_type: "static_analysis"` contains every field
+of the foundation result for the same source with unchanged meaning and
+values, with these additive changes:
 
 - `versions.ir` is `"1.1"`, `versions.metrics` is `"1.0"`,
   `versions.parser_runtime` and `versions.parsers` name the exact Tree-sitter
@@ -628,9 +679,9 @@ and sizes, per-language `files`/`bytes`/`lines`, the IR file records,
 - `findings`: structural findings (rule set 1.0), with totals per rule.
 
 It contains **no features, DNA scores or AI output**; Laravel must not
-create a DNA snapshot from it (scoring is Phase 11). The analyzer no longer
-returns `result_type: "foundation"`; its schema stays published as the IR 1.0
-reference.
+create a DNA snapshot from either result type (scoring is Phase 11).
+
+### Hashing
 
 `result_hash` is the SHA-256 of the canonical JSON (keys sorted by code
 point, no whitespace, UTF-8, no NaN; `app/canonical.py`) of every top-level

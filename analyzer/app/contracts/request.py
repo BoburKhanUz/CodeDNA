@@ -29,10 +29,18 @@ class SourceSpec(BaseModel):
     size_bytes: int = Field(ge=1, le=2**53)
 
 
+# What a run produces (contract section 4). "foundation" (Phase 08, the
+# default, so requests without the option keep their Phase 08 meaning) or
+# "static_analysis" (Phase 09: foundation inventory + parsing, IR 1.1,
+# metrics and findings).
+ResultType = Literal["foundation", "static_analysis"]
+
+
 class Options(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     languages: tuple[str, ...] | None = Field(default=None, max_length=len(SUPPORTED_LANGUAGES))
+    result_type: ResultType = "foundation"
 
     @field_validator("languages")
     @classmethod
@@ -58,6 +66,9 @@ class AnalyzeRequest(BaseModel):
 
     def requested_languages(self) -> tuple[str, ...]:
         return self.options.languages or tuple(sorted(SUPPORTED_LANGUAGES))
+
+    def result_type(self) -> str:
+        return self.options.result_type
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:

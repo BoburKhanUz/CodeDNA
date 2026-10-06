@@ -2,7 +2,8 @@
 
 - **Contract version:** `1.0`, **frozen in Phase 08** with the amendments
   listed in [§ 9](#9-amendments) (Phase 08, and the additive Phase 09
-  `static_analysis` result). Implemented by the analyzer (`analyzer/app`);
+  `static_analysis` result type, which a request opts into; the Phase 08
+  `foundation` result stays the default, unchanged). Implemented by the analyzer (`analyzer/app`);
   the Laravel client arrives in Phase 10.
 - **Audience:** Laravel backend (client) and the Python analyzer (server)
 - **Decision record:** [ADR-005](../decisions/ADR-005-service-communication.md)
@@ -36,7 +37,7 @@ them in its tests; the Laravel client will do the same in Phase 10.
 ```json
 {
   "status": "ok",
-  "versions": { "analyzer": "0.2.0", "contract": "1.0", "ir": "1.1", "metrics": "1.0" },
+  "versions": { "analyzer": "0.2.0", "contract": "1.0", "ir": "1.0" },
   "limits": {
     "hard_timeout_seconds": 240, "max_archive_bytes": 52428800, "max_extracted_bytes": 209715200,
     "max_files": 20000, "max_entry_bytes": 26214400, "max_file_bytes": 1048576,
@@ -143,19 +144,41 @@ retryable.
 | `source.url` | SigV4 pre-signed GET URL (ADR-003) for an object key ending in `projects/<ULID>/snapshots/<ULID>/source.zip`. Its host must be exactly one of `ANALYZER_ALLOWED_SOURCE_HOSTS`, and it must be HTTPS except for hosts in `ANALYZER_LOCAL_SOURCE_HOSTS` (local development). Every address the host resolves to must be public (local hosts: private, but never loopback, link-local/metadata, multicast, unspecified or reserved); the analyzer connects to the validated address. Expired URLs → `422 SOURCE_URL_EXPIRED` (retryable with a fresh URL); lifetime ≤ `ANALYZER_MAX_URL_LIFETIME_SECONDS`. Redirects are **not** followed. Any other violation → `422 SOURCE_HOST_NOT_ALLOWED`. |
 | `source.sha256`, `source.size_bytes` | Verified after download. A mismatch → `422 SOURCE_CHECKSUM_MISMATCH`. |
 | `options.languages` | Optional non-empty subset, without duplicates, of `c`, `cpp`, `csharp`, `go`, `java`, `javascript`, `php`, `python`, `rust`, `typescript`. Omitted means all of them. |
+| `options.result_type` | Optional: `"foundation"` (default) or `"static_analysis"` (Phase 09). Selects which result type the run produces; any other value → `422 INVALID_REQUEST`. It is part of the run's identity: reusing an `analysis_run_id` with a different `result_type` → `409 RUN_CONFLICT`. An analyzer older than Phase 09 ignores the option and returns `foundation`, so a client always checks `result_type` in the response. |
+
+### Result types
+
+```text
+FOUNDATION         (Phase 08, default)   source intake + file inventory, IR 1.0
+   │  every field kept, with the same meaning
+   ▼
+STATIC ANALYSIS    (Phase 09, opt-in)    + parsing, IR 1.1, static metrics, structural findings
+   │  every field kept
+   ▼
+future DNA / competency analysis (Phase 11+: "full", adds features and scores)
+```
+
+Each layer is a superset of the one before: it adds fields and never
+removes, renames or redefines a field of the layer below. The only values
+that differ are those that name what the result contains: `result_type`,
+`versions.ir` (`1.0` → `1.1`), `versions.metrics` (`null` → `1.0`), the
+`versions.parsers` map, and therefore `result_hash`. Each result type has its
+own JSON Schema and its own deterministic `result_hash`.
 
 Parsing is strict: duplicate JSON keys and type coercion (e.g. `"1"` for an
 integer) are rejected as `422 INVALID_REQUEST`, whose `details.fields` names
 the offending fields (never their values). An `Idempotency-Key` that differs
 from `analysis_run_id` is also `INVALID_REQUEST`.
 
-### Successful response, `result_type: "foundation"` (Phase 08, no longer produced)
+### Successful response, `result_type: "foundation"` (Phase 08, default)
 
-Phase 08 returned a **foundation result** (since Phase 09 the analyzer
-returns `static_analysis`, below, which contains every foundation field with
-the same meaning). The foundation result was source inspection and file
-discovery only. It contained no `metrics`, `features`, `dna` or `findings`,
-and `versions.metrics` and `versions.scoring` were `null`.
+Returned when `options.result_type` is omitted or `"foundation"`, exactly as
+in Phase 08: source inspection and file discovery only, **nothing is
+parsed**. It contains no `metrics`, `features`, `dna` or `findings`, and
+`versions.metrics` and `versions.scoring` are `null`. Laravel must not create
+a DNA snapshot from it. Schema:
+`packages/api-contracts/analyzer/v1/foundation-result.schema.json`
+(unchanged since Phase 08).
 
 ```json
 {
@@ -191,13 +214,14 @@ and `versions.metrics` and `versions.scoring` were `null`.
 ```
 
 (`analysis.ignored_directories` is abbreviated here.) Field rules are in the
-JSON Schema and [analyzer.md](../architecture/analyzer.md#analysis-result).
+JSON Schema and [analyzer.md](../architecture/analyzer.md#foundation-result).
 `result_hash` is computed as for the full result below; `analysis` is part
 of it, so a configuration change visibly changes the hash.
 
-### Successful response, `result_type: "static_analysis"` (Phase 09)
+### Successful response, `result_type: "static_analysis"` (Phase 09, opt-in)
 
-The analyzer parses every analyzable file with a pinned Tree-sitter grammar,
+Returned when the request has `"options": { "result_type": "static_analysis" }`.
+The analyzer performs the foundation steps, then parses every analyzable file with a pinned Tree-sitter grammar,
 derives IR 1.1 and computes static metrics 1.0 and structural findings 1.0.
 It contains **no features, DNA scores, AI output or source text**, and
 `versions.scoring` is `null`; Laravel must not create a DNA snapshot from it.
@@ -283,8 +307,11 @@ result, which always has every metric key of the catalogue.)
 
 Rules:
 
-- Every foundation field keeps its name and meaning. IR 1.1 adds `parse` and
-  `structure` to each file record; IR 1.0 fields are unchanged.
+- Every foundation field keeps its name and meaning (`source`, `languages`,
+  the IR 1.0 fields of every file record and the Phase 08 `analysis` keys are
+  identical to the foundation result of the same source). Added:
+  `versions.parser_runtime`, the parser limits in `analysis`, `parsing`,
+  `parse`/`structure` per file record (IR 1.1), `metrics`, `findings`.
 - Each analyzable file has exactly one `parse.status`: `PARSED`,
   `PARSE_ERROR`, `PARSE_TIMEOUT`, `LIMIT_EXCEEDED` (with `limit`) or
   `UNSUPPORTED_PARSER`. Only `PARSED` files have `structure` and contribute
@@ -499,11 +526,12 @@ Freezing the draft for implementation changed or clarified:
 
 | Change | Why |
 |---|---|
-| `result_type: "static_analysis"` replaces `"foundation"` as the response; it contains every foundation field unchanged | Phase 09 produces real parsing, metrics and findings, but still no scores; a new contract version is not needed because nothing is removed or redefined |
+| New result type `"static_analysis"`, requested with the new optional `options.result_type`; `"foundation"` stays the default with its Phase 08 schema and meaning | Phase 09 adds parsing, metrics and findings without changing what an existing request returns; no new contract version, because nothing is removed or redefined and an older analyzer simply ignores the option |
+| `options.result_type` is part of the run identity (`RUN_CONFLICT` when one run ID asks for both) | A run has exactly one result |
 | IR 1.1: `parse` and `structure` added to every file record | The parsed IR frozen with the first parser, as planned; smaller than the Phase 00 draft (only what metrics and findings use) |
 | `versions.metrics = "1.0"`, `versions.parser_runtime`, `versions.parsers` filled | Results name the exact metric definitions and grammar versions that produced them |
 | `analysis` records the four parser limits; new `parsing`, `metrics`, `findings` sections | Limits shape results, so they are hashed; statuses, measurements and threshold findings are the phase's output |
 | `ANALYZER_PARSE_TIMEOUT_MS`, `ANALYZER_MAX_AST_NODES`, `ANALYZER_MAX_TOTAL_AST_NODES`, `ANALYZER_MAX_PARSED_FILES` | Bound parsing per file and per run without failing the run |
-| Health reports `versions.metrics` and the parser limits | Laravel can check what an analyzer instance computes |
+| Health `limits` also lists the parser limits (its `versions` are unchanged) | Laravel can check how an analyzer instance bounds parsing |
 | `findings` is a flat, sorted, capped list of structural findings (`parse_errors` from the draft became the `parse/syntax-error` rule) | One shape for every rule; secret findings are a later phase |
 | No new error codes | Per-file problems are statuses, not errors; the run-level codes of Phase 08 still apply |

@@ -83,6 +83,9 @@ code it analyzes.
 - The IR frozen as 1.1 is smaller than the Phase 00 draft (no comment,
   identifier or formatting lists); see
   [analyzer.md](../architecture/analyzer.md#ir-11-phase-09-frozen-parse-status-and-structure).
+- Parsing is opt-in per request (`static_analysis` result type); the
+  Phase 08 `foundation` result stays the default and unchanged.
 - The Tree-sitter runtime is pinned to 0.25.2 because it is the newest
-  release whose per-file parse timeout works from Python (see
+  release whose per-file parse timeout works from Python, an intentional
+  compatibility workaround (see
   [analyzer.md](../architecture/analyzer.md#parser-resource-limits)).

@@ -21,7 +21,10 @@
   functions, parameters, visibility, inheritance, complexity, nesting,
   positions; never source text) and computes deterministic **static metrics
   1.0** and **structural findings**, returned as a versioned
-  `static_analysis` result with a deterministic `result_hash`.
+  `static_analysis` result with a deterministic `result_hash` when the
+  request sets `options.result_type: "static_analysis"`. Without it the
+  Phase 08 `foundation` result (inventory only, IR 1.0) is returned
+  unchanged.
 
 It computes **no features, DNA scores or AI output**: scoring comes in
 **Phase 11**. It never executes, imports or installs anything from a source

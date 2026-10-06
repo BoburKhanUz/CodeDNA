@@ -1,8 +1,16 @@
-"""The analysis pipeline (Phase 08 foundation + Phase 09 static analysis):
+"""The analysis pipeline. Two result types, chosen by options.result_type:
 
-    validate source URL -> download (bounded) -> verify size/SHA-256
-    -> safe extraction -> discovery -> bounded AST parsing (IR 1.1)
-    -> static metrics and structural findings -> versioned result
+    FOUNDATION (Phase 08, default)
+        validate source URL -> download (bounded) -> verify size/SHA-256
+        -> safe extraction -> discovery -> foundation result (IR 1.0)
+           |
+           v
+    STATIC ANALYSIS (Phase 09) = the foundation steps, then
+        -> bounded AST parsing (IR 1.1) -> static metrics and structural
+           findings -> static_analysis result (foundation fields unchanged)
+           |
+           v
+    future: DNA / competency analysis (Phase 11+)
 
 Runs in a worker thread with a hard deadline (ANALYZER_HARD_TIMEOUT_SECONDS)
 inside a fresh workspace that is removed on every exit path. Parsing reads
@@ -29,7 +37,14 @@ from app.parsing.parser import STATUSES, ParsedFile, parse_files
 from app.parsing.specs import SPECS
 from app.source.download import download
 from app.source.url_policy import Resolver, SourceTarget, system_resolver, validate_source_url
-from app.versions import ANALYZER_VERSION, CONTRACT_VERSION, IR_VERSION, RESULT_TYPE_STATIC_ANALYSIS
+from app.versions import (
+    ANALYZER_VERSION,
+    CONTRACT_VERSION,
+    IR_VERSION,
+    IR_VERSION_STATIC_ANALYSIS,
+    RESULT_TYPE_FOUNDATION,
+    RESULT_TYPE_STATIC_ANALYSIS,
+)
 from app.workspace.workspace import run_workspace
 
 logger = logging.getLogger("codedna.analyzer")
@@ -64,6 +79,7 @@ def request_fingerprint(request: AnalyzeRequest, settings: Settings) -> str:
                 "sha256": request.source.sha256,
                 "size_bytes": request.source.size_bytes,
             },
+            "result_type": request.result_type(),
             "analysis": analysis_configuration(request, settings),
         }
     )
@@ -73,17 +89,25 @@ def analysis_configuration(request: AnalyzeRequest, settings: Settings) -> dict[
     """Everything besides the source bytes and versions that shapes a result.
 
     It is part of the result (and therefore of result_hash): a different
-    configuration visibly produces a different hash.
+    configuration visibly produces a different hash. A foundation result
+    records exactly the Phase 08 configuration; a static_analysis result also
+    records the parser limits, which shape it.
     """
-    return {
+    configuration: dict[str, Any] = {
         "languages": list(request.requested_languages()),
         "ignored_directories": sorted(settings.ignored_directories),
         "max_file_bytes": settings.max_file_bytes,
-        "parse_timeout_ms": settings.parse_timeout_ms,
-        "max_ast_nodes": settings.max_ast_nodes,
-        "max_total_ast_nodes": settings.max_total_ast_nodes,
-        "max_parsed_files": settings.max_parsed_files,
     }
+    if request.result_type() == RESULT_TYPE_STATIC_ANALYSIS:
+        configuration.update(
+            {
+                "parse_timeout_ms": settings.parse_timeout_ms,
+                "max_ast_nodes": settings.max_ast_nodes,
+                "max_total_ast_nodes": settings.max_total_ast_nodes,
+                "max_parsed_files": settings.max_parsed_files,
+            }
+        )
+    return configuration
 
 
 def analyze(
@@ -122,9 +146,13 @@ def analyze(
         )
         if not found.analyzable:
             raise AnalyzerError(ErrorCode.NO_SUPPORTED_FILES)
-        parsed = parse_files(source_root, found.files, settings, deadline)
+        # Parsing reads the files, so it runs while the workspace exists.
+        parsed = parse_files(source_root, found.files, settings, deadline) if request.result_type() == RESULT_TYPE_STATIC_ANALYSIS else None
 
-    return build_result(request, settings, found, extracted.files, extracted.bytes, parsed)
+    foundation = build_result(request, settings, found, extracted.files, extracted.bytes)
+    if parsed is None:
+        return foundation
+    return build_static_analysis_result(foundation, found, parsed)
 
 
 def build_result(
@@ -133,8 +161,8 @@ def build_result(
     found: Discovery,
     files_total: int,
     bytes_total: int,
-    parsed: dict[str, ParsedFile],
 ) -> dict[str, Any]:
+    """The Phase 08 foundation result (contract 1.0, IR 1.0), unchanged."""
     analyzable = found.analyzable
     skipped = {SKIP_UNSUPPORTED_LANGUAGE: 0, SKIP_TOO_LARGE: 0, SKIP_BINARY: 0}
     for record in found.files:
@@ -148,19 +176,17 @@ def build_result(
         summary["bytes"] += record.size_bytes
         summary["lines"] += record.lines or 0
 
-    requested = request.requested_languages()
     result: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
-        "result_type": RESULT_TYPE_STATIC_ANALYSIS,
+        "result_type": RESULT_TYPE_FOUNDATION,
         "analysis_run_id": request.analysis_run_id,
         "versions": {
             "analyzer": ANALYZER_VERSION,
             "ir": IR_VERSION,
-            "metrics": METRICS_VERSION,
-            # No scoring before Phase 11.
+            # Not produced by the foundation (Phases 09 and 11).
+            "metrics": None,
             "scoring": None,
-            "parser_runtime": RUNTIME,
-            "parsers": parser_versions(requested),
+            "parsers": {},
         },
         "analysis": analysis_configuration(request, settings),
         "source": {
@@ -172,14 +198,38 @@ def build_result(
             "bytes_total": bytes_total,
         },
         "languages": [{"language": language, **summary} for language, summary in sorted(languages.items())],
-        "parsing": parsing_summary(found, parsed),
         "ir": {
             "version": IR_VERSION,
-            "files": [ir_file(record.to_dict(), parsed.get(record.path)) for record in found.files],
+            "files": [record.to_dict() for record in found.files],
         },
-        "metrics": compute_metrics(found.files, parsed),
-        "findings": compute_findings(found.files, parsed),
     }
+    result["result_hash"] = result_hash(result)
+    return result
+
+
+def build_static_analysis_result(foundation: dict[str, Any], found: Discovery, parsed: dict[str, ParsedFile]) -> dict[str, Any]:
+    """The Phase 09 static_analysis result: the foundation result with every
+    field kept, plus parsing, IR 1.1, metrics and findings (additive only).
+
+    The foundation's own result_hash is not reused: the new result is hashed
+    as a whole, under the same rule.
+    """
+    result: dict[str, Any] = {key: value for key, value in foundation.items() if key != "result_hash"}
+    result["result_type"] = RESULT_TYPE_STATIC_ANALYSIS
+    result["versions"] = {
+        **foundation["versions"],
+        "ir": IR_VERSION_STATIC_ANALYSIS,
+        "metrics": METRICS_VERSION,
+        "parser_runtime": RUNTIME,
+        "parsers": parser_versions(tuple(foundation["analysis"]["languages"])),
+    }
+    result["parsing"] = parsing_summary(found, parsed)
+    result["ir"] = {
+        "version": IR_VERSION_STATIC_ANALYSIS,
+        "files": [ir_file(record, parsed.get(record["path"])) for record in foundation["ir"]["files"]],
+    }
+    result["metrics"] = compute_metrics(found.files, parsed)
+    result["findings"] = compute_findings(found.files, parsed)
     result["result_hash"] = result_hash(result)
     return result
 

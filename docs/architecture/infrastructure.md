@@ -309,7 +309,9 @@ and prints no secrets:
    signs the request with `ANALYZER_HMAC_SECRET`, calls the analyzer over
    the internal network, verifies the response signature and the
    static-analysis result (IR 1.1 and metrics versions, both files parsed
-   and measured, no scores or source text), checks the retry, bad-signature, stale-timestamp,
+   and measured, no scores or source text), checks that a default request
+   still returns the unchanged Phase 08 foundation result with the same
+   inventory, checks the retry, bad-signature, stale-timestamp,
    replay, run-conflict and metadata-URL cases, and deletes the object.
    Finally the analyzer's workspace must be empty.
 
