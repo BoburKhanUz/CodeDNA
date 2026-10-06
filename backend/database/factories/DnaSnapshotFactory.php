@@ -26,6 +26,8 @@ class DnaSnapshotFactory extends Factory
     {
         return [
             'analysis_run_id' => AnalysisRun::factory()->succeeded(),
+            'source_snapshot_id' => fn (array $attributes): string => (string) AnalysisRun::query()
+                ->whereKey($attributes['analysis_run_id'])->value('source_snapshot_id'),
             'project_id' => fn (array $attributes): string => (string) AnalysisRun::query()
                 ->whereKey($attributes['analysis_run_id'])->value('project_id'),
             'user_id' => fn (array $attributes): string => (string) Project::query()

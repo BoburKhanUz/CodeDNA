@@ -111,7 +111,8 @@ final class AnalyzeSourceSnapshotJobTest extends TestCase
             $this->assertSame($run->result_hash, CanonicalJson::hash($hashed));
             $this->assertSame($type === AnalysisResultType::Foundation ? null : '1.0', $run->metrics_version);
             $this->assertNull($run->scoring_version);
-            $this->assertNull($run->dnaSnapshot()->first(), 'Phase 10 never creates DNA snapshots');
+            // Phase 11: a static_analysis result is scored after it is stored (tests/Feature/Dna).
+            $this->assertSame($type === AnalysisResultType::StaticAnalysis ? 1 : 0, $run->dnaSnapshots()->count());
             $this->assertCount(1, $run->metadata['attempts']);
             $this->assertArrayNotHasKey('lease', $run->metadata);
         }

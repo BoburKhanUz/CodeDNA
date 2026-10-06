@@ -43,9 +43,11 @@ can start an analysis of a snapshot (`foundation` or `static_analysis`): a
 Redis queue worker calls the analyzer, verifies the signed result and its
 hash, and stores it as an analysis run's result
 ([data-flow.md](docs/architecture/data-flow.md#analysis-pipeline-phase-10)).
-There is no analysis UI yet and nothing computes scores; DNA snapshots exist
-in the [data model](docs/architecture/data-model.md) but nothing creates
-them yet. The full plan is in
+Since Phase 11 every successful static-analysis result is scored
+deterministically into an immutable DNA snapshot (scoring version 1.0.0,
+[dna-scoring-v1.md](docs/architecture/dna-scoring-v1.md)); CodeDNA v1
+measures characteristics of the analyzed code and makes no claims about
+developers. There is no analysis or DNA UI yet. The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance

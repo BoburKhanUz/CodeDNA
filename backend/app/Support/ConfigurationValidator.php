@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use App\Services\Dna\ScoringSpecification;
 use Illuminate\Contracts\Config\Repository;
 
 /**
@@ -33,6 +34,10 @@ final class ConfigurationValidator
         }
 
         $problems = [...$problems, ...$this->sourceStorageProblems($config), ...$this->analyzerProblems($config, $environment)];
+
+        if (! in_array($config->get('codedna.scoring.version'), ScoringSpecification::VERSIONS, true)) {
+            $problems[] = 'CODEDNA_SCORING_VERSION must be one of: '.implode(', ', ScoringSpecification::VERSIONS).'.';
+        }
 
         // The test suite swaps in in-memory drivers; every other environment
         // must use the Redis-backed infrastructure (docs/architecture/backend.md).

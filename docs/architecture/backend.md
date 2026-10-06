@@ -27,6 +27,9 @@ and `StartAnalysis` create runs, the `AnalyzeSourceSnapshot` job (queue
 `analysis`) calls the analyzer through `App\Services\Analyzer\AnalyzerClient`,
 which signs requests and verifies responses, and `PersistAnalysisResult`
 stores verified results ([data-flow.md](data-flow.md#analysis-pipeline-phase-10)).
+Since Phase 11 `CalculateDnaSnapshot` scores stored static-analysis results
+into DNA snapshots with the deterministic engine in `App\Services\Dna`
+([dna-scoring-v1.md](dna-scoring-v1.md)).
 
 **Laravel never parses, executes or analyzes source code.** It validates the
 *archive structure* of uploads (without extracting them), stores them, and
@@ -99,7 +102,7 @@ backend/
 │   ├── Support/ConfigurationValidator.php
 │   └── Support/Sources/           ZipArchiveInspector, SourceArchiveLimits, ArchiveSummary, LanguageGuesser
 ├── bootstrap/app.php              routing (api prefix), middleware, exception rendering
-├── config/codedna.php             CodeDNA settings (service, version, proxies, source storage and limits, analyzer, analysis, rate limits)
+├── config/codedna.php             CodeDNA settings (service, version, proxies, source storage and limits, analyzer, analysis, scoring, rate limits)
 ├── config/filesystems.php         `sources` disk (S3 API: MinIO locally, R2 in production)
 ├── routes/api.php                 mounts /api/v1 → routes/api_v1.php
 └── tests/{Unit,Feature/{Analysis,Auth,Api,Domain,Infrastructure,Profile,Projects},Support,Fixtures}
@@ -220,7 +223,7 @@ redirect.
 
 Use a transaction (`DB::transaction`) when an action writes **more than one
 row that must change together**, for example marking an analysis run
-`SUCCEEDED` together with inserting its DNA snapshot (data-flow.md), or
+`SUCCEEDED` together with inserting its analysis result (data-flow.md), or
 when the row must be locked to assign a value safely
 (`RecordSourceSnapshot` locks the project to assign the next snapshot
 version). Don't

@@ -39,6 +39,7 @@ final class ConfigurationValidatorTest extends TestCase
             ],
             'codedna.analysis' => ['job_timeout_seconds' => 330],
             'queue.connections.analysis.retry_after' => 360,
+            'codedna.scoring.version' => '1.0.0',
         ], $overrides) as $key => $value) {
             $config->set($key, $value);
         }
@@ -161,5 +162,15 @@ final class ConfigurationValidatorTest extends TestCase
         $this->assertContains('ANALYZER_HMAC_SECRET_PREVIOUS must be empty or at least 32 characters.', $problems);
         $this->assertContains('ANALYZER_MAX_ATTEMPTS must be between 1 and 10.', $problems);
         $this->assertContains('SOURCE_URL_TTL_SECONDS must be between 60 and 3600 (the analyzer accepts at most 3600).', $problems);
+    }
+
+    public function test_the_scoring_version_must_be_a_defined_specification(): void
+    {
+        foreach (['1.0', '1.0.1', '2.0.0', '', null] as $version) {
+            $this->assertSame(
+                ['CODEDNA_SCORING_VERSION must be one of: 1.0.0.'],
+                (new ConfigurationValidator)->problems($this->config(['codedna.scoring.version' => $version]), 'production'),
+            );
+        }
     }
 }

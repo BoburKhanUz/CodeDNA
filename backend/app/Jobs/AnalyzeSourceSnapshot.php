@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Actions\Analysis\PersistAnalysisResult;
+use App\Actions\Dna\CalculateDnaSnapshot;
 use App\Enums\AnalysisFailure;
+use App\Enums\AnalysisResultType;
 use App\Enums\AnalysisRunStatus;
 use App\Models\AnalysisRun;
 use App\Models\SourceSnapshot;
 use App\Services\Analyzer\AnalyzerClient;
 use App\Services\Analyzer\AnalyzerException;
+use App\Services\Dna\DnaScoringException;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Foundation\Queue\Queueable;
@@ -35,7 +38,8 @@ use Throwable;
  *    live job, is left alone: duplicate jobs do nothing;
  * 2. calls the analyzer with a fresh pre-signed URL and a new request ID
  *    (AnalyzerClient verifies everything it gets back);
- * 3. persists the verified result (PersistAnalysisResult), or
+ * 3. persists the verified result (PersistAnalysisResult) and, for a
+ *    static_analysis result, scores it (CalculateDnaSnapshot, Phase 11), or
  * 4. on a retryable failure releases itself with backoff while attempts
  *    remain (the run stays RUNNING), otherwise marks the run FAILED with a
  *    safe failure code.
@@ -70,7 +74,7 @@ final class AnalyzeSourceSnapshot implements ShouldQueue
         $this->timeout = (int) config('codedna.analysis.job_timeout_seconds');
     }
 
-    public function handle(AnalyzerClient $client, PersistAnalysisResult $persist, ConnectionInterface $db): void
+    public function handle(AnalyzerClient $client, PersistAnalysisResult $persist, ConnectionInterface $db, CalculateDnaSnapshot $score): void
     {
         $claim = $db->transaction(fn (): ?array => $this->claim());
         if ($claim === null) {
@@ -102,6 +106,33 @@ final class AnalyzeSourceSnapshot implements ShouldQueue
             'result_hash' => $result->resultHash,
             'replayed' => $result->replayed,
         ]);
+
+        if ($stored && $run->result_type === AnalysisResultType::StaticAnalysis) {
+            $this->score($score, $run);
+        }
+    }
+
+    /**
+     * Scores the run once its result is stored. Best effort: the run is
+     * already SUCCEEDED and stays so; a scoring failure is logged and the
+     * run can be scored later (php artisan dna:score).
+     */
+    private function score(CalculateDnaSnapshot $score, AnalysisRun $run): void
+    {
+        $context = $this->context($run) + ['scoring_version' => (string) config('codedna.scoring.version')];
+
+        try {
+            $calculated = $score->handle($run->id);
+            Log::info('dna.scored', $context + [
+                'dna_snapshot_id' => $calculated->snapshot->id,
+                'status' => $calculated->snapshot->status->value,
+                'created' => $calculated->created,
+            ]);
+        } catch (DnaScoringException $e) {
+            Log::warning('dna.scoring_failed', $context + ['error_code' => $e->failure->value]);
+        } catch (Throwable $e) {
+            Log::error('dna.scoring_failed', $context + ['exception' => $e::class]);
+        }
     }
 
     /**

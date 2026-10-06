@@ -111,6 +111,29 @@ with the **same `scoring_version`** are combined. This is computed by Laravel
 from stored snapshots and is itself versioned under that `scoring_version`.
 It is confirmed in Phase 11.
 
+## Implementation note (Phase 11)
+
+Scoring version 1.0.0 is implemented as described in
+[dna-scoring-v1.md](../architecture/dna-scoring-v1.md). It keeps this ADR's
+rules (determinism, no floating point, half-up rounding to 4 decimal
+places on a 0–1 scale, versioning, minimum evidence per dimension,
+renormalized weighted mean of scored dimensions, no overall score below a
+minimum, golden values in tests) with these deviations, **to be confirmed
+in review**:
+
+- Scoring runs in Laravel (`App\Services\Dna`), from the result that
+  Phase 10 verified and stored, not in the analyzer. The analyzer contract
+  and results stay unchanged, and re-scoring never needs the source again.
+- Scoring versions are `MAJOR.MINOR.PATCH` (`1.0.0`), not `MAJOR.MINOR`.
+- The v1 dimensions are those the static-analysis metrics support honestly:
+  COMPLEXITY, STRUCTURE and CODE_HYGIENE. Readability, naming,
+  consistency, modularity, documentation and architecture need features
+  the analyzer does not produce yet; maintainability would double count.
+  Dimension status names are `SCORED`/`UNAVAILABLE`, with the reason
+  (`INSUFFICIENT_EVIDENCE`, `MISSING`, `UNSUPPORTED`) recorded.
+- The developer-level DNA (aggregation over projects, section above) is not
+  part of Phase 11; it is computed for the DNA dashboard (Phase 12).
+
 ## Consequences
 
 - Scores are reproducible and auditable, and algorithm improvements don't

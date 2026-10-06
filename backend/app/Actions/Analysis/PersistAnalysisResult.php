@@ -20,7 +20,8 @@ use Illuminate\Database\ConnectionInterface;
  * 2. mark the run SUCCEEDED with its versions and result_hash;
  * 3. insert the immutable analysis_results row.
  *
- * Never creates a DNA snapshot: static analysis is not scoring (Phase 11).
+ * Never creates a DNA snapshot: static analysis is not scoring. The job
+ * scores a stored static_analysis result afterwards (CalculateDnaSnapshot).
  */
 final readonly class PersistAnalysisResult
 {

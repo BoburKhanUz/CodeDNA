@@ -76,6 +76,8 @@ x-backend-environment: &backend-environment
   ANALYSIS_QUEUE_RETRY_AFTER: ${ANALYSIS_QUEUE_RETRY_AFTER:-360}
   SOURCE_URL_TTL_SECONDS: ${SOURCE_URL_TTL_SECONDS:-900}
   ANALYZER_CONTRACTS_PATH: /var/www/contracts/analyzer/v1
+  # Scoring version of new DNA snapshots (Phase 11).
+  CODEDNA_SCORING_VERSION: ${CODEDNA_SCORING_VERSION:-1.0.0}
 
 x-backend-volumes: &backend-volumes
   - ./backend:/var/www/backend

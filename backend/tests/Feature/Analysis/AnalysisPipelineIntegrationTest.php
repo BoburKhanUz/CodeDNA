@@ -8,6 +8,7 @@ use App\Actions\Analysis\StartAnalysis;
 use App\Actions\Snapshots\StoreUploadedSource;
 use App\Enums\AnalysisResultType;
 use App\Enums\AnalysisRunStatus;
+use App\Enums\DnaSnapshotStatus;
 use App\Jobs\AnalyzeSourceSnapshot;
 use App\Models\AnalysisResult;
 use App\Models\AnalysisRun;
@@ -70,6 +71,7 @@ final class AnalysisPipelineIntegrationTest extends TestCase
     {
         if ($this->project !== null) {
             $runs = DB::table('analysis_runs')->where('project_id', $this->project->id)->pluck('id');
+            DB::table('dna_snapshots')->whereIn('analysis_run_id', $runs)->delete();
             DB::table('analysis_results')->whereIn('analysis_run_id', $runs)->delete();
             DB::table('analysis_runs')->where('project_id', $this->project->id)->delete();
             DB::table('source_snapshots')->where('project_id', $this->project->id)->delete();
@@ -149,6 +151,12 @@ final class AnalysisPipelineIntegrationTest extends TestCase
             if ($type === AnalysisResultType::StaticAnalysis) {
                 $this->assertSame(2, $result->parsing->files->PARSED);
                 $this->assertSame(1, $result->metrics->overall->types);
+                // Phase 11: scored from the stored result; too little code for an overall score.
+                $dna = $run->dnaSnapshots()->sole();
+                $this->assertSame(DnaSnapshotStatus::InsufficientData, $dna->status);
+                $this->assertSame([$run->result_hash, '1.0.0'], [$dna->result_hash, $dna->scoring_version]);
+            } else {
+                $this->assertSame(0, $run->dnaSnapshots()->count());
             }
         }
 

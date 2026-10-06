@@ -6,7 +6,7 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 10 (analysis queue and pipeline) complete. The
+**Current status:** Phase 11 (CodeDNA scoring engine) complete. The
 local environment runs every component. Users can register, sign in and
 sign out, edit their developer profile, change their password, create and
 archive projects, and upload ZIP archives that become immutable, versioned
@@ -19,8 +19,11 @@ result with deterministic metrics and structural
 findings ([metrics-v1.md](metrics-v1.md)). The API starts analyses of
 snapshots; a Redis queue worker calls the analyzer, verifies and stores the
 result as an analysis run's result ([data-flow.md](data-flow.md#analysis-pipeline-phase-10)).
-Nothing computes scores yet, and DNA snapshots exist in the domain model
-([data-model.md](data-model.md)) but nothing creates them. Everything below is the target architecture.
+Each successful static-analysis result is then scored deterministically
+(scoring version 1.0.0: dimensions COMPLEXITY, STRUCTURE and CODE_HYGIENE,
+an overall score and a data-quality value) into an immutable DNA snapshot
+([dna-scoring-v1.md](dna-scoring-v1.md)). There is no DNA API or UI yet
+(Phase 12). Everything below is the target architecture.
 
 ## System context
 
@@ -49,7 +52,7 @@ Nothing computes scores yet, and DNA snapshots exist in the domain model
 |---|---|---|---|
 | Frontend | `frontend/` | UI only: dashboard, projects, analyses, DNA views | [frontend.md](frontend.md) |
 | Backend | `backend/` | Auth, domain, persistence, orchestration, authorization, business rules | [backend.md](backend.md), [data-model.md](data-model.md) |
-| Analyzer | `analyzer/` | Parsing, IR, metrics, features, deterministic DNA scoring | [analyzer.md](analyzer.md) |
+| Analyzer | `analyzer/` | Parsing, IR, metrics, findings | [analyzer.md](analyzer.md) |
 | AI interpretation | (Phase 15) | Explaining stored deterministic results; never producing scores | ADR to be written in Phase 15 |
 | Infrastructure | `docker/`, `docker-compose.yml`, `.github/` | Containers, routing, CI | [infrastructure.md](infrastructure.md) |
 | Contracts | `packages/api-contracts/` | OpenAPI (public) and JSON Schema (internal analyzer) | [api/](../api/README.md) |
@@ -113,6 +116,6 @@ at a time:
 | 08 | Python analyzer foundation (IR frozen first) | Done |
 | 09 | AST and static analysis (PHP → Python → JS → TS) | Done (all ten languages) |
 | 10 | Analysis queue and pipeline | Done |
-| 11 | CodeDNA scoring engine | Next |
-| 12 | DNA dashboard (**MVP complete**) | — |
+| 11 | CodeDNA scoring engine | Done (scoring version 1.0.0, in Laravel; [dna-scoring-v1.md](dna-scoring-v1.md)) |
+| 12 | DNA dashboard (**MVP complete**) | Next |
 | 13–25 | Competencies, skill gaps, AI, challenges, learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |

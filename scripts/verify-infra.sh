@@ -211,6 +211,18 @@ static_run=$(json_field '["data"]["id"]' <<< "$static_start" 2>/dev/null)
 export static_run
 check "POST analyses (static_analysis) -> 202, a separate run" bash -c "[[ '$static_start' == 202* && '$static_run' != '$foundation_run' ]]"
 check "static_analysis run reaches SUCCEEDED" wait_for_run "$static_run" SUCCEEDED
+# Phase 11: the worker scores the stored static_analysis result (the probe
+# project is too small for an overall score: INSUFFICIENT_DATA).
+# Scoring follows the run's SUCCEEDED commit in the same job: poll briefly.
+static_dna=''
+for _ in $(seq 1 20); do
+    static_dna=$(db "SELECT d.scoring_version || ' ' || d.status || ' ' || (d.result_hash = r.result_hash) FROM dna_snapshots d JOIN analysis_runs r ON r.id = d.analysis_run_id WHERE d.analysis_run_id = '$static_run'" 2>/dev/null)
+    [[ -n "$static_dna" ]] && break
+    sleep 0.5
+done
+foundation_dna=$(db "SELECT count(*) FROM dna_snapshots WHERE analysis_run_id = '$foundation_run'" 2>/dev/null)
+check "static_analysis run has one DNA snapshot (scoring 1.0.0, same result_hash)" bash -c "[[ '$static_dna' == '1.0.0 INSUFFICIENT_DATA true' ]]"
+check "foundation run is not scored" bash -c "[[ '$foundation_dna' == 0 ]]"
 check "repeating a request returns the existing run (200, same ID)" bash -c \
     "out=\$(api_json POST /api/v1/projects/$project_id/analyses '{\"source_snapshot_id\":\"$snapshot_id\"}'); [[ \$out == 200* && \$out == *'$foundation_run'* ]]"
 check "GET result -> verified IR 1.1 static analysis with metrics, no source or URLs" bash -c \
@@ -234,8 +246,8 @@ rm -rf "$jar" "$upload_dir"
 if [[ -n "$project_id" ]]; then
     check "remove probe objects from MinIO" mc_app "mc rm --recursive --force \"app/\$SOURCE_STORAGE_BUCKET/projects/$project_id/\""
 fi
-check "remove probe rows (results, runs, snapshots, project, profile, user)" db \
-    "BEGIN; DELETE FROM analysis_results WHERE analysis_run_id IN (SELECT r.id FROM analysis_runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM analysis_runs WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
+check "remove probe rows (DNA, results, runs, snapshots, project, profile, user)" db \
+    "BEGIN; DELETE FROM dna_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM analysis_results WHERE analysis_run_id IN (SELECT r.id FROM analysis_runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM analysis_runs WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
 
 echo "Analyzer service (Phases 08-09)"
 check "analyzer publishes no host port" bash -c \

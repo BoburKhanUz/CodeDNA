@@ -91,6 +91,16 @@ return [
         'queued_stale_after_seconds' => (int) env('ANALYSIS_QUEUED_STALE_AFTER_SECONDS', 86400),
     ],
 
+    /*
+    | CodeDNA scoring (docs/architecture/dna-scoring-v1.md). The version
+    | selects a definition in App\Services\Dna\ScoringSpecification; new DNA
+    | snapshots are computed with it. Changing it never alters existing
+    | snapshots: each (analysis run, scoring version) is scored once.
+    */
+    'scoring' => [
+        'version' => (string) env('CODEDNA_SCORING_VERSION', '1.0.0'),
+    ],
+
     'rate_limits' => [
         // Every /api/v1 route, per authenticated user or per IP.
         'api_per_minute' => 120,

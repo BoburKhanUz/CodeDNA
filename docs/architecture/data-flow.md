@@ -3,7 +3,7 @@
 This document describes how source arrives and how one analysis moves
 through the system. Source upload (Phase 07) and the analysis pipeline
 (Phase 10: queue, analyzer client, verification, persistence) are
-implemented; scoring (Phase 11) is not yet.
+and DNA scoring (Phase 11) are implemented.
 
 Related: [ADR-003](../decisions/ADR-003-storage.md) (storage),
 [ADR-005](../decisions/ADR-005-service-communication.md) (communication),
@@ -19,7 +19,7 @@ The entities are implemented in Phase 05; see [data-model.md](data-model.md).
 | **Source snapshot** | An immutable reference to an archive in object storage (key, SHA-256, size, per-project version) |
 | **Analysis run** | One execution of the pipeline against one snapshot for one result type (`foundation` or `static_analysis`). Re-analysis after a failure creates a **new run**; earlier runs are kept. Job retries for transient errors happen **within** a run. |
 | **Analysis result** | The verified analyzer response of one `SUCCEEDED` run (at most one per run, immutable) |
-| **DNA snapshot** | The immutable score of one `SUCCEEDED` run (at most one per run; Phase 11, not created yet) |
+| **DNA snapshot** | The immutable score of one `SUCCEEDED` `static_analysis` run, at most one per scoring version ([dna-scoring-v1.md](dna-scoring-v1.md)) |
 
 ## End-to-end sequence (MVP)
 
@@ -157,8 +157,8 @@ Project ─► Source snapshot ─► POST …/analyses ─► AnalysisRun (QUEU
 
 Laravel owns the lifecycle, authorization, queueing, retries and
 persistence; the analyzer owns download, archive safety, discovery, parsing,
-metrics and findings (ADR-005). Phase 10 creates **no DNA snapshot**: neither
-result type is a score (Phase 11).
+metrics and findings (ADR-005). Neither result type is a score: a stored
+`static_analysis` result is scored afterwards ([DNA scoring](#dna-scoring-phase-11)).
 
 ### Result types
 
@@ -247,6 +247,20 @@ marks the run `FAILED` and **nothing is stored**:
 
 Successful runs and their results are immutable. A new snapshot, or a new
 request after a failure, creates a new run; nothing overwrites history.
+
+### DNA scoring (Phase 11)
+
+After `PersistAnalysisResult` stored a `static_analysis` result, the job
+calls `App\Actions\Dna\CalculateDnaSnapshot` for the run. It re-verifies
+the stored result against the run's `result_hash`, scores it with the
+configured scoring version (`CODEDNA_SCORING_VERSION`, 1.0.0) and inserts
+one immutable DNA snapshot per (run, scoring version). Scoring reads only
+the stored result: no analyzer call, no source. It is best effort for the
+run: a scoring failure is logged (`dna.scoring_failed`, with a failure
+code) and the run stays `SUCCEEDED`; `php artisan dna:score <run>` or
+`dna:score --missing` scores it later (also runs that succeeded before
+Phase 11, or every run again under a new scoring version). Foundation
+results are never scored. Details: [dna-scoring-v1.md](dna-scoring-v1.md).
 
 ## Run state machine
 
@@ -372,7 +386,8 @@ frees the logical analysis for a new run.
   `analysis_run_id` and `Idempotency-Key`).
 - Lifecycle log events: `analysis.queued`, `analysis.started`,
   `analysis.retrying`, `analysis.completed`, `analysis.failed`,
-  `analysis.result_ignored`, `analysis.duplicate_job_skipped`, with
+  `analysis.result_ignored`, `analysis.duplicate_job_skipped`, and after
+  scoring `dna.scored` or `dna.scoring_failed` (with `scoring_version`), with
   `analysis_run_id`, `project_id`, `source_snapshot_id`, `result_type`,
   `attempt`, `request_id`, `duration_ms`, `status`, `error_code`,
   `http_status`, `analyzer_code` and `result_hash` (IDs and codes only).

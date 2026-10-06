@@ -30,7 +30,7 @@ users ──1:n──► projects ──1:n──► source_snapshots ──1:n�
 | `source_snapshots` | Immutable reference to the exact source analyzed | **never** |
 | `analysis_runs` | One pipeline execution against one snapshot, for one result type | only until a terminal state |
 | `analysis_results` | The verified analyzer result of one successful run (Phase 10) | **never** |
-| `dna_snapshots` | Immutable DNA result of one successful run | **never** |
+| `dna_snapshots` | Immutable DNA result of one successful run, one per scoring version (Phase 11) | **never** |
 
 There is deliberately no separate `repositories` or `analyses` table. A
 project carries its source origin (`source_type`, `repository_url`). A
@@ -45,8 +45,8 @@ integrations (Phase 19) will add their own tables when they exist.
 | `DeveloperProfile` | `user()` belongsTo |
 | `Project` | `user()` belongsTo; `sourceSnapshots()`, `analysisRuns()`, `dnaSnapshots()` hasMany |
 | `SourceSnapshot` | `project()` belongsTo; `analysisRuns()` hasMany |
-| `AnalysisRun` | `project()`, `sourceSnapshot()` belongsTo; `dnaSnapshot()` hasOne |
-| `DnaSnapshot` | `user()`, `project()`, `analysisRun()` belongsTo |
+| `AnalysisRun` | `project()`, `sourceSnapshot()` belongsTo; `result()` hasOne; `dnaSnapshots()` hasMany (one per scoring version), `dnaSnapshot()` hasOne |
+| `DnaSnapshot` | `user()`, `project()`, `analysisRun()`, `sourceSnapshot()` belongsTo |
 
 All relationships carry generic return types (`BelongsTo<Project, $this>`).
 Outside production, strict mode makes lazy loading throw, so callers must
@@ -224,14 +224,16 @@ result is kept as one JSONB document rather than normalized into tables.
 | `id` | ulid PK | |
 | `user_id` | ulid FK → users | |
 | `project_id` | ulid | composite FK `(project_id, user_id)` → `projects(id, user_id)`: the user must own the project |
-| `analysis_run_id` | ulid, unique | composite FK `(analysis_run_id, project_id)` → `analysis_runs(id, project_id)`; at most one DNA per run |
-| version columns | varchar(32) | `scoring_version` required; the others nullable |
+| `analysis_run_id` | ulid | composite FK `(analysis_run_id, project_id)` → `analysis_runs(id, project_id)`; **unique with `scoring_version`**: at most one DNA per run and scoring version (Phase 11; one per run before) |
+| `source_snapshot_id` | ulid | composite FK `(source_snapshot_id, project_id)` → `source_snapshots(id, project_id)`; the run's snapshot (Phase 11, backfilled for older rows) |
+| version columns | varchar(32) | `scoring_version` required (`1.0.0` for the scoring engine); the others nullable |
 | `status` | varchar(32) | `READY` \| `INSUFFICIENT_DATA` |
 | `overall_score` | numeric(5,4) null | 0–1, 4 decimals (ADR-004); present exactly when `READY` |
-| `dimensions` | jsonb | object (per-dimension status, score and evidence), ≤ 64 KiB |
+| `data_quality` | numeric(5,4) null | 0–1 (CHECK); how much measurable input there was, not a confidence ([dna-scoring-v1.md](dna-scoring-v1.md#data-quality)); set by the scoring engine, `NULL` only on pre-Phase 11 rows |
+| `dimensions` | jsonb | object keyed by dimension identifier (status, score, weights, components with metric evidence), ≤ 64 KiB |
 | `competencies` | jsonb null | object, ≤ 64 KiB |
 | `strengths`, `weaknesses` | jsonb null | arrays, ≤ 64 KiB |
-| `evidence` | jsonb null | object, ≤ 64 KiB |
+| `evidence` | jsonb null | object, ≤ 64 KiB: calculation metadata (scoring version, specification fingerprint, source run and result hash, aggregation, availability, data-quality breakdown) |
 | `result_hash` | char(64) | hash of the analyzer result this DNA came from |
 | `created_at` | timestamp | **no `updated_at`** |
 
@@ -303,7 +305,7 @@ Historical records (`source_snapshots`, terminal `analysis_runs`,
 | Mass assignment | Snapshots and runs have no fillable attributes. They are written only by domain operations (`RecordSourceSnapshot`, run transition methods) and factories. Strict mode makes a guarded attribute throw instead of being silently dropped |
 | Schema | No `updated_at` on snapshot tables; `RESTRICT` foreign keys, so deleting a user, project, snapshot or run with history fails instead of cascading |
 | API | No update or delete endpoints exist for these records (none planned) |
-| Creation rule | A DNA snapshot can only be created for a `SUCCEEDED` run (model hook), at most one per run (unique) |
+| Creation rule | A DNA snapshot can only be created for a `SUCCEEDED` run (model hook), at most one per run and scoring version (unique); `App\Actions\Dna\CalculateDnaSnapshot` creates them from the verified stored result |
 
 **Known gap (deliberate):** query-builder or raw SQL updates bypass Eloquent
 hooks. Database triggers that reject `UPDATE` on the snapshot tables would

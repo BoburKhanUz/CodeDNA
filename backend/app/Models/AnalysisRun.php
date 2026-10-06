@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
@@ -121,11 +122,22 @@ class AnalysisRun extends Model
     }
 
     /**
+     * A DNA snapshot of this run (one exists per scoring version; use
+     * dnaSnapshots() when more than one version may have scored the run).
+     *
      * @return HasOne<DnaSnapshot, $this>
      */
     public function dnaSnapshot(): HasOne
     {
         return $this->hasOne(DnaSnapshot::class);
+    }
+
+    /**
+     * @return HasMany<DnaSnapshot, $this>
+     */
+    public function dnaSnapshots(): HasMany
+    {
+        return $this->hasMany(DnaSnapshot::class);
     }
 
     public function markRunning(): void

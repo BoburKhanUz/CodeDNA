@@ -37,12 +37,35 @@ final class DnaSnapshotTest extends TestCase
         $this->assertFalse(Schema::hasColumn('dna_snapshots', 'updated_at'));
     }
 
-    public function test_a_run_produces_at_most_one_dna_snapshot(): void
+    public function test_a_run_produces_at_most_one_dna_snapshot_per_scoring_version(): void
     {
         $dna = DnaSnapshot::factory()->create();
+        DnaSnapshot::factory()->create(['analysis_run_id' => $dna->analysis_run_id, 'scoring_version' => '1.0.0']);
+        $this->assertSame(2, $dna->analysisRun->dnaSnapshots()->count());
 
         $this->expectException(UniqueConstraintViolationException::class);
         DnaSnapshot::factory()->create(['analysis_run_id' => $dna->analysis_run_id]);
+    }
+
+    public function test_the_source_snapshot_must_be_the_runs_and_data_quality_is_bounded(): void
+    {
+        $dna = DnaSnapshot::factory()->create()->refresh();
+        $this->assertSame($dna->analysisRun->source_snapshot_id, $dna->source_snapshot_id);
+        $this->assertNull($dna->data_quality);
+
+        $run = AnalysisRun::factory()->succeeded()->create();
+        foreach ([
+            ['source_snapshot_id' => SourceSnapshot::factory()->create()->id],
+            ['data_quality' => '1.0001'],
+            ['data_quality' => '-0.0001'],
+        ] as $invalid) {
+            try {
+                DB::transaction(fn () => DnaSnapshot::factory()->create(['analysis_run_id' => $run->id, ...$invalid]));
+                $this->fail('Expected a constraint violation for '.json_encode($invalid));
+            } catch (QueryException) {
+                $this->addToAssertionCount(1);
+            }
+        }
     }
 
     public function test_only_succeeded_runs_produce_dna(): void

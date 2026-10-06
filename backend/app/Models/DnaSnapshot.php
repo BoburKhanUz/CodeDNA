@@ -19,12 +19,14 @@ use Illuminate\Support\Carbon;
  * Immutable DNA result of one successful analysis run
  * (docs/architecture/data-model.md#dna-snapshots). New analyses create new
  * snapshots; existing ones are never updated or deleted through Eloquent.
- * Nothing is mass assignable. Scoring (Phase 11) creates these records.
+ * Nothing is mass assignable. App\Actions\Dna\CalculateDnaSnapshot creates
+ * them: at most one per (analysis run, scoring version).
  *
  * @property string $id
  * @property string $user_id
  * @property string $project_id
  * @property string $analysis_run_id
+ * @property string $source_snapshot_id
  * @property string|null $analyzer_version
  * @property string|null $ir_version
  * @property string|null $metrics_version
@@ -32,6 +34,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $contract_version
  * @property DnaSnapshotStatus $status
  * @property string|null $overall_score decimal string with 4 places, e.g. "0.8125"
+ * @property string|null $data_quality decimal string with 4 places (null only on pre-1.0.0 records)
  * @property array<string, mixed> $dimensions
  * @property array<string, mixed>|null $competencies
  * @property list<mixed>|null $strengths
@@ -70,6 +73,7 @@ class DnaSnapshot extends Model
             'status' => DnaSnapshotStatus::class,
             // Decimal string, never a float (ADR-004: no floating-point scores).
             'overall_score' => 'decimal:4',
+            'data_quality' => 'decimal:4',
             'dimensions' => JsonObject::class,
             'competencies' => JsonObject::class,
             'strengths' => 'array',
@@ -100,5 +104,13 @@ class DnaSnapshot extends Model
     public function analysisRun(): BelongsTo
     {
         return $this->belongsTo(AnalysisRun::class);
+    }
+
+    /**
+     * @return BelongsTo<SourceSnapshot, $this>
+     */
+    public function sourceSnapshot(): BelongsTo
+    {
+        return $this->belongsTo(SourceSnapshot::class);
     }
 }
