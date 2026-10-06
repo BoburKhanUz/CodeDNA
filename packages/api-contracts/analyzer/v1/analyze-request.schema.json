@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codedna.dev/contracts/analyzer/v1/analyze-request.schema.json",
+  "title": "POST /internal/v1/analyze request (contract 1.0)",
+  "type": "object",
+  "required": ["contract_version", "analysis_run_id", "attempt", "source"],
+  "properties": {
+    "contract_version": { "type": "string", "pattern": "^1\\.[0-9]{1,3}$" },
+    "analysis_run_id": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$" },
+    "attempt": { "type": "integer", "minimum": 1, "maximum": 1000 },
+    "source": {
+      "type": "object",
+      "required": ["type", "format", "url", "sha256", "size_bytes"],
+      "properties": {
+        "type": { "const": "archive" },
+        "format": { "const": "zip" },
+        "url": { "type": "string", "minLength": 10, "maxLength": 4096 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size_bytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["c", "cpp", "csharp", "go", "java", "javascript", "php", "python", "rust", "typescript"] }
+        }
+      }
+    }
+  }
+}

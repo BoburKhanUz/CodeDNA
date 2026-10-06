@@ -118,13 +118,18 @@ winner's snapshot. Without a key, every upload creates a new snapshot, even
 for identical bytes (re-uploading is legitimate). The web UI sends one key
 per chosen file.
 
-### Handoff to the analyzer (future, Phase 10)
+### Handoff to the analyzer
 
-Nothing is analyzed yet. In Phase 10, an analysis run will reference a
-snapshot, and the worker will hand the analyzer a short-lived pre-signed
-GET URL for its object together with `source_hash` and `size_bytes`
-(ADR-003, ADR-005). The analyzer must re-check size and hash and apply its
-own extraction limits; the upload inspection does not replace them.
+The analyzer side exists (Phase 08): given a signed request with a
+short-lived pre-signed GET URL plus `source_hash` and `size_bytes`, it
+downloads the object from an allow-listed host, re-checks size and SHA-256,
+applies its own extraction limits (the upload inspection does not replace
+them), discovers files and returns a versioned **foundation result**
+([analyzer.md](analyzer.md), [contract](../api/internal-analyzer-contract.md)).
+`make verify` exercises this path from the backend container. What is
+missing is the Laravel side: the analysis run, the queued job and the client
+come in Phase 10, and nothing a foundation result contains is persisted
+yet.
 
 ## Run state machine
 

@@ -4,3 +4,6 @@
 pytest
 # Required by fastapi.testclient (Starlette >= 1.x uses httpx2)
 httpx2
+# Lint and type checks (make lint-analyzer)
+ruff
+mypy

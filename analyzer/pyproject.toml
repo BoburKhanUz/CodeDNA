@@ -10,3 +10,29 @@ pythonpath = ["."]
 filterwarnings = ["error"]
 # The source tree is mounted read-only in the analyzer container.
 addopts = "-p no:cacheprovider"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 140
+# The source tree is mounted read-only in the container.
+cache-dir = "/tmp/ruff-cache"
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, bugbear, pyupgrade, simplify, bandit (security),
+# naming, builtins, comprehensions, return and print checks.
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "S", "N", "A", "C4", "RET", "T20", "BLE"]
+ignore = [
+    # Tests use plain asserts.
+    "S101",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test fixtures use fixed secrets, loopback servers and /tmp paths on purpose.
+"tests/**" = ["S105", "S106", "S108", "S104", "S311", "N802", "BLE001"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+cache_dir = "/tmp/mypy-cache"
+files = ["app"]
+plugins = ["pydantic.mypy"]

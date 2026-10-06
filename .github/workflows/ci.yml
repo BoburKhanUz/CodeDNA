@@ -135,6 +135,8 @@ jobs:
 
       - name: Backend code style (Laravel Pint)
         run: make lint-backend
+      - name: Lint and type-check analyzer
+        run: make lint-analyzer
 
       - name: Service status and logs (on failure)
         if: failure()

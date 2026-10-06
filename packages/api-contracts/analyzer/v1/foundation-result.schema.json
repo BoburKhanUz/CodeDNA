@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codedna.dev/contracts/analyzer/v1/foundation-result.schema.json",
+  "title": "POST /internal/v1/analyze 200 response, result_type \"foundation\" (contract 1.0, IR 1.0)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "result_type", "analysis_run_id", "request_id", "versions", "analysis", "source", "languages", "ir", "result_hash", "diagnostics"],
+  "properties": {
+    "contract_version": { "type": "string", "pattern": "^1\\.[0-9]{1,3}$" },
+    "result_type": { "const": "foundation" },
+    "analysis_run_id": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$" },
+    "request_id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analyzer", "ir", "metrics", "scoring", "parsers"],
+      "properties": {
+        "analyzer": { "type": "string", "minLength": 1 },
+        "ir": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+        "metrics": { "type": "null" },
+        "scoring": { "type": "null" },
+        "parsers": { "type": "object", "additionalProperties": false }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languages", "ignored_directories", "max_file_bytes"],
+      "properties": {
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "ignored_directories": { "type": "array", "items": { "type": "string" } },
+        "max_file_bytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "size_bytes", "files_total", "files_analyzed", "files_skipped", "bytes_total"],
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size_bytes": { "type": "integer", "minimum": 1 },
+        "files_total": { "type": "integer", "minimum": 0 },
+        "files_analyzed": { "type": "integer", "minimum": 1 },
+        "files_skipped": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ignored_path", "unsupported_language", "too_large", "binary"],
+          "properties": {
+            "ignored_path": { "type": "integer", "minimum": 0 },
+            "unsupported_language": { "type": "integer", "minimum": 0 },
+            "too_large": { "type": "integer", "minimum": 0 },
+            "binary": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "bytes_total": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "languages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["language", "files", "bytes", "lines"],
+        "properties": {
+          "language": { "type": "string" },
+          "files": { "type": "integer", "minimum": 1 },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "lines": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "ir": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "files"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+        "files": { "type": "array", "items": { "$ref": "#/$defs/file" } }
+      }
+    },
+    "result_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "diagnostics": {
+      "type": "object",
+      "required": ["duration_ms"],
+      "properties": {
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "replayed": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "file": {
+      "title": "IR 1.0 file record (metadata only; never source text)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "extension", "language", "size_bytes", "lines", "skip_reason"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "extension": { "type": ["string", "null"] },
+        "language": { "type": ["string", "null"] },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "lines": { "type": ["integer", "null"], "minimum": 0 },
+        "skip_reason": { "enum": [null, "unsupported_language", "too_large", "binary"] }
+      }
+    }
+  }
+}

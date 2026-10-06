@@ -27,4 +27,7 @@ WORKDIR /app
 USER analyzer
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app"]
+# The application is built by a factory, which validates the configuration
+# from the environment (the process refuses to start without a valid HMAC
+# secret and source allow-list).
+CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app"]

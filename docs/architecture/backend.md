@@ -21,6 +21,11 @@ repositories and provider integrations, analysis orchestration and status, resul
 snapshots, competencies, learning data, organizations, teams and billing.
 It also owns authorization, rate limiting and every business rule.
 
+The backend receives `ANALYZER_HMAC_SECRET` (shared with the analyzer) and
+`ANALYZER_URL`; the analyzer client that uses them, the analysis run
+lifecycle and the queue job come in Phase 10. No application code calls the
+analyzer yet.
+
 **Laravel never parses, executes or analyzes source code.** It validates the
 *archive structure* of uploads (without extracting them), stores them, and
 will hand them to the analyzer (ADR-005). Application code contains no
@@ -244,7 +249,9 @@ for the MVP. Developer DNA is derived from `dna_snapshots`
 - **Workflow, inspection, cleanup and idempotency:** see
   [data-flow.md](data-flow.md#source-upload). Limits are in
   `config('codedna.sources.limits')` (`SOURCE_MAX_*`), validated at boot.
-- **Not yet:** pre-signed URLs for the analyzer (Phase 10), a reconciliation
+- **Not yet:** pre-signed URLs for the analyzer in application code (Phase
+  10; `make verify` already uses `temporaryUrl()` against the Phase 08
+  analyzer), a reconciliation
   job for orphaned objects, and a purge workflow that deletes a project's
   objects.
 

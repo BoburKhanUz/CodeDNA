@@ -131,6 +131,8 @@ services:
       SOURCE_MAX_SINGLE_FILE_BYTES: ${SOURCE_MAX_SINGLE_FILE_BYTES:-26214400}
       SOURCE_MAX_PATH_LENGTH: ${SOURCE_MAX_PATH_LENGTH:-512}
       ANALYZER_URL: http://analyzer:8000
+      # Shared with the analyzer to sign internal requests (Phase 10 client).
+      ANALYZER_HMAC_SECRET: ${ANALYZER_HMAC_SECRET:?Set ANALYZER_HMAC_SECRET in .env (run `make setup`)}
     volumes:
       - ./backend:/var/www/backend
     depends_on:
@@ -157,17 +159,42 @@ services:
       context: ./analyzer
       dockerfile: ../docker/python/Dockerfile
     image: codedna-analyzer:dev
+    # Internal analyzer contract (docs/api/internal-analyzer-contract.md).
+    # No storage credentials: sources arrive as pre-signed URLs.
+    environment:
+      ANALYZER_HMAC_SECRET: ${ANALYZER_HMAC_SECRET:?Set ANALYZER_HMAC_SECRET in .env (run `make setup`)}
+      ANALYZER_HMAC_SECRET_PREVIOUS: ${ANALYZER_HMAC_SECRET_PREVIOUS:-}
+      # Exact hostnames source URLs may use; LOCAL ones may use http and
+      # private addresses (development only: the MinIO container).
+      ANALYZER_ALLOWED_SOURCE_HOSTS: ${ANALYZER_ALLOWED_SOURCE_HOSTS:-minio}
+      ANALYZER_LOCAL_SOURCE_HOSTS: ${ANALYZER_LOCAL_SOURCE_HOSTS:-minio}
+      ANALYZER_HARD_TIMEOUT_SECONDS: ${ANALYZER_HARD_TIMEOUT_SECONDS:-240}
+      ANALYZER_MAX_CONCURRENCY: ${ANALYZER_MAX_CONCURRENCY:-2}
+      ANALYZER_MAX_ARCHIVE_BYTES: ${ANALYZER_MAX_ARCHIVE_BYTES:-52428800}
+      ANALYZER_MAX_EXTRACTED_BYTES: ${ANALYZER_MAX_EXTRACTED_BYTES:-209715200}
+      ANALYZER_MAX_FILES: ${ANALYZER_MAX_FILES:-20000}
+      ANALYZER_MAX_ENTRY_BYTES: ${ANALYZER_MAX_ENTRY_BYTES:-26214400}
+      ANALYZER_MAX_FILE_BYTES: ${ANALYZER_MAX_FILE_BYTES:-1048576}
+      ANALYZER_MAX_PATH_LENGTH: ${ANALYZER_MAX_PATH_LENGTH:-512}
+      ANALYZER_WORKSPACE_ROOT: /tmp/codedna
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - ./analyzer:/app:ro
-    # Hardened: the analyzer will process untrusted source code (ADR-002/005).
+      # Machine-readable contract, validated by the analyzer test suite.
+      - ./packages/api-contracts:/contracts:ro
+    # Hardened: the analyzer processes untrusted source code (ADR-002/005).
     read_only: true
     tmpfs:
-      - /tmp:size=256m,mode=1777
+      - /tmp:size=64m,mode=1777
+      # Per-run workspaces. Sized for ANALYZER_MAX_CONCURRENCY (2) runs at
+      # the archive + extracted limits (2 x 250 MiB); tmpfs counts against
+      # mem_limit, which is sized accordingly.
+      - /tmp/codedna:size=512m,mode=0700,uid=10001,gid=10001
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
-    mem_limit: 1g
+    mem_limit: 1536m
     cpus: 2
     pids_limit: 256
     networks:

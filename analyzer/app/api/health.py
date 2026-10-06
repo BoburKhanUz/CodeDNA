@@ -1,16 +1,22 @@
-"""Liveness endpoint for container health checks.
+"""Liveness/readiness endpoint for container health checks.
 
-Unauthenticated by design (see docs/api/internal-analyzer-contract.md): it
-returns only non-sensitive status and version information.
+Unauthenticated by design (contract section 2): it returns only the status,
+versions and non-sensitive limits. No paths, hosts, URLs or secrets.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
-from app import __version__
+from app.config import Settings
+from app.versions import ANALYZER_VERSION, CONTRACT_VERSION, IR_VERSION
 
 router = APIRouter()
 
 
 @router.get("/internal/v1/health")
-def health() -> dict[str, object]:
-    return {"status": "ok", "versions": {"analyzer": __version__}}
+def health(request: Request) -> dict[str, object]:
+    settings: Settings = request.app.state.settings
+    return {
+        "status": "ok",
+        "versions": {"analyzer": ANALYZER_VERSION, "contract": CONTRACT_VERSION, "ir": IR_VERSION},
+        "limits": settings.limits(),
+    }

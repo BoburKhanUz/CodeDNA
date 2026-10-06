@@ -44,7 +44,7 @@ traffic is to MinIO, for pre-signed downloads
 | `nginx` | `nginx:1.28-alpine` | Single-origin router | `127.0.0.1:80` | codedna | `GET /nginx-health` |
 | `frontend` | `docker/node/Dockerfile` → `codedna-frontend:dev` | Next.js 16 dev server ([frontend.md](frontend.md)) | — | codedna | HTTP `GET /` on :3000 |
 | `backend` | `docker/php/Dockerfile` → `codedna-backend:dev` | Laravel 13 API on PHP-FPM 8.4 ([backend.md](backend.md)) | — | codedna, codedna-internal | Laravel `/up` over FastCGI (`codedna-healthcheck`) |
-| `analyzer` | `docker/python/Dockerfile` → `codedna-analyzer:dev` | FastAPI; only `GET /internal/v1/health` | — | codedna-internal | `GET /internal/v1/health` |
+| `analyzer` | `docker/python/Dockerfile` → `codedna-analyzer:dev` | FastAPI analyzer foundation (Phase 08): `GET /internal/v1/health`, HMAC-authenticated `POST /internal/v1/analyze` | — | codedna-internal | `GET /internal/v1/health` |
 | `postgres` | `postgres:16-alpine` | Primary database | `127.0.0.1:5432` | codedna | `pg_isready` |
 | `redis` | `redis:7.4-alpine` | Cache, queues, sessions | `127.0.0.1:6379` | codedna | `redis-cli ping` |
 | `minio` | `cgr.dev/chainguard/minio` (digest-pinned) | Local S3-compatible storage | `127.0.0.1:9000` (API), `127.0.0.1:9001` (console) | codedna, codedna-internal | `GET /minio/health/live` |
@@ -99,7 +99,9 @@ the analyzer, and the analyzer cannot reach the internet.
 | `codedna_frontend_node_modules` | `frontend:/app/node_modules` | Linux-native npm packages, kept apart from the host |
 
 Source code is bind-mounted: `./backend` → `/var/www/backend`,
-`./frontend` → `/app`, `./analyzer` → `/app` (read-only).
+`./frontend` → `/app`, `./analyzer` → `/app` (read-only), and
+`./packages/api-contracts` → `/contracts` (read-only, for the analyzer's
+contract tests).
 `backend/vendor/` is created on the host by the backend container and is
 git-ignored.
 
@@ -108,9 +110,14 @@ git-ignored.
 - App containers run as **non-root**. Backend and frontend run as your host
   UID/GID (`HOST_UID`/`HOST_GID`), so files they write to bind mounts stay
   yours. The analyzer runs as a fixed UID 10001.
-- The analyzer additionally has a read-only root filesystem, a 256 MiB
-  `/tmp` tmpfs, all Linux capabilities dropped, `no-new-privileges`, and
-  1 GiB memory, 2 CPU and 256 PID limits.
+- The analyzer additionally has a read-only root filesystem, a 64 MiB
+  `/tmp` tmpfs, a 512 MiB tmpfs at `/tmp/codedna` for per-run workspaces
+  (mode 0700, owned by UID 10001; sized for two concurrent runs at the
+  archive + extracted limits), all Linux capabilities dropped,
+  `no-new-privileges`, and 1.5 GiB memory (which includes the tmpfs), 2 CPU
+  and 256 PID limits. It has no storage, database or queue credentials:
+  sources arrive as pre-signed URLs. Its image contains no shell tools
+  beyond the Debian slim base and runs no build tools at runtime.
 - No container is privileged. No service mounts the Docker socket.
 - Interactive API docs (`/docs`, `/openapi.json`) are disabled in the
   analyzer.
@@ -140,14 +147,18 @@ credentials reach only `minio` and `minio-init`.
 | `SOURCE_STORAGE_ACCESS_KEY_ID`, `SOURCE_STORAGE_SECRET_ACCESS_KEY` | **yes**, generated | backend, minio-init | Bucket-scoped application user |
 | `SOURCE_STORAGE_PREFIX` | default empty | backend | Optional key prefix inside the bucket (tests use `phpunit/`) |
 | `SOURCE_MAX_ARCHIVE_BYTES`, `SOURCE_MAX_UNCOMPRESSED_BYTES`, `SOURCE_MAX_FILES`, `SOURCE_MAX_SINGLE_FILE_BYTES`, `SOURCE_MAX_PATH_LENGTH` | defaults (50 MiB, 200 MiB, 20000, 25 MiB, 512) | backend | Upload limits ([API reference](../api/README.md#upload-limits)); validated at boot |
-| `ANALYZER_HMAC_SECRET` | generated | — | Used from Phase 08 |
+| `ANALYZER_HMAC_SECRET` | **yes**, generated | analyzer, backend | Signs Laravel → analyzer requests and analyzer responses (≥ 32 characters; the analyzer refuses to start otherwise) |
+| `ANALYZER_HMAC_SECRET_PREVIOUS` | empty | analyzer | Accepted in addition during secret rotation |
+| `ANALYZER_ALLOWED_SOURCE_HOSTS`, `ANALYZER_LOCAL_SOURCE_HOSTS` | `minio`, `minio` | analyzer | Source URL hosts; local ones may use http and private addresses ([analyzer.md](analyzer.md#source-access-ssrf-boundary)). Production: the R2 hostname, and no local hosts |
+| `ANALYZER_HARD_TIMEOUT_SECONDS`, `ANALYZER_MAX_CONCURRENCY`, `ANALYZER_MAX_ARCHIVE_BYTES`, `ANALYZER_MAX_EXTRACTED_BYTES`, `ANALYZER_MAX_FILES`, `ANALYZER_MAX_ENTRY_BYTES`, `ANALYZER_MAX_FILE_BYTES`, `ANALYZER_MAX_PATH_LENGTH` | defaults | analyzer | [Limits](analyzer.md#limits); validated at startup |
 | `FRONTEND_WATCH_POLLING` | default `false` | frontend | Polling file watcher fallback |
 | `FRONTEND_URL` | default `http://localhost` | frontend (server only) | Origin presented to Sanctum for server-side session checks |
 
 Fixed in `docker-compose.yml` (not configurable in `.env`, because they are
 properties of the Docker network): `DB_HOST=postgres`, `REDIS_HOST=redis`,
 `SOURCE_STORAGE_ENDPOINT=http://minio:9000`, `BACKEND_INTERNAL_URL=http://nginx` (frontend → API),
-`ANALYZER_URL=http://analyzer:8000`, `MAIL_MAILER=log`, plus the
+`ANALYZER_URL=http://analyzer:8000`, `ANALYZER_WORKSPACE_ROOT=/tmp/codedna`,
+`MAIL_MAILER=log`, plus the
 `pgsql`/`phpredis`/`redis` driver selections. The backend refuses to boot
 with an invalid configuration (see [backend.md](backend.md#configuration-and-logging)).
 
@@ -174,6 +185,7 @@ make shell-backend   # bash in the Laravel container (artisan, composer)
 make shell-frontend  # bash in the Next.js container (npm)
 make shell-analyzer  # bash in the analyzer container
 make test            # analyzer pytest + backend PHPUnit (codedna_test DB) + frontend Vitest
+make lint-analyzer   # ruff, ruff format --check, mypy --strict (analyzer container)
 make lint-backend    # Laravel Pint style check
 make lint-frontend   # ESLint + TypeScript type check
 make verify          # runtime smoke test (see below)
@@ -290,6 +302,15 @@ and prints no secrets:
    SOURCE_ARCHIVE_INVALID`; a 56 MiB body is `413 PAYLOAD_TOO_LARGE` as
    JSON from Nginx; archive, then upload is `409 PROJECT_ARCHIVED`. The
    probe's objects and rows are deleted.
+9. Analyzer (Phase 08): no published host port; health returns only status,
+   versions and limits; an unsigned analyze request is `401`; then
+   `scripts/verify-analyzer.php` runs **inside the backend container**: it
+   stores a small ZIP in MinIO, pre-signs it with Laravel's `sources` disk,
+   signs the request with `ANALYZER_HMAC_SECRET`, calls the analyzer over
+   the internal network, verifies the response signature and the
+   foundation result, checks the retry, bad-signature, stale-timestamp,
+   replay, run-conflict and metadata-URL cases, and deletes the object.
+   Finally the analyzer's workspace must be empty.
 
 ## Troubleshooting
 
@@ -309,6 +330,7 @@ and prints no secrets:
 
 ## Not included yet (later phases)
 
-Queue worker and scheduler containers (Phase 10), TLS and production images
+Analyzer replay protection shared across instances (when the analyzer is
+scaled out), queue worker and scheduler containers (Phase 10), TLS and production images
 (Phase 25), and the R2 bucket and credentials (Phase 25; the application
 side needs only `SOURCE_STORAGE_*`).

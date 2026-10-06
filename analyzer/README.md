@@ -1,40 +1,47 @@
 # analyzer/ — Python Code Analysis Engine
 
-**Status: Phase 02 bootstrap.** A FastAPI service with **one** endpoint,
-`GET /internal/v1/health`, which returns `{"status": "ok", "versions":
-{"analyzer": "<version>"}}`. There is **no analysis**: no parsing, metrics or
-scoring. The service skeleton and the IR come in **Phase 08**, parsers and
-metrics in **Phase 09**, and DNA scoring in **Phase 11**.
+**Status: Phase 08 foundation.** An internal FastAPI service that:
 
-> Before any parser code is written, the Intermediate Representation (IR)
-> draft must be reviewed and frozen as `ir_version` 1.0
-> ([ADR-002](../docs/decisions/ADR-002-analysis-engine.md)).
+- authenticates `POST /internal/v1/analyze` with HMAC-SHA256 (timestamp
+  window, constant-time comparison, secret rotation, bounded replay cache)
+  and signs its responses;
+- downloads a source snapshot only from an allow-listed, SigV4 pre-signed
+  URL, connecting to a validated, pinned address (SSRF protection), with
+  size, checksum and timeout limits;
+- extracts the ZIP safely into a random per-run workspace that is always
+  removed (no traversal, symlinks, special files, bombs);
+- discovers files deterministically, detects languages by extension and
+  returns a versioned **foundation result** (IR 1.0 file records) with a
+  deterministic `result_hash`.
 
-What runs today (via Docker, see
-[infrastructure.md](../docs/architecture/infrastructure.md)):
+It computes **no metrics, features or scores** yet: parsers and metrics come
+in **Phase 09**, DNA scoring in **Phase 11**. It never executes, imports or
+installs anything from a source archive.
 
-- Python 3.11, FastAPI, Uvicorn (`--reload`), source mounted read-only.
-- Internal-only. It sits on the `codedna-internal` network with no internet
-  access, is not routed by Nginx, publishes no port, and runs as a
-  non-root user on a read-only root filesystem.
-- Dependencies are hash-locked and baked into the image:
-
-  ```bash
-  pip-compile --generate-hashes --strip-extras -o requirements.txt requirements.in
-  pip-compile --generate-hashes --strip-extras -o requirements-dev.txt requirements-dev.in
-  make build
-  ```
+Everything runs in Docker (see
+[infrastructure.md](../docs/architecture/infrastructure.md)): Python 3.11,
+FastAPI, Uvicorn (`--factory`, `--reload`), source mounted read-only,
+internal network only (no internet, no host port, not routed by Nginx),
+non-root, read-only root filesystem, workspaces on a dedicated tmpfs. The
+process refuses to start without a valid configuration (HMAC secret, source
+allow-list, limits).
 
 ```bash
-make test                  # runs pytest in the container (plus backend tests)
+make test            # pytest in the container (plus backend and frontend tests)
+make lint-analyzer   # ruff check, ruff format --check, mypy --strict
 make shell-analyzer
 ```
 
-Responsibilities (target): fetch a source snapshot via a pre-signed URL,
-safely extract it, detect languages, detect secrets (locations only), parse
-with Tree-sitter, lower to the IR, compute deterministic metrics, features
-and versioned DNA scores. It never executes repository code.
+Dependencies are hash-locked and baked into the image (runtime: FastAPI and
+Uvicorn only; HTTP, ZIP and HMAC use the standard library):
 
-- Architecture and IR: [docs/architecture/analyzer.md](../docs/architecture/analyzer.md)
-- HTTP contract (server side): [docs/api/internal-analyzer-contract.md](../docs/api/internal-analyzer-contract.md)
-- Scoring rules: [ADR-004](../docs/decisions/ADR-004-dna-scoring.md)
+```bash
+pip-compile --generate-hashes --strip-extras -o requirements.txt requirements.in
+pip-compile --generate-hashes --strip-extras -o requirements-dev.txt requirements-dev.in
+make build
+```
+
+- Architecture, limits and the IR: [docs/architecture/analyzer.md](../docs/architecture/analyzer.md)
+- HTTP contract: [docs/api/internal-analyzer-contract.md](../docs/api/internal-analyzer-contract.md)
+- JSON Schemas: [packages/api-contracts/](../packages/api-contracts/README.md)
+- Scoring rules (later): [ADR-004](../docs/decisions/ADR-004-dna-scoring.md)

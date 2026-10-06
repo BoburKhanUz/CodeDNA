@@ -191,6 +191,30 @@ fi
 check "remove probe rows (snapshots, project, profile, user)" db \
     "BEGIN; DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
 
+echo "Analyzer service (Phase 08)"
+check "analyzer publishes no host port" bash -c \
+    "[[ \$(docker inspect --format '{{range \$p, \$b := .NetworkSettings.Ports}}{{if \$b}}{{\$p}} {{end}}{{end}}' \$(${compose[*]} ps -q analyzer)) == '' ]]"
+check "health reports versions and limits only" bash -c \
+    "${compose[*]} exec -T backend curl -fsS http://analyzer:8000/internal/v1/health | python3 -c 'import json, sys; d = json.load(sys.stdin); sys.exit(not (set(d) == {\"status\", \"versions\", \"limits\"} and d[\"versions\"][\"contract\"] == \"1.0\"))'"
+check "unsigned POST /internal/v1/analyze -> 401" bash -c \
+    "[[ \$(${compose[*]} exec -T backend curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' http://analyzer:8000/internal/v1/analyze) == 401 ]]"
+analyzer_zip=$(python3 -I -c 'import base64, io, zipfile
+buffer = io.BytesIO()
+with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+    archive.writestr("src/index.php", "<?php echo 1;\n")
+    archive.writestr("src/tool.py", "print(1)\n")
+    archive.writestr("README.md", "# verify\n")
+print(base64.b64encode(buffer.getvalue()).decode())')
+# Laravel -> analyzer over the internal network: pre-signed MinIO URL, HMAC,
+# download, extraction, discovery, signed response (scripts/verify-analyzer.php).
+while IFS= read -r line; do
+    case "$line" in
+        "PASS "*) pass "Laravel -> analyzer: ${line#PASS }" ;;
+        "FAIL "*) fail "Laravel -> analyzer: ${line#FAIL }" ;;
+    esac
+done < <("${compose[@]}" exec -T -e VERIFY_ZIP_BASE64="$analyzer_zip" backend php /dev/stdin < scripts/verify-analyzer.php 2>/dev/null || echo "FAIL integration script exited with an error")
+check "analyzer workspace is empty afterwards" bash -c "[[ -z \$(${compose[*]} exec -T analyzer ls -A /tmp/codedna) ]]"
+
 echo
 if [[ $failures -eq 0 ]]; then
     echo "All infrastructure checks passed."

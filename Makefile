@@ -19,7 +19,8 @@ COMPOSE := docker compose
 # Placeholder values that only let `docker compose config` interpolate the
 # file in CI/checks; nothing is started with them.
 COMPOSE_CHECK_ENV := APP_KEY=check DB_PASSWORD=check MINIO_ROOT_PASSWORD=check \
-	SOURCE_STORAGE_ACCESS_KEY_ID=check SOURCE_STORAGE_SECRET_ACCESS_KEY=check
+	SOURCE_STORAGE_ACCESS_KEY_ID=check SOURCE_STORAGE_SECRET_ACCESS_KEY=check \
+	ANALYZER_HMAC_SECRET=check
 
 .PHONY: help
 help: ## Show available targets
@@ -81,6 +82,12 @@ test: ## Run all test suites inside the running containers
 .PHONY: lint-backend
 lint-backend: ## Check backend code style (Laravel Pint) in the running container
 	$(COMPOSE) exec -T backend vendor/bin/pint --test
+
+.PHONY: lint-analyzer
+lint-analyzer: ## Lint (ruff), check formatting and type-check (mypy --strict) the analyzer in the running container
+	$(COMPOSE) exec -T analyzer ruff check .
+	$(COMPOSE) exec -T analyzer ruff format --check .
+	$(COMPOSE) exec -T analyzer mypy
 
 .PHONY: lint-frontend
 lint-frontend: ## Lint (ESLint) and type-check (tsc) the frontend in the running container

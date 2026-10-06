@@ -23,7 +23,8 @@ ASSESS ─► ANALYZE ─► IDENTIFY GAPS ─► LEARN ─► PRACTICE ─► R
 | 05 | Database and domain model | ✅ Done |
 | 06 | Authentication and developer profile | ✅ Done |
 | 07 | Projects and source management | ✅ Done |
-| 08 | Python analyzer foundation | ⏭ Next |
+| 08 | Python analyzer foundation | ✅ Done |
+| 09 | AST and static analysis | ⏭ Next |
 
 **No analysis features exist yet.** The Docker environment runs every
 component: Nginx, Laravel 13, Next.js 16, the FastAPI analyzer, PostgreSQL
@@ -33,9 +34,11 @@ archives of their source (stored as immutable, versioned snapshots in
 MinIO; nothing is executed or analyzed) at
 <http://localhost> (Next.js UI, Laravel Sanctum session cookies; see
 [frontend](docs/architecture/frontend.md) and the [API reference](docs/api/README.md)).
-Analysis runs and DNA snapshots exist in the
-[data model](docs/architecture/data-model.md), but nothing creates them yet,
-and the analyzer is still a bootstrap. The full plan is in
+The internal analyzer (Phase 08) can securely fetch, extract and inventory a
+snapshot and return a versioned foundation result, but nothing calls it from
+the product yet and it computes no metrics or scores; analysis runs and DNA
+snapshots exist in the [data model](docs/architecture/data-model.md) but
+nothing creates them yet. The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance
@@ -66,7 +69,7 @@ AI only interprets stored results, never produces scores.
 codedna/
 ├── backend/            Laravel 13 API (bootstrap; foundation in Phase 03)
 ├── frontend/           Next.js 16 UI (auth foundation)
-├── analyzer/           Python analysis engine (health endpoint; Phase 08+)
+├── analyzer/           Python analysis engine (foundation: signed intake, safe extraction, discovery)
 ├── docker/             Dockerfiles, Nginx and MinIO configuration
 ├── docs/               Product, architecture, API, ADRs
 ├── packages/           Shared API contracts and types      (Phases 03/04/08)

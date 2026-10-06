@@ -1,18 +1,19 @@
 # api-contracts
 
-**Status: not created yet.**
+Machine-readable contracts. The human-readable specifications are in
+[docs/api/](../../docs/api/README.md); when they disagree, fix both in the
+same change.
 
-Planned layout:
+| Path | Contract |
+|---|---|
+| [`analyzer/v1/analyze-request.schema.json`](analyzer/v1/analyze-request.schema.json) | `POST /internal/v1/analyze` request body (contract 1.0) |
+| [`analyzer/v1/foundation-result.schema.json`](analyzer/v1/foundation-result.schema.json) | Its `200` body when `result_type` is `"foundation"` (Phase 08), including the IR 1.0 file record |
+| [`analyzer/v1/error.schema.json`](analyzer/v1/error.schema.json) | The analyzer's error envelope |
 
-```text
-api-contracts/
-├── public/v1/openapi.yaml          # public /api/v1, when introduced (docs/api/README.md is the contract until then)
-└── analyzer/v1/                    # internal analyzer contract (Phase 08)
-    ├── analyze-request.schema.json
-    ├── analyze-response.schema.json
-    ├── error.schema.json
-    └── hmac-test-vectors.json      # shared signing test vectors for PHP and Python
-```
-
-Specifications: [public API conventions](../../docs/api/README.md),
-[internal analyzer contract](../../docs/api/internal-analyzer-contract.md).
+The schemas are JSON Schema 2020-12 and use only a small subset of it
+(`type`, `required`, `properties`, `additionalProperties`, `items`, `enum`,
+`const`, `pattern`, length/number bounds, `uniqueItems` and local `$ref`),
+so any validator can check them. The analyzer test suite validates real
+requests and responses against them (`analyzer/tests/test_contract_schemas.py`).
+The public API keeps `docs/api/README.md` as its contract until an OpenAPI
+description is introduced.

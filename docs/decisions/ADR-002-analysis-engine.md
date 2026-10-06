@@ -34,7 +34,7 @@ code it analyzes.
 
 3. **The IR is a versioned internal contract** (`ir_version`, starting at
    `1.0`). Its draft schema is specified in
-   [analyzer.md § Intermediate Representation](../architecture/analyzer.md#intermediate-representation-ir-v10-draft).
+   [analyzer.md § Intermediate Representation](../architecture/analyzer.md#intermediate-representation-ir).
    It **must be reviewed and frozen at the start of Phase 08, before any
    parser code is written.**
 4. **The IR contains no raw source text and no literal values.** It holds
