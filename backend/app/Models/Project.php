@@ -109,6 +109,16 @@ class Project extends Model
         return $this->hasMany(SkillGapSnapshot::class);
     }
 
+    /**
+     * AI interpretations (Phase 15): non-authoritative, never part of scoring.
+     *
+     * @return HasMany<AiAssessment, $this>
+     */
+    public function aiAssessments(): HasMany
+    {
+        return $this->hasMany(AiAssessment::class);
+    }
+
     public function isActive(): bool
     {
         return $this->status === ProjectStatus::Active;

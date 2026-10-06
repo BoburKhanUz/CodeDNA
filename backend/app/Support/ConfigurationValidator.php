@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use App\Services\Assessment\AssessmentSpecification;
+use App\Services\Assessment\Provider\FakeAiProvider;
+use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
 use App\Services\Competency\CompetencySpecification;
 use App\Services\Dna\ScoringSpecification;
 use App\Services\SkillGap\SkillGapSpecification;
@@ -46,6 +49,7 @@ final class ConfigurationValidator
         if (! in_array($config->get('codedna.skill_gap.version'), SkillGapSpecification::VERSIONS, true)) {
             $problems[] = 'CODEDNA_SKILL_GAP_VERSION must be one of: '.implode(', ', SkillGapSpecification::VERSIONS).'.';
         }
+        $problems = [...$problems, ...$this->aiProblems($config, $environment)];
 
         // The test suite swaps in in-memory drivers; every other environment
         // must use the Redis-backed infrastructure (docs/architecture/backend.md).
@@ -139,6 +143,77 @@ final class ConfigurationValidator
         $connect = $analyzer['connect_timeout_seconds'] ?? null;
         if (! is_int($connect) || $connect < 1) {
             $problems[] = 'ANALYZER_CONNECT_TIMEOUT_SECONDS must be a positive integer.';
+        }
+
+        return $problems;
+    }
+
+    /**
+     * AI assessment (Phase 15). Checked whether or not AI is enabled, except
+     * the provider settings an enabled provider needs.
+     *
+     * @return list<string>
+     */
+    private function aiProblems(Repository $config, string $environment): array
+    {
+        $problems = [];
+        $ai = (array) $config->get('codedna.ai', []);
+
+        if (! in_array($ai['version'] ?? null, AssessmentSpecification::VERSIONS, true)) {
+            $problems[] = 'CODEDNA_ASSESSMENT_VERSION must be one of: '.implode(', ', AssessmentSpecification::VERSIONS).'.';
+        }
+        if (! is_bool($ai['enabled'] ?? null)) {
+            $problems[] = 'AI_ENABLED must be true or false.';
+        }
+        $provider = $ai['provider'] ?? null;
+        if (! in_array($provider, [OpenAiCompatibleProvider::NAME, FakeAiProvider::NAME], true)) {
+            $problems[] = 'AI_PROVIDER must be "openai_compatible" or "fake".';
+        }
+        if ($provider === FakeAiProvider::NAME && $environment === 'production') {
+            $problems[] = 'AI_PROVIDER "fake" is not allowed in production.';
+        }
+        if (! in_array($ai['structured_output'] ?? null, OpenAiCompatibleProvider::STRUCTURED_OUTPUT_MODES, true)) {
+            $problems[] = 'AI_STRUCTURED_OUTPUT must be one of: '.implode(', ', OpenAiCompatibleProvider::STRUCTURED_OUTPUT_MODES).'.';
+        }
+
+        if (($ai['enabled'] ?? false) === true && $provider === OpenAiCompatibleProvider::NAME) {
+            if (! is_string($ai['model'] ?? null) || preg_match('#^[A-Za-z0-9._:/-]{1,128}$#', $ai['model']) !== 1) {
+                $problems[] = 'AI_MODEL must be set to a model identifier when AI is enabled.';
+            }
+            $url = $ai['base_url'] ?? null;
+            $scheme = $environment === 'production' ? 'https' : 'https?';
+            if (! is_string($url) || preg_match('#^'.$scheme.'://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*$#', $url) !== 1) {
+                $problems[] = $environment === 'production'
+                    ? 'AI_BASE_URL must be an https:// URL without query or credentials in production.'
+                    : 'AI_BASE_URL must be an http(s):// URL without query or credentials.';
+            }
+        }
+
+        $ranges = [
+            'AI_CONNECT_TIMEOUT_SECONDS' => [$ai['connect_timeout_seconds'] ?? null, 1, 60],
+            'AI_TIMEOUT_SECONDS' => [$ai['timeout_seconds'] ?? null, 1, 600],
+            'AI_MAX_INPUT_BYTES' => [$ai['max_input_bytes'] ?? null, 1024, 262144],
+            'AI_MAX_OUTPUT_BYTES' => [$ai['max_output_bytes'] ?? null, 1024, 262144],
+            'AI_MAX_OUTPUT_TOKENS' => [$ai['max_output_tokens'] ?? null, 256, 32768],
+            'AI_MAX_ATTEMPTS' => [$ai['max_attempts'] ?? null, 1, 5],
+            'AI_STALE_AFTER_SECONDS' => [$ai['stale_after_seconds'] ?? null, 60, 86400],
+            'AI_QUEUED_STALE_AFTER_SECONDS' => [$ai['queued_stale_after_seconds'] ?? null, 60, 604800],
+        ];
+        foreach ($ranges as $variable => [$value, $min, $max]) {
+            if (! is_int($value) || $value < $min || $value > $max) {
+                $problems[] = "{$variable} must be an integer between {$min} and {$max}.";
+            }
+        }
+
+        // The provider call must time out before the worker kills the job,
+        // and the job before Redis hands it to another worker.
+        $timeout = $ai['timeout_seconds'] ?? null;
+        $job = $ai['job_timeout_seconds'] ?? null;
+        $retryAfter = $config->get('queue.connections.'.($ai['queue_connection'] ?? 'analysis').'.retry_after');
+        if (! is_int($job) || ! is_int($timeout) || $job <= $timeout) {
+            $problems[] = 'AI_JOB_TIMEOUT_SECONDS must be greater than AI_TIMEOUT_SECONDS.';
+        } elseif (! is_int($retryAfter) || $job >= $retryAfter) {
+            $problems[] = 'AI_JOB_TIMEOUT_SECONDS must be lower than the queue retry_after.';
         }
 
         return $problems;

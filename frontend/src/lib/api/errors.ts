@@ -84,6 +84,12 @@ export function describeApiError(error: unknown): string {
       return "The archive contains more files than allowed.";
     case "SOURCE_FILE_TOO_LARGE":
       return "The archive contains a file larger than allowed.";
+    case "AI_ASSESSMENT_DISABLED":
+      return "AI interpretation is not enabled on this server.";
+    case "ASSESSMENT_EVIDENCE_UNAVAILABLE":
+      return "There is no skill gap analysis that can be interpreted yet. Run a static analysis first.";
+    case "ASSESSMENT_INPUT_TOO_LARGE":
+      return "The evidence of this analysis is too large for an AI interpretation.";
   }
 
   if (error.status !== null && error.status >= 500) {

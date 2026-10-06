@@ -83,6 +83,7 @@ description is introduced, they move to `packages/types` and are generated.
 | `/app/projects/[project]/dna/[snapshot]` | dynamic | Same gate. One assessment from the history. Unknown or foreign IDs show "Assessment not found" / "Project not found". |
 | `/app/projects/[project]/competencies` | dynamic | Same gate. Competency Matrix of the newest competency snapshot, or an empty state. |
 | `/app/projects/[project]/skill-gaps` | dynamic | Same gate. Skill gaps of the newest skill gap snapshot against the target profile, or an empty state. |
+| `/app/projects/[project]/assessment` | dynamic | Same gate. The newest AI assessment (AI-generated, non-authoritative), its request button, or an empty state. |
 | anything else | — | Not-found page. |
 
 There is no `?next=` return-URL parameter, so there is no open-redirect
@@ -305,6 +306,47 @@ project, CodeDNA and the Competency Matrix.
 - Fixed product text only; no recommendations, courses or generated prose.
   No gap, priority, target or score is computed in the browser; a test
   renders an inconsistent payload to prove values are shown as given.
+
+## AI assessment (`/app/projects/[project]/assessment`)
+
+Phase 15. The page presents the [AI assessment API](../api/README.md#ai-assessments)
+(`lib/assessment/client.ts`). It is reached from the Skill Gaps page's "AI
+Assessment" card, and links back to the project, the Competency Matrix and
+the Skill Gaps.
+
+- **Labelling.** An "AI-generated interpretation" badge, and a statement
+  that the AI does not determine or change any score, level, gap, priority
+  or target. Those come only from CodeDNA's versioned calculations and take
+  precedence. A footer notes that AI text can be incomplete or wrong and
+  establishes nothing about the person.
+- **States:**
+  - **none:** a "Generate AI assessment" button, or a link to Skill Gaps
+    when no analysis exists;
+  - **queued** and **processing:** fixed text, polled every 3 seconds, with
+    no fake progress;
+  - **ready:** the summary, strengths, areas to improve, development
+    insights and limitations;
+  - **failed:** the fixed failure message, no partial text, and "Try
+    again";
+  - **unavailable:** shown when the server answers
+    `AI_ASSESSMENT_DISABLED`;
+  - loading skeleton, error with retry, 401 → `/login`, and 404 →
+    "Project not found".
+- **Evidence.** Every claim has an evidence disclosure. It resolves each
+  `evidence_refs` id in the response's evidence catalog and shows the label,
+  id, description and the deterministic facts as stored.
+- **Provenance.** Shows:
+  - the provider, model and served model;
+  - the request and completion times;
+  - links to the skill gap analysis, competency matrix and CodeDNA
+    assessment it is based on;
+  - all versions and the input, prompt and output fingerprints.
+- **Older analyses.** When the newest skill gap analysis is newer than the
+  assessment's, a note and "Interpret the newest analysis" appear. Archived
+  projects show no request button.
+- **What it never does.** The POST body is `{}`. There is no free-text
+  input, prompt, model choice, chat, editing or regeneration of existing
+  text. Nothing is computed in the browser.
 
 ## API client (`lib/api`)
 

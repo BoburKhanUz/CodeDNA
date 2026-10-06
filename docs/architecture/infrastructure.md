@@ -44,8 +44,8 @@ traffic is to MinIO, for pre-signed downloads
 | `nginx` | `nginx:1.28-alpine` | Single-origin router | `127.0.0.1:80` | codedna | `GET /nginx-health` |
 | `frontend` | `docker/node/Dockerfile` → `codedna-frontend:dev` | Next.js 16 dev server ([frontend.md](frontend.md)) | — | codedna | HTTP `GET /` on :3000 |
 | `backend` | `docker/php/Dockerfile` → `codedna-backend:dev` | Laravel 13 API on PHP-FPM 8.4 ([backend.md](backend.md)) | — | codedna, codedna-internal | Laravel `/up` over FastCGI (`codedna-healthcheck`) |
-| `queue` | `codedna-backend:dev` (same image, environment and bind mounts as `backend`) | Analysis queue worker (Phase 10): `php artisan queue:listen analysis --queue=analysis --timeout=330` | — | codedna, codedna-internal | none (process) |
-| `scheduler` | `codedna-backend:dev` | Laravel scheduler (Phase 10): `php artisan schedule:work` (`analysis:fail-stale` every five minutes) | — | codedna | none (process) |
+| `queue` | `codedna-backend:dev` (same image, environment and bind mounts as `backend`) | Analysis and AI assessment queue worker (Phases 10, 15): `php artisan queue:listen analysis --queue=analysis,assessment --timeout=330` | — | codedna, codedna-internal | none (process) |
+| `scheduler` | `codedna-backend:dev` | Laravel scheduler (Phase 10): `php artisan schedule:work` (`analysis:fail-stale` and `assessment:fail-stale` every five minutes) | — | codedna | none (process) |
 | `analyzer` | `docker/python/Dockerfile` → `codedna-analyzer:dev` | FastAPI analyzer (Phases 08–09): `GET /internal/v1/health`, HMAC-authenticated `POST /internal/v1/analyze` | — | codedna-internal | `GET /internal/v1/health` |
 | `postgres` | `postgres:16-alpine` | Primary database | `127.0.0.1:5432` | codedna | `pg_isready` |
 | `redis` | `redis:7.4-alpine` | Cache, queues, sessions | `127.0.0.1:6379` | codedna | `redis-cli ping` |

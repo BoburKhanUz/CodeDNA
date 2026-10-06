@@ -301,6 +301,44 @@ Phase 14 ([skill-gap-v1.md](skill-gap-v1.md)).
 
 Indexes: `(project_id, competency_key)`, `(user_id, status, priority)`.
 
+A unique index on `(id, project_id, competency_snapshot_id,
+dna_snapshot_id, analysis_run_id, source_snapshot_id, user_id)` on
+`skill_gap_snapshots` (Phase 15) is the target of the AI assessments'
+lineage key.
+
+### ai_assessments
+
+Phase 15 ([ai-assessment-v1.md](ai-assessment-v1.md)). AI
+interpretations are **non-authoritative**: no score, level, gap or priority
+is stored here or read from here.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `user_id`, `project_id`, `skill_gap_snapshot_id`, `competency_snapshot_id`, `dna_snapshot_id`, `analysis_run_id`, `source_snapshot_id` | ulid | one composite FK onto `skill_gap_snapshots`' lineage index, `RESTRICT`; `user_id` also FK → users |
+| `assessment_version`, `input_schema_version`, `output_schema_version`, `prompt_version`, `dna_scoring_version`, `competency_version`, `skill_gap_version` | varchar(32) | |
+| `prompt_fingerprint`, `specification_fingerprint`, `input_fingerprint` | char(64) | SHA-256 hex (CHECK) |
+| `output_fingerprint` | char(64) null | SHA-256 hex; present ⇔ `SUCCEEDED` |
+| `provider`, `model` | varchar(32), varchar(128) | format CHECKs |
+| `status` | varchar(16) | `QUEUED` \| `RUNNING` \| `SUCCEEDED` \| `FAILED` |
+| `attempts` | smallint | provider calls, 0–10 |
+| `claim_token`, `lease_expires_at` | uuid, timestamp null | present ⇔ `RUNNING` |
+| `input` | jsonb | object ≤ 512 KiB: `{lineage, payload}`; the payload is exactly what the provider received |
+| `output` | jsonb null | validated `assessment/v1` object ≤ 256 KiB; present ⇔ `SUCCEEDED` |
+| `provider_metadata` | jsonb null | served model, response ID, token counts; ≤ 4 KiB |
+| `failure_code`, `failure_detail` | varchar null | present ⇔ `FAILED`; fixed codes and rule identifiers only |
+| `started_at`, `completed_at`, `created_at`, `updated_at` | timestamp | `completed_at` present ⇔ terminal |
+
+- **Partial unique index:** `ai_assessments_identity_active_unique` on
+  `(project_id, input_fingerprint, assessment_version, prompt_fingerprint,
+  provider, model)` `WHERE status IN ('QUEUED', 'RUNNING', 'SUCCEEDED')`.
+- **Indexes:** `(project_id, created_at)`, `(user_id, created_at)`,
+  `(status, updated_at)`.
+- **Trigger:** `ai_assessments_terminal_immutable` refuses any update of a
+  `SUCCEEDED` or `FAILED` row.
+- **What is never stored:** API keys, headers, prompt text and raw
+  responses.
+
 ## States
 
 States are **VARCHAR columns with CHECK constraints**, mirrored by PHP backed
@@ -314,6 +352,7 @@ enums (`app/Enums`) through Eloquent enum casts:
 | `DnaSnapshotStatus` | `READY`, `INSUFFICIENT_DATA` |
 | `CompetencySnapshotStatus` | `ASSESSED`, `INSUFFICIENT_DATA` (competency statuses and levels live in the JSONB) |
 | `SkillGapSnapshotStatus`, `SkillGapStatus`, `GapPriority` | see `skill_gap_snapshots` and `skill_gap_results` |
+| `AssessmentStatus` | `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED` (see `ai_assessments`) |
 
 **Why not PostgreSQL `ENUM` types?** Adding or renaming a value then needs
 `ALTER TYPE`, which has transaction restrictions and couples deployments to

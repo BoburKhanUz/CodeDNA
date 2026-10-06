@@ -34,6 +34,10 @@ enum ErrorCode: string
     case SourceFileTooLarge = 'SOURCE_FILE_TOO_LARGE';
     // Analysis runs (Phase 10).
     case AnalysisNotCompleted = 'ANALYSIS_NOT_COMPLETED';
+    // AI assessments (Phase 15).
+    case AiAssessmentDisabled = 'AI_ASSESSMENT_DISABLED';
+    case AssessmentEvidenceUnavailable = 'ASSESSMENT_EVIDENCE_UNAVAILABLE';
+    case AssessmentInputTooLarge = 'ASSESSMENT_INPUT_TOO_LARGE';
     case InternalError = 'INTERNAL_ERROR';
     case ServiceUnavailable = 'SERVICE_UNAVAILABLE';
 
@@ -47,7 +51,8 @@ enum ErrorCode: string
             self::MethodNotAllowed => 405,
             self::PayloadTooLarge, self::SourceArchiveTooLarge => 413,
             self::CsrfTokenMismatch => 419,
-            self::ProjectArchived, self::InvalidSourceType, self::AnalysisNotCompleted => 409,
+            self::ProjectArchived, self::InvalidSourceType, self::AnalysisNotCompleted,
+            self::AiAssessmentDisabled, self::AssessmentEvidenceUnavailable, self::AssessmentInputTooLarge => 409,
             self::ValidationFailed, self::InvalidCredentials, self::IdempotencyKeyReused,
             self::SourceArchiveInvalid, self::SourceArchiveUnsafe, self::SourceUncompressedSizeExceeded,
             self::SourceFileCountExceeded, self::SourceFileTooLarge => 422,
@@ -80,6 +85,9 @@ enum ErrorCode: string
             self::SourceFileCountExceeded => 'The archive contains more files than allowed.',
             self::SourceFileTooLarge => 'The archive contains a file larger than allowed.',
             self::AnalysisNotCompleted => 'This analysis has no result: it has not succeeded.',
+            self::AiAssessmentDisabled => 'AI assessment is not enabled on this server.',
+            self::AssessmentEvidenceUnavailable => 'There is no skill gap analysis that can be interpreted for this project.',
+            self::AssessmentInputTooLarge => 'The evidence of this analysis exceeds the AI input limit.',
             self::InternalError => 'An unexpected error occurred.',
             self::ServiceUnavailable => 'The service is temporarily unavailable.',
         };

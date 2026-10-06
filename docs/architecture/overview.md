@@ -31,8 +31,12 @@ snapshot is then turned into a deterministic, versioned competency matrix
 [competency-matrix-v1.md](competency-matrix-v1.md)), readable through the
 API and on the Competency Matrix page, and compared with a versioned
 engineering target into per-competency skill gaps with priorities
-([skill-gap-v1.md](skill-gap-v1.md)). Everything below is the target
-architecture.
+([skill-gap-v1.md](skill-gap-v1.md)). On request, and only when enabled, an
+AI model writes a non-authoritative, evidence-referenced interpretation of
+a skill gap analysis; it never changes any score
+([ai-assessment-v1.md](ai-assessment-v1.md),
+[ADR-007](../decisions/ADR-007-ai-interpretation.md)). Everything below is
+the target architecture.
 
 ## System context
 
@@ -101,6 +105,7 @@ machine, timeouts and retries, and data classification.
 | [ADR-004](../decisions/ADR-004-dna-scoring.md) | DNA scoring: determinism, versioning, evidence |
 | [ADR-005](../decisions/ADR-005-service-communication.md) | Laravel ↔ analyzer communication |
 | [ADR-006](../decisions/ADR-006-authentication.md) | Authentication (Sanctum SPA cookies, tokens later) |
+| [ADR-007](../decisions/ADR-007-ai-interpretation.md) | AI interpretation: non-authoritative, provider-neutral, evidence-bound |
 
 New ADRs use the next free number and follow the same format: Status, Date,
 Context, Decision, Consequences, Alternatives considered, and Open questions
@@ -129,4 +134,5 @@ at a time:
 | 12 | DNA dashboard (**MVP complete**) | Done (per-project dashboard and read-only DNA API) |
 | 13 | Competency matrix | Done (competency version 1.0.0; [competency-matrix-v1.md](competency-matrix-v1.md)) |
 | 14 | Skill gap analysis | Done (skill gap version 1.0.0, ENGINEERING_STANDARD; [skill-gap-v1.md](skill-gap-v1.md)) |
-| 15–25 | AI, challenges, learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |
+| 15 | AI assessment and interpretation | Done (assessment version 1.0.0, non-authoritative, on request; [ai-assessment-v1.md](ai-assessment-v1.md)) |
+| 16–25 | Challenges, learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |

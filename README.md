@@ -54,7 +54,12 @@ snapshot also yields a deterministic competency matrix
 ([competency-matrix-v1.md](docs/architecture/competency-matrix-v1.md)) that
 describes evidence in the code, never a developer's seniority or level, and
 since Phase 14 a skill gap analysis against a versioned engineering target
-([skill-gap-v1.md](docs/architecture/skill-gap-v1.md)). The full plan is in
+([skill-gap-v1.md](docs/architecture/skill-gap-v1.md)). Since Phase 15 the
+owner can request an AI-generated, non-authoritative interpretation of a
+skill gap analysis; every statement cites the stored evidence, and the AI
+never determines or changes a score
+([ai-assessment-v1.md](docs/architecture/ai-assessment-v1.md); disabled
+unless `AI_ENABLED=true`). The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance
@@ -77,7 +82,7 @@ AI only interprets stored results, never produces scores.
 - Product: [vision](docs/product/vision.md) · [MVP](docs/product/mvp.md)
 - Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md)
 - API: [public conventions](docs/api/README.md) · [internal analyzer contract](docs/api/internal-analyzer-contract.md)
-- Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md)
+- Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md) · [ADR-007 AI interpretation](docs/decisions/ADR-007-ai-interpretation.md)
 
 ## Repository layout
 

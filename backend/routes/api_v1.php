@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\Profile\ProfileController;
 use App\Http\Controllers\Api\V1\Projects\AnalysisController;
 use App\Http\Controllers\Api\V1\Projects\ArchiveProjectController;
+use App\Http\Controllers\Api\V1\Projects\AssessmentController;
 use App\Http\Controllers\Api\V1\Projects\CompetencySnapshotController;
 use App\Http\Controllers\Api\V1\Projects\DnaSnapshotController;
 use App\Http\Controllers\Api\V1\Projects\ProjectController;
@@ -128,4 +129,18 @@ Route::middleware('auth:sanctum')->prefix('projects')->name('projects.')->group(
         ->whereUlid(['project', 'skillGapSnapshot'])
         ->scopeBindings()
         ->name('skill-gaps.show');
+
+    // AI assessments (Phase 15): non-authoritative interpretations of a skill
+    // gap snapshot. POST only queues generation; there is no update or delete.
+    Route::get('{project}/assessments', [AssessmentController::class, 'index'])
+        ->whereUlid('project')
+        ->name('assessments.index');
+    Route::post('{project}/assessments', [AssessmentController::class, 'store'])
+        ->whereUlid('project')
+        ->middleware('throttle:assessment-create')
+        ->name('assessments.store');
+    Route::get('{project}/assessments/{aiAssessment}', [AssessmentController::class, 'show'])
+        ->whereUlid(['project', 'aiAssessment'])
+        ->scopeBindings()
+        ->name('assessments.show');
 });

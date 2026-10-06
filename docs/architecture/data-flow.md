@@ -283,6 +283,29 @@ scores and the server-owned targets only. Best effort: a failure is logged
 competency snapshot; `php artisan skill-gap:calculate <competency-snapshot>`
 or `--missing` retries. Details: [skill-gap-v1.md](skill-gap-v1.md).
 
+### AI assessments (Phase 15)
+
+The analysis job never calls an AI provider. Assessments are generated only
+on request:
+
+1. `POST /api/v1/projects/{project}/assessments` runs
+   `App\Actions\Assessment\RequestAssessment`. It builds a canonical input
+   from the stored skill gap, competency and DNA snapshots and records a
+   QUEUED `ai_assessments` row, or returns the existing one with the same
+   identity.
+2. It dispatches `App\Jobs\GenerateAssessment` to queue `assessment` on
+   the `analysis` connection. The same worker listens to
+   `analysis,assessment`, so analyses go first.
+3. The job claims the row with a lease, rebuilds and compares the input,
+   calls the configured provider once, validates the response, and stores
+   it as SUCCEEDED or FAILED.
+4. Timeouts, 429 and 5xx are retried with backoff, up to `AI_MAX_ATTEMPTS`
+   calls. `assessment:fail-stale` (every five minutes) fails assessments
+   stuck in QUEUED or RUNNING.
+
+AI failures never change the run or any snapshot. Details:
+[ai-assessment-v1.md](ai-assessment-v1.md).
+
 ## Run state machine
 
 ```text
@@ -385,11 +408,11 @@ second worker.
 
 | Item | Value |
 |---|---|
-| Connection / queue | `analysis` / `analysis` (Redis; separate from `default`) |
-| Development | Compose service `queue`: `php artisan queue:listen analysis --queue=analysis --timeout=330 --sleep=3 --tries=0` (reloads code per job) |
-| Production | `php artisan queue:work analysis --queue=analysis --timeout=330 --sleep=3 --tries=0`, several processes sized to the analyzer's `ANALYZER_MAX_CONCURRENCY` |
+| Connection / queue | `analysis` / `analysis` (Redis; separate from `default`); AI assessments (Phase 15) use queue `assessment` on the same connection |
+| Development | Compose service `queue`: `php artisan queue:listen analysis --queue=analysis,assessment --timeout=330 --sleep=3 --tries=0` (reloads code per job; analyses first) |
+| Production | `php artisan queue:work analysis --queue=analysis,assessment --timeout=330 --sleep=3 --tries=0`, several processes sized to the analyzer's `ANALYZER_MAX_CONCURRENCY` |
 | Attempts | The job's own bound (`$tries` = `ANALYZER_MAX_ATTEMPTS`; the run's attempt count is authoritative) |
-| Scheduler | Compose service `scheduler`: `php artisan schedule:work` (runs `analysis:fail-stale` every five minutes) |
+| Scheduler | Compose service `scheduler`: `php artisan schedule:work` (runs `analysis:fail-stale` and `assessment:fail-stale` every five minutes) |
 
 ### Stale runs
 

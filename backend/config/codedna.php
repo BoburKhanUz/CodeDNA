@@ -119,6 +119,48 @@ return [
         'version' => (string) env('CODEDNA_SKILL_GAP_VERSION', '1.0.0'),
     ],
 
+    /*
+    | AI assessment and interpretation (docs/architecture/ai-assessment-v1.md).
+    | Non-authoritative: the AI explains stored deterministic results and
+    | never changes them. Disabled by default; generation runs only when a
+    | user requests it, on its own queue. The provider, model, URL and key
+    | come only from the environment; the key is never stored, logged or
+    | sent to the frontend. Timeouts must keep
+    | timeout < job timeout < queue retry_after (validated at boot).
+    */
+    'ai' => [
+        'enabled' => (bool) env('AI_ENABLED', false),
+        // "openai_compatible" (any Chat Completions endpoint) or "fake"
+        // (deterministic template, never allowed in production).
+        'provider' => (string) env('AI_PROVIDER', 'openai_compatible'),
+        'model' => (string) env('AI_MODEL', ''),
+        'base_url' => rtrim((string) env('AI_BASE_URL', 'https://api.openai.com/v1'), '/'),
+        'api_key' => (string) env('AI_API_KEY', ''),
+        // "json_schema" (strict structured output), "json_object" or "none",
+        // for local servers without structured output support.
+        'structured_output' => (string) env('AI_STRUCTURED_OUTPUT', 'json_schema'),
+        'connect_timeout_seconds' => (int) env('AI_CONNECT_TIMEOUT_SECONDS', 5),
+        'timeout_seconds' => (int) env('AI_TIMEOUT_SECONDS', 60),
+        // Bounds on what is sent and accepted (bytes of canonical input JSON,
+        // bytes of response content, and the max_tokens sent).
+        'max_input_bytes' => (int) env('AI_MAX_INPUT_BYTES', 32768),
+        'max_output_bytes' => (int) env('AI_MAX_OUTPUT_BYTES', 16384),
+        'max_output_tokens' => (int) env('AI_MAX_OUTPUT_TOKENS', 2000),
+        // Provider calls per assessment (first included), for timeouts, 429 and
+        // 5xx only, with the delay before each retry (Retry-After honoured if
+        // longer, up to the last value). Invalid output is never retried.
+        'max_attempts' => (int) env('AI_MAX_ATTEMPTS', 3),
+        'backoff_seconds' => [20, 60],
+        'job_timeout_seconds' => (int) env('AI_JOB_TIMEOUT_SECONDS', 90),
+        // QUEUED or RUNNING assessments untouched for this long are failed by
+        // assessment:fail-stale.
+        'stale_after_seconds' => (int) env('AI_STALE_AFTER_SECONDS', 900),
+        'queued_stale_after_seconds' => (int) env('AI_QUEUED_STALE_AFTER_SECONDS', 3600),
+        'queue_connection' => 'analysis',
+        'queue' => 'assessment',
+        'version' => (string) env('CODEDNA_ASSESSMENT_VERSION', '1.0.0'),
+    ],
+
     'rate_limits' => [
         // Every /api/v1 route, per authenticated user or per IP.
         'api_per_minute' => 120,
@@ -140,6 +182,9 @@ return [
         'source_upload_per_minute' => 5,
         'source_upload_per_hour' => 60,
         'analysis_create_per_minute' => 10,
+        // POST /api/v1/projects/{project}/assessments, per user (provider calls cost money).
+        'assessment_create_per_minute' => 5,
+        'assessment_create_per_hour' => 30,
     ],
 
 ];

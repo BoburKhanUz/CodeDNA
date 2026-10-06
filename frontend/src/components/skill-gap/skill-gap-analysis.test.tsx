@@ -83,6 +83,15 @@ describe("SkillGapAnalysis", () => {
     expect(within(complexity).getByTestId("skill-gap-gap")).toHaveTextContent("Gap: 0.00 points (below the material-gap threshold)");
   });
 
+  it("links to the AI assessment", async () => {
+    respondWith(gapsSnapshot);
+    render(<SkillGapAnalysis projectId={project.id} />);
+
+    const card = await screen.findByTestId("assessment-link");
+    expect(within(card).getByRole("link", { name: "View AI Assessment →" })).toHaveAttribute("href", `/app/projects/${project.id}/assessment`);
+    expect(card).toHaveTextContent("It does not change any score, gap or priority.");
+  });
+
   it("states that there are no material gaps, which is not the same as no data", async () => {
     respondWith(noGapsSnapshot);
     render(<SkillGapAnalysis projectId={project.id} />);

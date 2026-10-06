@@ -10,6 +10,23 @@ use PHPUnit\Framework\TestCase;
 
 final class ConfigurationValidatorTest extends TestCase
 {
+    private const AI = [
+        'enabled' => false, 'provider' => 'openai_compatible', 'model' => '', 'base_url' => 'https://api.openai.com/v1',
+        'api_key' => '', 'structured_output' => 'json_schema', 'connect_timeout_seconds' => 5, 'timeout_seconds' => 60,
+        'max_input_bytes' => 32768, 'max_output_bytes' => 16384, 'max_output_tokens' => 2000, 'max_attempts' => 3,
+        'job_timeout_seconds' => 90, 'stale_after_seconds' => 900, 'queued_stale_after_seconds' => 3600,
+        'queue_connection' => 'analysis', 'version' => '1.0.0',
+    ];
+
+    /**
+     * @param  array<string, mixed>  $ai
+     * @return list<string>
+     */
+    private function aiProblems(array $ai, string $environment = 'production'): array
+    {
+        return (new ConfigurationValidator)->problems($this->config(['codedna.ai' => $ai + self::AI]), $environment);
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */
@@ -42,6 +59,7 @@ final class ConfigurationValidatorTest extends TestCase
             'codedna.scoring.version' => '1.0.0',
             'codedna.competency.version' => '1.0.0',
             'codedna.skill_gap.version' => '1.0.0',
+            'codedna.ai' => self::AI,
         ], $overrides) as $key => $value) {
             $config->set($key, $value);
         }
@@ -194,5 +212,56 @@ final class ConfigurationValidatorTest extends TestCase
                 (new ConfigurationValidator)->problems($this->config(['codedna.skill_gap.version' => $version]), 'production'),
             );
         }
+    }
+
+    public function test_ai_is_disabled_by_default_and_needs_nothing_then(): void
+    {
+        $this->assertSame([], $this->aiProblems([]));
+    }
+
+    public function test_an_enabled_provider_needs_a_model_and_an_https_url_in_production(): void
+    {
+        $this->assertSame(['AI_MODEL must be set to a model identifier when AI is enabled.'], $this->aiProblems(['enabled' => true]));
+        $this->assertSame([], $this->aiProblems(['enabled' => true, 'model' => 'gpt-4o-mini']));
+        $this->assertSame([], $this->aiProblems(['enabled' => true, 'model' => 'org/model:7b', 'base_url' => 'https://llm.internal.example:8443/v1']));
+
+        foreach (['http://llm.example/v1', 'https://user:pass@llm.example/v1', 'https://llm.example/v1?key=x', 'ftp://llm.example', ''] as $url) {
+            $this->assertSame(
+                ['AI_BASE_URL must be an https:// URL without query or credentials in production.'],
+                $this->aiProblems(['enabled' => true, 'model' => 'm', 'base_url' => $url]),
+                $url,
+            );
+        }
+        $this->assertSame(['AI_MODEL must be set to a model identifier when AI is enabled.'], $this->aiProblems(['enabled' => true, 'model' => "m\nx"]));
+    }
+
+    public function test_local_providers_may_use_http_outside_production(): void
+    {
+        $this->assertSame([], $this->aiProblems(['enabled' => true, 'model' => 'llama3.1:8b', 'base_url' => 'http://host.docker.internal:11434/v1', 'structured_output' => 'json_object'], 'local'));
+        $this->assertSame(['AI_BASE_URL must be an http(s):// URL without query or credentials.'], $this->aiProblems(['enabled' => true, 'model' => 'm', 'base_url' => 'file:///etc/passwd'], 'local'));
+    }
+
+    public function test_the_fake_provider_is_refused_in_production(): void
+    {
+        $this->assertSame(['AI_PROVIDER "fake" is not allowed in production.'], $this->aiProblems(['enabled' => true, 'provider' => 'fake']));
+        $this->assertSame([], $this->aiProblems(['enabled' => true, 'provider' => 'fake'], 'local'));
+        $this->assertSame(['AI_PROVIDER must be "openai_compatible" or "fake".'], $this->aiProblems(['provider' => 'anthropic-sdk']));
+    }
+
+    public function test_ai_settings_are_validated(): void
+    {
+        $this->assertSame(['CODEDNA_ASSESSMENT_VERSION must be one of: 1.0.0.'], $this->aiProblems(['version' => '2.0.0']));
+        $this->assertSame(['AI_ENABLED must be true or false.'], $this->aiProblems(['enabled' => 'yes']));
+        $this->assertSame(['AI_STRUCTURED_OUTPUT must be one of: json_schema, json_object, none.'], $this->aiProblems(['structured_output' => 'tools']));
+        $this->assertSame(['AI_MAX_ATTEMPTS must be an integer between 1 and 5.'], $this->aiProblems(['max_attempts' => 0]));
+        $this->assertSame(['AI_MAX_ATTEMPTS must be an integer between 1 and 5.'], $this->aiProblems(['max_attempts' => 10]));
+        $this->assertSame(['AI_MAX_INPUT_BYTES must be an integer between 1024 and 262144.'], $this->aiProblems(['max_input_bytes' => 10_000_000]));
+        $this->assertSame(['AI_MAX_OUTPUT_TOKENS must be an integer between 256 and 32768.'], $this->aiProblems(['max_output_tokens' => 100]));
+    }
+
+    public function test_the_ai_timeout_chain_must_let_inner_limits_fire_first(): void
+    {
+        $this->assertSame(['AI_JOB_TIMEOUT_SECONDS must be greater than AI_TIMEOUT_SECONDS.'], $this->aiProblems(['timeout_seconds' => 90]));
+        $this->assertSame(['AI_JOB_TIMEOUT_SECONDS must be lower than the queue retry_after.'], $this->aiProblems(['timeout_seconds' => 300, 'job_timeout_seconds' => 360]));
     }
 }

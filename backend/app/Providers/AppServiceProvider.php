@@ -5,9 +5,13 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Exceptions\InvalidConfigurationException;
+use App\Services\Assessment\Provider\AiProvider;
+use App\Services\Assessment\Provider\FakeAiProvider;
+use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
 use App\Support\ConfigurationValidator;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Client\Factory as Http;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +21,19 @@ use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        // The AI provider behind the assessment pipeline (Phase 15), chosen
+        // only by configuration (docs/architecture/ai-assessment-v1.md#providers).
+        $this->app->bind(AiProvider::class, static function ($app): AiProvider {
+            $config = (array) $app['config']->get('codedna.ai');
+
+            return ($config['provider'] ?? null) === FakeAiProvider::NAME
+                ? new FakeAiProvider
+                : new OpenAiCompatibleProvider($app->make(Http::class), $config);
+        });
+    }
+
     public function boot(): void
     {
         $this->validateConfiguration();
@@ -87,6 +104,16 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('analysis-create', static fn (Request $request): Limit => Limit::perMinute($limits['analysis_create_per_minute'])
             ->by('analysis-create:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        // AI assessments call a paid provider: strict.
+        RateLimiter::for('assessment-create', static function (Request $request) use ($limits): array {
+            $key = 'assessment-create:'.($request->user()?->getAuthIdentifier() ?? $request->ip());
+
+            return [
+                Limit::perMinute($limits['assessment_create_per_minute'])->by($key.'|minute'),
+                Limit::perHour($limits['assessment_create_per_hour'])->by($key.'|hour'),
+            ];
+        });
 
         RateLimiter::for('password-change', static function (Request $request) use ($limits): array {
             $key = 'password-change:'.($request->user()?->getAuthIdentifier() ?? $request->ip());

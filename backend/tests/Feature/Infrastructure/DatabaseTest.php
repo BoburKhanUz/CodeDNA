@@ -31,7 +31,7 @@ final class DatabaseTest extends TestCase
         // developer profiles (Phase 06), analysis results (Phase 10),
         // competency snapshots (Phase 13) and skill gaps (Phase 14), nothing else.
         $this->assertSame([
-            'analysis_results', 'analysis_runs', 'competency_snapshots', 'developer_profiles', 'dna_snapshots', 'failed_jobs', 'migrations',
+            'ai_assessments', 'analysis_results', 'analysis_runs', 'competency_snapshots', 'developer_profiles', 'dna_snapshots', 'failed_jobs', 'migrations',
             'personal_access_tokens', 'projects', 'skill_gap_results', 'skill_gap_snapshots', 'source_snapshots', 'users',
         ], $tables);
     }

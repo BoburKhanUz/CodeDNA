@@ -1,7 +1,7 @@
 /**
  * TypeScript mirror of the Laravel API contract (docs/api/README.md).
  *
- * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary,SkillGapSnapshot,SkillGapSnapshotSummary}Resource.php,
+ * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary,SkillGapSnapshot,SkillGapSnapshotSummary,AiAssessment,AiAssessmentSummary}Resource.php,
  * backend/app/Http/Resources/PaginatedCollection.php,
  * backend/app/Enums/{SupportedLocale,ProgrammingLanguage}.php and
  * backend/app/Http/Errors/{ErrorCode,ApiExceptionRenderer}.php. When those
@@ -48,6 +48,9 @@ export const API_ERROR_CODES = [
   "SOURCE_UNCOMPRESSED_SIZE_EXCEEDED",
   "SOURCE_FILE_COUNT_EXCEEDED",
   "SOURCE_FILE_TOO_LARGE",
+  "AI_ASSESSMENT_DISABLED",
+  "ASSESSMENT_EVIDENCE_UNAVAILABLE",
+  "ASSESSMENT_INPUT_TOO_LARGE",
   "INTERNAL_ERROR",
   "SERVICE_UNAVAILABLE",
 ] as const;
@@ -599,3 +602,93 @@ export interface SkillGapSnapshot {
 }
 
 export type SkillGapSnapshotResponse = DataEnvelope<SkillGapSnapshot>;
+
+/* AI assessment (Phase 15): non-authoritative interpretation of a skill gap snapshot. */
+
+export const ASSESSMENT_STATUSES = ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED"] as const;
+export type AssessmentStatus = (typeof ASSESSMENT_STATUSES)[number];
+
+export interface AssessmentFailure {
+  code: string;
+  message: string;
+}
+
+/** `AiAssessmentSummaryResource` — GET /api/v1/projects/{project}/assessments (newest first). */
+export interface AiAssessmentSummary {
+  id: string;
+  type: "ai_assessment";
+  project_id: string;
+  skill_gap_snapshot_id: string;
+  status: AssessmentStatus;
+  assessment_version: string;
+  provider: string;
+  model: string;
+  failure: AssessmentFailure | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+/** A claim of the interpretation; every one cites evidence ids. */
+export interface AssessmentClaim {
+  title: string;
+  description: string;
+  evidence_refs: string[];
+}
+
+/** The validated `assessment/v1` output. It never contains a score, level, gap, priority or target. */
+export interface AssessmentOutput {
+  schema_version: "assessment/v1";
+  summary: { text: string; evidence_refs: string[] };
+  strengths: AssessmentClaim[];
+  areas_to_improve: AssessmentClaim[];
+  development_insights: AssessmentClaim[];
+  limitations: { description: string; evidence_refs: string[] }[];
+}
+
+/** One item of the deterministic evidence the interpretation was built from. */
+export interface AssessmentEvidence {
+  id: string;
+  kind: "quality" | "profile" | "dna" | "component" | "competency" | "gap" | "language";
+  label: string;
+  description: string;
+  facts: Record<string, string | number | boolean | null | string[]>;
+}
+
+/** `AiAssessmentResource` — GET/POST /api/v1/projects/{project}/assessments[/{assessment}]. */
+export interface AiAssessment {
+  id: string;
+  type: "ai_assessment";
+  project_id: string;
+  status: AssessmentStatus;
+  notice: string;
+  lineage: {
+    skill_gap_snapshot_id: string;
+    competency_snapshot_id: string;
+    dna_snapshot_id: string;
+    analysis_run_id: string;
+    source_snapshot_id: string;
+  };
+  versions: {
+    assessment: string;
+    input_schema: string;
+    output_schema: string;
+    prompt: string;
+    dna_scoring: string;
+    competency: string;
+    skill_gap: string;
+    target_profile: string | null;
+    target_profile_version: string | null;
+  };
+  fingerprints: { specification: string; prompt: string; input: string; output: string | null };
+  provider: { name: string; model: string; served_model: string | null };
+  attempts: number;
+  /** Only when SUCCEEDED. */
+  output: AssessmentOutput | null;
+  evidence: AssessmentEvidence[];
+  failure: AssessmentFailure | null;
+  created_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export type AiAssessmentResponse = DataEnvelope<AiAssessment>;

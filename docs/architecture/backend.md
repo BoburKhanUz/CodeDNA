@@ -74,8 +74,9 @@ backend/
 │   ├── Actions/Projects/          CreateProject, UpdateProject, ArchiveProject
 │   ├── Actions/Snapshots/         StoreUploadedSource (upload workflow), RecordSourceSnapshot (versioning)
 │   ├── Actions/Analysis/          StartAnalysis (idempotent start), PersistAnalysisResult
-│   ├── Console/Commands/          FailStaleAnalyses (analysis:fail-stale)
-│   ├── Jobs/                      AnalyzeSourceSnapshot (queue "analysis")
+│   ├── Actions/Assessment/        RequestAssessment (Phase 15: idempotent, queues only)
+│   ├── Console/Commands/          FailStaleAnalyses (analysis:fail-stale), FailStaleAssessments (assessment:fail-stale)
+│   ├── Jobs/                      AnalyzeSourceSnapshot (queue "analysis"), GenerateAssessment (queue "assessment")
 │   ├── Casts/JsonObject.php       JSONB object cast ({} for empty, lists rejected)
 │   ├── Enums/                     domain states, SupportedLocale, ProgrammingLanguage
 │   ├── Exceptions/                ApiException (client-facing, carries an ErrorCode),
@@ -284,8 +285,11 @@ Phase 03. Phase 10 adds the dedicated `analysis` connection and queue (its
 own `retry_after` of 360 s, above the 330 s job timeout), the
 `AnalyzeSourceSnapshot` job (3 attempts, backoff 30 s/120 s), the `queue`
 worker service and the `scheduler` service (`analysis:fail-stale` every five
-minutes). See [data-flow.md](data-flow.md#queue-workers) for worker commands
-and the timeout chain, which `ConfigurationValidator` checks at boot.
+minutes). Phase 15 adds the `GenerateAssessment` job on queue `assessment`
+of the same connection (90 s job timeout, provider timeout 60 s) and
+`assessment:fail-stale` ([ai-assessment-v1.md](ai-assessment-v1.md)). See
+[data-flow.md](data-flow.md#queue-workers) for worker commands and the
+timeout chain, which `ConfigurationValidator` checks at boot.
 
 ## Configuration and logging
 

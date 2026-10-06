@@ -236,6 +236,23 @@ function Report({ snapshot, projectId }: { snapshot: SkillGapSnapshot; projectId
         ))}
       </div>
 
+      <Card data-testid="assessment-link">
+        <CardHeader>
+          <CardTitle>
+            <h2>AI Assessment</h2>
+          </CardTitle>
+          <CardDescription>
+            An AI-generated, plain-language interpretation of these results, with the evidence behind every statement. It does not
+            change any score, gap or priority.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link href={`/app/projects/${projectId}/assessment`} className="text-sm font-medium underline underline-offset-4">
+            View AI Assessment →
+          </Link>
+        </CardContent>
+      </Card>
+
       <Provenance snapshot={snapshot} projectId={projectId} />
     </div>
   );

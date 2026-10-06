@@ -52,13 +52,16 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `GET` | `/api/v1/projects/{project}/competencies/{snapshot}` | owner | 200 | One competency matrix with levels, evidence and provenance |
 | `GET` | `/api/v1/projects/{project}/skill-gaps` | owner | 200 | Skill gap snapshots (paginated, newest first) |
 | `GET` | `/api/v1/projects/{project}/skill-gaps/{snapshot}` | owner | 200 | One skill gap analysis: targets, gaps, priorities, provenance |
+| `GET` | `/api/v1/projects/{project}/assessments` | owner | 200 | AI assessments (paginated, newest first) |
+| `POST` | `/api/v1/projects/{project}/assessments` | owner | 202 / 200 | Request an AI interpretation of a skill gap analysis (200 = the existing one) |
+| `GET` | `/api/v1/projects/{project}/assessments/{assessment}` | owner | 200 | One AI assessment: status, output, evidence, versions, lineage |
 
 There is no `DELETE` for projects (`405`) and no update, delete or download
 for snapshots. DNA, competency and skill gap snapshots are read-only (no
 write method on `/dna`, `/competencies` or `/skill-gaps`). See
 [Projects](#projects), [Source snapshots](#source-snapshots),
-[Analyses](#analyses), [DNA](#dna), [Competencies](#competencies) and
-[Skill gaps](#skill-gaps).
+[Analyses](#analyses), [DNA](#dna), [Competencies](#competencies),
+[Skill gaps](#skill-gaps) and [AI assessments](#ai-assessments).
 
 ### `GET /api/v1/health`
 
@@ -686,6 +689,107 @@ Newest first (`created_at`, then `id`), paginated (`?page`, `?per_page` ≤ 100)
 `results` list targeted competencies in the profile's order, then untargeted
 ones by key.
 
+## AI assessments
+
+AI-generated, **non-authoritative** interpretations of a skill gap analysis
+(Phase 15, [ai-assessment-v1.md](../architecture/ai-assessment-v1.md)). The
+AI explains the stored deterministic results; it never determines or
+changes any score, level, gap, priority or target, and its output contains
+none.
+
+- Owner-only: `404` for another user's or a missing project or assessment,
+  and for an assessment of another project.
+- Archived projects keep their assessments readable but cannot request new
+  ones (`409 PROJECT_ARCHIVED`).
+- There is no update or delete (`405`).
+
+### `POST /api/v1/projects/{project}/assessments`
+
+```json
+{}
+```
+
+or
+
+```json
+{ "skill_gap_snapshot_id": "<ULID of a skill gap snapshot of this project>" }
+```
+
+The body selects a skill gap snapshot; the default is the newest one. It is
+the only accepted field: a prompt, model, provider, score, target, evidence,
+instruction or any other field answers `422 VALIDATION_FAILED`, and unknown
+field names are not echoed. The request only queues work. No AI provider is
+called during it.
+
+| Response | When |
+|---|---|
+| `202` + assessment (`QUEUED`) | New assessment recorded; generation job dispatched |
+| `200` + assessment, `Idempotent-Replayed: true` | An assessment with the same identity is `QUEUED`, `RUNNING` or `SUCCEEDED` |
+| `409 AI_ASSESSMENT_DISABLED` | AI is not enabled on the server (`AI_ENABLED=false`, the default) |
+| `409 ASSESSMENT_EVIDENCE_UNAVAILABLE` | The project has no skill gap snapshot, or its stored evidence does not match its version |
+| `409 ASSESSMENT_INPUT_TOO_LARGE` | The evidence exceeds `AI_MAX_INPUT_BYTES` |
+| `409 PROJECT_ARCHIVED` | The project is archived |
+| `422 VALIDATION_FAILED` | Another field, or a snapshot that is not this project's |
+| `429 RATE_LIMITED` | `assessment-create` limit |
+
+- **Identity:** (project, input fingerprint, assessment version, prompt
+  fingerprint, provider, model).
+- **After a `FAILED` assessment,** the same request creates a new one.
+
+### `GET /api/v1/projects/{project}/assessments`
+
+The list is ordered newest first (`created_at`, then `id`) and paginated
+(`?page`, `?per_page` ≤ 100). Each item has:
+
+- `id` and `type: "ai_assessment"`;
+- `project_id` and `skill_gap_snapshot_id`;
+- `status`: `QUEUED`, `RUNNING`, `SUCCEEDED` or `FAILED`;
+- `assessment_version`, `provider` and `model`;
+- `failure`: `{code, message}` or `null`;
+- `created_at` and `completed_at`.
+
+The list never includes the input or output.
+
+### `GET /api/v1/projects/{project}/assessments/{assessment}`
+
+```json
+{ "data": {
+  "id": "…", "type": "ai_assessment", "project_id": "…", "status": "SUCCEEDED",
+  "notice": "AI-generated interpretation of the deterministic results. It does not determine or change any score, level, gap, priority or target.",
+  "lineage": { "skill_gap_snapshot_id": "…", "competency_snapshot_id": "…", "dna_snapshot_id": "…", "analysis_run_id": "…", "source_snapshot_id": "…" },
+  "versions": { "assessment": "1.0.0", "input_schema": "assessment-input/1.0.0", "output_schema": "assessment/v1", "prompt": "1.0.0",
+                "dna_scoring": "1.0.0", "competency": "1.0.0", "skill_gap": "1.0.0",
+                "target_profile": "ENGINEERING_STANDARD", "target_profile_version": "1.0.0" },
+  "fingerprints": { "specification": "<64 hex>", "prompt": "<64 hex>", "input": "<64 hex>", "output": "<64 hex>" },
+  "provider": { "name": "openai_compatible", "model": "…", "served_model": "…" },
+  "attempts": 1,
+  "output": {
+    "schema_version": "assessment/v1",
+    "summary": { "text": "…", "evidence_refs": ["gap:FUNCTION_DESIGN", "gap:CODE_HYGIENE"] },
+    "strengths": [ { "title": "…", "description": "…", "evidence_refs": ["competency:FUNCTION_DESIGN"] } ],
+    "areas_to_improve": [ { "title": "…", "description": "…", "evidence_refs": ["gap:CODE_HYGIENE"] } ],
+    "development_insights": [],
+    "limitations": [ { "description": "…", "evidence_refs": ["quality:data"] } ] },
+  "evidence": [
+    { "id": "gap:CODE_HYGIENE", "kind": "gap", "label": "Gap: Code hygiene", "description": "…",
+      "facts": { "status": "GAP", "current_score": "0.6000", "target_score": "0.9000", "raw_gap": "0.3000", "material_gap": true,
+                 "priority": "HIGH", "priority_capped": false, "competency": "competency:CODE_HYGIENE" } } ],
+  "failure": null,
+  "created_at": "…", "started_at": "…", "completed_at": "…" } }
+```
+
+- `output` is present only for `SUCCEEDED`.
+- `evidence` is the catalog the interpretation was built from, so every
+  `evidence_refs` entry can be resolved.
+- A `FAILED` assessment has `output: null` and a fixed
+  `failure: {code, message}`. Codes: `PROVIDER_TIMEOUT`,
+  `PROVIDER_RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `PROVIDER_AUTH_FAILED`,
+  `PROVIDER_REJECTED`, `OUTPUT_TOO_LARGE`, `INVALID_OUTPUT`,
+  `INPUT_TOO_LARGE`, `EVIDENCE_CHANGED`, `EVIDENCE_INVALID`,
+  `ASSESSMENT_STALE` and `ASSESSMENT_FAILED`.
+- Responses never contain the prompt, the provider response, keys, headers
+  or lease data.
+
 ## Authentication (browser, Sanctum SPA)
 
 Browsers authenticate with Laravel's **session cookie**. No token is ever
@@ -810,6 +914,9 @@ Every error, on every API route, uses one envelope:
 | 409 | `PROJECT_ARCHIVED` | The project is archived: no edits, no uploads |
 | 409 | `INVALID_SOURCE_TYPE` | Upload to a project whose source type is not `UPLOAD` |
 | 409 | `ANALYSIS_NOT_COMPLETED` | The analysis run has no result (it has not succeeded) |
+| 409 | `AI_ASSESSMENT_DISABLED` | AI assessment is not enabled on the server |
+| 409 | `ASSESSMENT_EVIDENCE_UNAVAILABLE` | No skill gap analysis that can be interpreted |
+| 409 | `ASSESSMENT_INPUT_TOO_LARGE` | The evidence exceeds the AI input limit |
 | 413 | `PAYLOAD_TOO_LARGE` | Body exceeds the Nginx/PHP limit |
 | 413 | `SOURCE_ARCHIVE_TOO_LARGE` | Archive over `SOURCE_MAX_ARCHIVE_BYTES` |
 | 419 | `CSRF_TOKEN_MISMATCH` | Missing or stale `X-XSRF-TOKEN` |
@@ -848,6 +955,7 @@ queued jobs (Laravel Context).
 | `project-update` | `PATCH /projects/{project}`, `POST /projects/{project}/archive` | 30 / minute | user ID |
 | `source-upload` | `POST /projects/{project}/source-snapshots` | 5 / minute **and** 60 / hour | user ID |
 | `analysis-create` | `POST /projects/{project}/analyses` | 10 / minute | user ID |
+| `assessment-create` | `POST /projects/{project}/assessments` | 5 / minute **and** 30 / hour | user ID |
 
 Every attempt counts, successful or not. When a limit is exceeded the
 response is `429 RATE_LIMITED` with `Retry-After`. Throttled routes also
