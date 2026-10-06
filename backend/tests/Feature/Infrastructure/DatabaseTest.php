@@ -27,9 +27,10 @@ final class DatabaseTest extends TestCase
             "select table_name from information_schema.tables where table_schema = 'public' order by table_name"
         ))->pluck('table_name')->all();
 
-        // Framework/auth (Phase 03) + the four domain tables (Phase 05), nothing else.
+        // Framework/auth (Phase 03), the four domain tables (Phase 05) and
+        // developer profiles (Phase 06), nothing else.
         $this->assertSame([
-            'analysis_runs', 'dna_snapshots', 'failed_jobs', 'migrations',
+            'analysis_runs', 'developer_profiles', 'dna_snapshots', 'failed_jobs', 'migrations',
             'personal_access_tokens', 'projects', 'source_snapshots', 'users',
         ], $tables);
     }

@@ -1,9 +1,9 @@
 # Data Model
 
-The CodeDNA domain model in PostgreSQL. **Status: Phase 05.** The tables,
-models, relationships, constraints and factories exist. No API exposes them
-yet: project and snapshot endpoints come in Phase 07, the analysis pipeline
-in Phase 10, and scoring in Phase 11.
+The CodeDNA domain model in PostgreSQL. **Status: Phase 06.** The tables,
+models, relationships, constraints and factories exist. Only the developer
+profile has an API (Phase 06). Project and snapshot endpoints come in Phase
+07, the analysis pipeline in Phase 10, and scoring in Phase 11.
 
 Related: [ADR-003](../decisions/ADR-003-storage.md) (storage),
 [ADR-004](../decisions/ADR-004-dna-scoring.md) (versioning, immutability),
@@ -22,7 +22,8 @@ users ──1:n──► projects ──1:n──► source_snapshots ──1:n�
 
 | Table | What it is | Mutable? |
 |---|---|---|
-| `users` | Account (Phase 03) | yes |
+| `users` | Authentication identity: name, email, password (Phase 03) | yes |
+| `developer_profiles` | The developer's product profile, exactly one per user (Phase 06) | yes (editable fields) |
 | `projects` | A developer's project and its source origin | yes (descriptive fields, ACTIVE → ARCHIVED) |
 | `source_snapshots` | Immutable reference to the exact source analyzed | **never** |
 | `analysis_runs` | One pipeline execution against one snapshot | only until a terminal state |
@@ -37,7 +38,8 @@ integrations (Phase 19) will add their own tables when they exist.
 
 | Model | Relationships |
 |---|---|
-| `User` | `projects()` hasMany |
+| `User` | `developerProfile()` hasOne; `projects()` hasMany |
+| `DeveloperProfile` | `user()` belongsTo |
 | `Project` | `user()` belongsTo; `sourceSnapshots()`, `analysisRuns()`, `dnaSnapshots()` hasMany |
 | `SourceSnapshot` | `project()` belongsTo; `analysisRuns()` hasMany |
 | `AnalysisRun` | `project()`, `sourceSnapshot()` belongsTo; `dnaSnapshot()` hasOne |
@@ -52,6 +54,50 @@ eager-load (`with('sourceSnapshots.analysisRuns')`).
 All primary keys are ULIDs (`HasUlids`, the same as `users`). All timestamps
 are `timestamp(0)` columns holding UTC, as for `users`. The application
 timezone is UTC, and the boot-time configuration validator enforces this.
+
+### developer_profiles
+
+Authentication identity stays in `users`. Everything a developer says about
+themselves lives here, so product fields never pile up on the identity
+table.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ULID PK | |
+| `user_id` | ULID FK → `users`, **unique**, `RESTRICT` | exactly one profile per user |
+| `display_name` | varchar(100), null | not blank when set |
+| `bio` | text, null | at most 1000 characters, not blank when set |
+| `avatar_url` | varchar(2048), null | `https://` only (no uploads yet) |
+| `timezone` | varchar(64), default `UTC` | canonical IANA identifier |
+| `locale` | varchar(16), default `en` | `SupportedLocale`: `en`, `uz`, `ru` |
+| `country_code` | char(2), null | two uppercase letters |
+| `city`, `job_title`, `company` | varchar(100), null | not blank when set |
+| `website_url`, `linkedin_url` | varchar(2048), null | `https://` only |
+| `github_username` | varchar(39), null | GitHub's format; a self-declared handle, **not** a linked account |
+| `preferred_language` | varchar(64), null | `ProgrammingLanguage` value, same format as `projects.language` |
+| `metadata` | jsonb, null | internal only: never fillable, never returned by the API; object ≤ 16 KiB |
+| `created_at`, `updated_at` | timestamp(0) | |
+
+- **Creation:** `RegisterUser` creates the user and the profile (defaults
+  only: `UTC`, `en`, everything else `NULL`) in one transaction. The
+  migration gave every existing user a default profile. A user created
+  any other way gets one on first API access (`ResolveDeveloperProfile`,
+  `createOrFirst` on the unique `user_id`).
+- **Validation split:** the application decides which values are allowed
+  (IANA time zone list, supported locales, programming languages, URL
+  rules). The database checks formats and lengths (`https://` prefix,
+  locale and country code shape, GitHub username shape, blank strings,
+  metadata type and size), so no write path can store malformed data.
+  Neither list of allowed values is a CHECK constraint, so adding a locale
+  or language needs no migration.
+- **Time zone and locale are presentation preferences.** All stored
+  timestamps remain UTC. The locale is stored only; the UI is not
+  translated yet.
+- **Never stored here:** passwords, tokens, OAuth or GitHub credentials,
+  session data, source code. `metadata` is not a user-data bucket: the API
+  cannot write it, and core fields are relational columns.
+- **Deletion:** `RESTRICT`, like the history tables. A user with a profile
+  cannot be deleted. Account deletion is a future explicit purge workflow.
 
 ### projects
 
@@ -280,7 +326,9 @@ when the engine changes: re-analysis creates new runs and new DNA snapshots.
   projects.
 - Factories (`database/factories`) build valid graphs for tests:
   `DnaSnapshot::factory()` creates user → project → snapshot → succeeded
-  run → DNA.
+  run → DNA. `User::factory()` creates no profile by itself; use
+  `User::factory()->has(DeveloperProfile::factory())` (states `minimal()`
+  and `complete()`).
 - DNA factory values are **test fixtures**, marked
   `evidence.fixture = true`, and are never real CodeDNA results.
 - Tests run against `codedna_test` only (Phase 03 guard).

@@ -89,9 +89,16 @@ check "POST /api/v1/auth/logout -> 204" bash -c "[[ \$(api POST /api/v1/auth/log
 check "GET /api/v1/me after logout -> 401" bash -c "[[ \$(api GET /api/v1/me) == 401 ]]"
 check "POST /api/v1/auth/login -> 200" bash -c \
     "[[ \$(api POST /api/v1/auth/login '{\"email\":\"$probe_email\",\"password\":\"$probe_password\"}') == 200 ]]"
+check "GET /api/v1/profile with session -> 200 (created at registration)" bash -c "[[ \$(api GET /api/v1/profile) == 200 ]]"
+check "PATCH /api/v1/profile -> 200" bash -c "[[ \$(api PATCH /api/v1/profile '{\"timezone\":\"Asia/Tashkent\"}') == 200 ]]"
+check "cross-site PATCH /api/v1/profile without X-XSRF-TOKEN -> 419" bash -c \
+    "[[ \$(curl -s -o /dev/null -w '%{http_code}' -b '$jar' -X PATCH -H '$origin' -H 'Sec-Fetch-Site: cross-site' -H 'Accept: application/json' -H 'Content-Type: application/json' -d '{\"city\":\"x\"}' '$base/api/v1/profile') == 419 ]]"
+check "cross-site PATCH /api/v1/auth/password without X-XSRF-TOKEN -> 419" bash -c \
+    "[[ \$(curl -s -o /dev/null -w '%{http_code}' -b '$jar' -X PATCH -H '$origin' -H 'Sec-Fetch-Site: cross-site' -H 'Accept: application/json' '$base/api/v1/auth/password') == 419 ]]"
 rm -f "$jar"
-check "remove probe user" "${compose[@]}" exec -T postgres sh -c \
-    "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -qc \"DELETE FROM users WHERE email = '$probe_email'\""
+# developer_profiles references users with RESTRICT: remove the profile first.
+check "remove probe user and profile" "${compose[@]}" exec -T postgres sh -c \
+    "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=1 -qc \"BEGIN; DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;\""
 
 echo "Internal networking"
 check "backend -> analyzer:8000 health" in_service backend curl -fsS http://analyzer:8000/internal/v1/health

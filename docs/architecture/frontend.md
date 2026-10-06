@@ -1,8 +1,9 @@
 # Frontend Architecture (Next.js)
 
-**Status: Phase 04 foundation.** It provides sign-in, registration,
-sign-out, a protected application shell, the API client and the UI
-foundation. No product features exist yet.
+**Status: Phase 06.** It provides sign-in, registration, sign-out, a
+protected application shell, the profile and password settings page, the
+API client and the UI foundation. No project or analysis features exist
+yet.
 
 Related: [ADR-006](../decisions/ADR-006-authentication.md) (authentication),
 [API reference](../api/README.md), [backend.md](backend.md),
@@ -33,11 +34,13 @@ frontend/src/
 │   ├── (auth)/register/page.tsx
 │   ├── app/layout.tsx                /app: server-side session gate + AppShell
 │   ├── app/page.tsx, app/loading.tsx
+│   ├── app/profile/page.tsx          /app/profile: account, developer profile, password
 │   ├── error.tsx, not-found.tsx
 ├── components/
-│   ├── ui/                           shadcn/ui: button, input, label, card, alert
+│   ├── ui/                           shadcn/ui: button, input, label, card, alert, textarea, native-select
 │   ├── auth/                         login/register forms, logout button, AuthProvider, error alert
-│   ├── app/app-shell.tsx             sidebar + header with the signed-in user
+│   ├── profile/                      ProfileSettings (loader), ProfileForm, PasswordForm, field + validation
+│   ├── app/app-shell.tsx             sidebar navigation (Home, Profile) + header with the signed-in user
 │   └── brand/logo.tsx
 ├── lib/
 │   ├── api/types.ts                  TypeScript mirror of the Laravel API contract
@@ -46,6 +49,8 @@ frontend/src/
 │   ├── api/client.ts                 browser client (same-origin, cookies, CSRF)
 │   ├── auth/client.ts                login(), register(), logout()
 │   ├── auth/session.ts               getSession(): server-side GET /api/v1/me
+│   ├── profile/client.ts             getProfile(), updateProfile(), changePassword()
+│   ├── profile/options.ts            labels for locales and languages; time zone suggestions
 │   ├── config.server.ts              server-only env (BACKEND_INTERNAL_URL, FRONTEND_URL)
 │   └── utils.ts                      shadcn `cn` helper
 └── test/                             test helpers (API response builders, router mock)
@@ -60,13 +65,16 @@ description is introduced, they move to `packages/types` and are generated.
 | Route | Rendering | Behavior |
 |---|---|---|
 | `/` | static | Public landing page with "Sign in" and "Create account". No API call. |
-| `/login` | dynamic | Signed in → `307` to `/app`. Otherwise the sign-in form. |
+| `/login` | dynamic | Signed in → `307` to `/app`. Otherwise the sign-in form. `?reason=password-changed` shows a fixed notice. |
 | `/register` | dynamic | Signed in → `307` to `/app`. Otherwise the registration form. |
 | `/app` | dynamic | Signed out → `307` to `/login`. Otherwise the app shell with the current user. |
+| `/app/profile` | dynamic | Signed out → `307` to `/login` (same layout gate). Account identity, developer profile form, password change. |
 | anything else | — | Not-found page. |
 
 There is no `?next=` return-URL parameter, so there is no open-redirect
-surface. Successful sign-in always goes to `/app`.
+surface. Successful sign-in always goes to `/app`. The login page's
+`reason` parameter is only compared with `password-changed`; it is never
+rendered or used as a navigation target.
 
 ## Authentication
 
@@ -121,6 +129,33 @@ LoginForm ──► lib/auth/client.login() ──► api.post("/api/v1/auth/log
 - **Logout:** `POST /api/v1/auth/logout`, then go to `/login`. A `401`
   (session already expired) counts as success. A network or server failure
   keeps the user in place with an error message.
+
+## Profile and password (`/app/profile`)
+
+- **Account** card: name and email from the server-resolved session, with
+  "(not verified)" while email verification is not active. They are
+  read-only for now.
+- **Developer profile**: `ProfileSettings` loads `GET /api/v1/profile` with
+  the shared API client and shows a loading state (`role="status"`), an
+  error with a retry, or `ProfileForm`. The form validates on the client
+  (lengths, `https://` URLs, GitHub username, two-letter country code,
+  time zone required), sends every field with empty inputs as `null`, shows
+  server field errors under each input, and on success stays on the page
+  with "Profile saved." and the values the server returned (for example the
+  uppercase country code).
+  - Time zone is a text input with suggestions from
+    `Intl.supportedValuesOf("timeZone")`. The server is authoritative and
+    rejects legacy aliases that a browser may suggest.
+  - Interface language (`en`, `uz`, `ru`) and preferred programming language
+    are native selects. The locale is stored only; the UI is not translated.
+  - Profile URLs are never rendered as links or images yet (no avatar
+    preview), so a stored URL cannot trigger requests to third parties.
+- **Password**: `PasswordForm` checks the current password is present, the
+  new one meets the 8–72 policy, differs from the current one and matches
+  the confirmation. On success it goes to `/login?reason=password-changed`,
+  because the server ended the session. After a failed attempt the password
+  inputs are cleared.
+- A `401` from any of these calls (session ended) navigates to `/login`.
 
 ## API client (`lib/api`)
 
@@ -203,10 +238,15 @@ The tests cover:
 - the login and register forms (client validation, server validation,
   invalid credentials, rate limit, server error with reference)
 - logout, including an already-expired session
+- the profile client, the profile loader (loading, error with retry, 401),
+  the profile form (display, save, client and server validation, server
+  errors, 401) and the password form (validation, success redirect, wrong
+  current password, rate limit)
+- the Profile navigation item and the login page's password-changed notice
 
-Browser end-to-end checks are not yet part of the repository. Phase 04
-verified the full browser flow with Playwright and Chromium against the
-Docker stack (see the Phase 04 report). Adding a committed Playwright suite
+Browser end-to-end checks are not yet part of the repository. Phases 04
+and 06 verified the full browser flows with Playwright and Chromium against
+the Docker stack (see the phase reports). Adding a committed Playwright suite
 is planned for the QA phase. `make verify` covers the HTTP-level flow
 through Nginx.
 

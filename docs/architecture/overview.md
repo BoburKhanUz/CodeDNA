@@ -6,9 +6,10 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 05 (database and domain model) complete. The
-local environment runs every component. Users can register, sign in and sign
-out, and the PostgreSQL domain model (projects, source snapshots, analysis
+**Current status:** Phase 06 (authentication and developer profile)
+complete. The local environment runs every component. Users can register,
+sign in and sign out, edit their developer profile and change their
+password. The PostgreSQL domain model (projects, source snapshots, analysis
 runs, DNA snapshots; see [data-model.md](data-model.md)) exists, but no
 product feature uses it yet. Everything below is the target architecture.
 
@@ -98,8 +99,8 @@ at a time:
 | 03 | Laravel backend foundation | Done |
 | 04 | Next.js frontend foundation | Done |
 | 05 | Database and domain model | Done |
-| 06 | Authentication and developer profile | Next |
-| 07 | Projects and repository management (ZIP upload) | — |
+| 06 | Authentication and developer profile | Done |
+| 07 | Projects and repository management (ZIP upload) | Next |
 | 08 | Python analyzer foundation (IR frozen first) | — |
 | 09 | AST and static analysis (PHP → Python → JS → TS) | — |
 | 10 | Analysis queue and pipeline | — |

@@ -1,16 +1,23 @@
 "use client";
 
-import { Home } from "lucide-react";
+import { Home, UserRound } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { useCurrentUser } from "@/components/auth/auth-provider";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { Logo } from "@/components/brand/logo";
 
+const NAVIGATION = [
+  { href: "/app", label: "Home", icon: Home },
+  { href: "/app/profile", label: "Profile", icon: UserRound },
+] as const;
+
 /** Minimal authenticated shell: navigation, signed-in user, sign out. */
 export function AppShell({ children }: { children: ReactNode }) {
   const user = useCurrentUser();
+  const pathname = usePathname();
 
   return (
     <div className="flex min-h-full flex-1 flex-col md:flex-row">
@@ -20,16 +27,25 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
         <nav aria-label="Main">
           <ul className="grid gap-1 text-sm">
-            <li>
-              <Link
-                href="/app"
-                aria-current="page"
-                className="bg-sidebar-accent text-sidebar-accent-foreground flex items-center gap-2 rounded-md px-2 py-1.5 font-medium"
-              >
-                <Home className="size-4" aria-hidden="true" />
-                Home
-              </Link>
-            </li>
+            {NAVIGATION.map(({ href, label, icon: Icon }) => {
+              const current = pathname === href;
+              return (
+                <li key={href}>
+                  <Link
+                    href={href}
+                    aria-current={current ? "page" : undefined}
+                    className={
+                      current
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground flex items-center gap-2 rounded-md px-2 py-1.5 font-medium"
+                        : "hover:bg-sidebar-accent/60 flex items-center gap-2 rounded-md px-2 py-1.5"
+                    }
+                  >
+                    <Icon className="size-4" aria-hidden="true" />
+                    {label}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
       </aside>

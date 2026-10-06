@@ -10,12 +10,15 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 
 /**
- * Minimal authentication user (Phase 03).
+ * Authentication identity (Phase 03). Product-specific developer data lives
+ * in DeveloperProfile (Phase 06): every user has exactly one, created
+ * together with the user at registration.
  *
  * Email verification can be enabled later by implementing
  * Illuminate\Contracts\Auth\MustVerifyEmail, configuring a mailer and adding
@@ -35,6 +38,14 @@ class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, HasUlids, Notifiable;
+
+    /**
+     * @return HasOne<DeveloperProfile, $this>
+     */
+    public function developerProfile(): HasOne
+    {
+        return $this->hasOne(DeveloperProfile::class);
+    }
 
     /**
      * @return HasMany<Project, $this>

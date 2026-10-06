@@ -38,6 +38,11 @@ return [
         'login_per_minute_per_ip' => 20,
         // POST /api/v1/auth/register, per IP.
         'register_per_minute_per_ip' => 10,
+        // PATCH /api/v1/profile, per user.
+        'profile_update_per_minute' => 30,
+        // PATCH /api/v1/auth/password, per user (limits current-password guessing).
+        'password_change_per_minute' => 5,
+        'password_change_per_hour' => 20,
     ],
 
 ];

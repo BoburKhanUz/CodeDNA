@@ -64,5 +64,18 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('register', static fn (Request $request): Limit => Limit::perMinute($limits['register_per_minute_per_ip'])
             ->by('register-ip:'.$request->ip()));
+
+        // Authenticated routes: keyed by user (they run after auth:sanctum).
+        RateLimiter::for('profile-update', static fn (Request $request): Limit => Limit::perMinute($limits['profile_update_per_minute'])
+            ->by('profile-update:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        RateLimiter::for('password-change', static function (Request $request) use ($limits): array {
+            $key = 'password-change:'.($request->user()?->getAuthIdentifier() ?? $request->ip());
+
+            return [
+                Limit::perMinute($limits['password_change_per_minute'])->by($key.'|minute'),
+                Limit::perHour($limits['password_change_per_hour'])->by($key.'|hour'),
+            ];
+        });
     }
 }

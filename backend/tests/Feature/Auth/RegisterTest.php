@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Auth;
 
+use App\Models\DeveloperProfile;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
+use RuntimeException;
 use Tests\TestCase;
 
 final class RegisterTest extends TestCase
@@ -52,6 +54,33 @@ final class RegisterTest extends TestCase
         $this->assertAuthenticatedAs($user, 'web');
         $this->assertSame(26, strlen($user->id), 'user IDs are ULIDs');
         Event::assertDispatched(Registered::class, fn (Registered $event): bool => $event->user->is($user));
+    }
+
+    public function test_creates_a_developer_profile_with_defaults(): void
+    {
+        $this->fromBrowser()->postJson(self::URL, $this->payload())->assertCreated();
+
+        $user = User::query()->where('email', 'ada@example.com')->sole();
+        $profile = DeveloperProfile::query()->where('user_id', $user->id)->sole();
+        $this->assertSame('UTC', $profile->timezone);
+        $this->assertSame('en', $profile->locale->value);
+        $this->assertNull($profile->display_name);
+        $this->assertNull($profile->metadata);
+    }
+
+    public function test_user_and_profile_creation_is_atomic(): void
+    {
+        DeveloperProfile::creating(static function (): never {
+            throw new RuntimeException('Simulated profile failure.');
+        });
+
+        $this->fromBrowser()->postJson(self::URL, $this->payload())
+            ->assertStatus(500)
+            ->assertJsonPath('error.code', 'INTERNAL_ERROR');
+
+        $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('developer_profiles', 0);
+        $this->assertGuest('web');
     }
 
     public function test_stores_the_password_as_a_bcrypt_hash(): void
@@ -99,6 +128,7 @@ final class RegisterTest extends TestCase
             ->assertJsonStructure(['error' => ['details' => ['fields' => ['name', 'email', 'password']]]]);
         $this->assertIsList($response->json('error.details.fields.email'));
         $this->assertDatabaseCount('users', 0);
+        $this->assertDatabaseCount('developer_profiles', 0);
         $this->assertGuest('web');
     }
 

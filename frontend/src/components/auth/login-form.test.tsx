@@ -28,6 +28,12 @@ async function fillAndSubmit(email: string, password: string) {
 }
 
 describe("LoginForm", () => {
+  it("shows a fixed notice after a password change", () => {
+    render(<LoginForm notice="password-changed" />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Your password was changed. Sign in with your new password.");
+  });
+
   it("renders an accessible form", () => {
     render(<LoginForm />);
 

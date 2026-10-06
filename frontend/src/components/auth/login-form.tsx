@@ -1,5 +1,6 @@
 "use client";
 
+import { Info } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -7,6 +8,7 @@ import { useState, type FormEvent } from "react";
 import { ApiErrorAlert } from "@/components/auth/api-error-alert";
 import { FormField } from "@/components/auth/form-field";
 import { firstServerErrors, hasErrors, validateEmail, type FieldErrors } from "@/components/auth/validation";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { isApiError } from "@/lib/api/errors";
@@ -15,7 +17,7 @@ import { login } from "@/lib/auth/client";
 const FIELDS = ["email", "password"] as const;
 type Field = (typeof FIELDS)[number];
 
-export function LoginForm() {
+export function LoginForm({ notice }: { notice?: "password-changed" } = {}) {
   const router = useRouter();
   const [values, setValues] = useState<Record<Field, string>>({ email: "", password: "" });
   const [fieldErrors, setFieldErrors] = useState<FieldErrors<Field>>({});
@@ -62,6 +64,12 @@ export function LoginForm() {
       <form onSubmit={onSubmit} noValidate aria-busy={submitting}>
         <CardContent className="grid gap-4">
           {formError ? <ApiErrorAlert error={formError} /> : null}
+          {notice === "password-changed" && !formError ? (
+            <Alert role="status">
+              <Info aria-hidden="true" />
+              <AlertDescription>Your password was changed. Sign in with your new password.</AlertDescription>
+            </Alert>
+          ) : null}
           <FormField
             id="email"
             label="Email"

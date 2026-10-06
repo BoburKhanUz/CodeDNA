@@ -4,7 +4,7 @@ The public product API is served by Laravel under `/api/v1`. The **internal**
 analyzer API is separate and never public; see
 [internal-analyzer-contract.md](internal-analyzer-contract.md).
 
-**Status:** Phase 03/04. The endpoints below are implemented and tested, and
+**Status:** Phase 06. The endpoints below are implemented and tested, and
 the Next.js frontend consumes them. Planned endpoints are listed at the end
 and **do not exist yet**. The frontend's TypeScript mirror of this contract
 is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
@@ -30,7 +30,10 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `POST` | `/api/v1/auth/register` | browser session | 201 | Create an account and log in |
 | `POST` | `/api/v1/auth/login` | browser session | 200 | Log in |
 | `POST` | `/api/v1/auth/logout` | authenticated | 204 | Log out |
+| `PATCH` | `/api/v1/auth/password` | authenticated, browser session | 204 | Change the password (ends the session) |
 | `GET` | `/api/v1/me` | authenticated | 200 | Current user |
+| `GET` | `/api/v1/profile` | authenticated | 200 | The caller's developer profile |
+| `PATCH` | `/api/v1/profile` | authenticated | 200 | Update the caller's developer profile |
 
 ### `GET /api/v1/health`
 
@@ -106,7 +109,91 @@ ID), and rotates the CSRF token. Without a session it returns `401`.
 
 Users are serialized by `UserResource` with an explicit field list.
 `password`, `remember_token` and any future attribute are never exposed
-unless they are added to the resource.
+unless they are added to the resource. `/me` is the identity only; the
+developer profile has its own endpoint.
+
+### `GET /api/v1/profile`
+
+Returns the authenticated developer's profile. There is no profile ID in the
+URL: a caller can only ever read and change their own profile, so another
+user's profile cannot be addressed.
+
+```json
+{
+  "data": {
+    "id": "01k6m2y5a7j1x9v3q8n4r2t6xa",
+    "type": "developer_profile",
+    "display_name": "Ada",
+    "bio": "Backend developer.",
+    "avatar_url": null,
+    "timezone": "Asia/Tashkent",
+    "locale": "uz",
+    "country_code": "UZ",
+    "city": "Tashkent",
+    "job_title": "Senior Engineer",
+    "company": null,
+    "website_url": "https://ada.example.com",
+    "github_username": "ada-lovelace",
+    "linkedin_url": null,
+    "preferred_language": "php",
+    "updated_at": "2026-10-06T12:00:00Z"
+  }
+}
+```
+
+Profiles are serialized by `DeveloperProfileResource` with an explicit field
+list. The owner ID and the internal `metadata` column are never returned.
+Every user has a profile: registration creates it. A user created some other
+way gets the default profile on first access (still `200`).
+
+### `PATCH /api/v1/profile`
+
+A partial update: send only the fields to change. `null` (or `""`) clears an
+optional field. Any other field (`id`, `user_id`, `metadata`, ...) is
+ignored. The response is the updated profile (`200`).
+
+| Field | Rules |
+|---|---|
+| `display_name`, `city`, `job_title`, `company` | optional, string, max 100 |
+| `bio` | optional, string, max 1000 |
+| `avatar_url`, `website_url`, `linkedin_url` | optional, absolute `https://` URL with a host, max 2048, no `user:password@`, no whitespace |
+| `timezone` | cannot be cleared; a canonical IANA time zone (`UTC`, `Asia/Tashkent`, `Europe/Moscow`). Offsets such as `UTC+5`, legacy aliases and wrong case are rejected |
+| `locale` | cannot be cleared; one of `en`, `uz`, `ru` |
+| `country_code` | optional, two letters; stored uppercase (`uz` → `UZ`) |
+| `github_username` | optional, GitHub's format: 1–39 letters, digits and single hyphens, not at either end. A leading `@` is removed |
+| `preferred_language` | optional, one of `c`, `cpp`, `csharp`, `dart`, `elixir`, `go`, `java`, `javascript`, `kotlin`, `php`, `python`, `ruby`, `rust`, `scala`, `swift`, `typescript` |
+
+`timezone` and `locale` are presentation preferences. API timestamps stay
+UTC, and the UI is not translated yet.
+
+### `PATCH /api/v1/auth/password`
+
+```json
+{ "current_password": "…", "password": "…", "password_confirmation": "…" }
+```
+
+| Field | Rules |
+|---|---|
+| `current_password` | required, must match the account's password |
+| `password` | required, the registration policy (8–72 characters), must match `password_confirmation`, must differ from `current_password` |
+
+On success the response is `204` with no body. The password is re-hashed
+with bcrypt, the remember-me token is rotated, and **the current session is
+invalidated** (as on logout), so the client must sign in again. Every other
+session of the user is rejected on its next request (`401`), because
+Sanctum's `AuthenticateSession` middleware compares the password hash each
+session was created with. A wrong current password returns `422
+VALIDATION_FAILED` with `details.fields.current_password`. Password values
+never appear in responses or logs; a log line records only that the user's
+password changed.
+
+### Account deletion and email verification
+
+There is no account deletion endpoint. Users, profiles and project history
+use `RESTRICT` foreign keys, so deleting an account needs a deliberate purge
+workflow, planned for a later phase. Email verification is not enforced yet
+(`email_verified_at` is returned but nothing requires it); see
+[backend.md](../architecture/backend.md#authentication-and-authorization).
 
 ## Authentication (browser, Sanctum SPA)
 
@@ -129,8 +216,8 @@ Requirements for a request to get a session ("stateful"):
   fallback).
 - Same-origin `fetch` sends cookies by default. Cross-origin setups need
   `credentials: "include"`.
-- `register`, `login` and `logout` **require** a session. A request without
-  one gets `400 BAD_REQUEST`.
+- `register`, `login`, `logout` and `auth/password` **require** a session.
+  A request without one gets `400 BAD_REQUEST`.
 
 ### Cookies
 
@@ -247,6 +334,8 @@ queued jobs (Laravel Context).
 | `api` | every `/api/v1` route | 120 / minute | user ID, or IP when anonymous |
 | `login` | `POST /auth/login` | 5 / minute **and** 20 / minute | email + IP, **and** IP |
 | `register` | `POST /auth/register` | 10 / minute | IP |
+| `profile-update` | `PATCH /profile` | 30 / minute | user ID |
+| `password-change` | `PATCH /auth/password` | 5 / minute **and** 20 / hour | user ID |
 
 Every attempt counts, successful or not. When a limit is exceeded the
 response is `429 RATE_LIMITED` with `Retry-After`. Throttled routes also

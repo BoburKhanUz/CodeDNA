@@ -106,4 +106,41 @@ final class SessionLifecycleTest extends TestCase
             ->assertUnauthorized()
             ->assertJsonPath('error.code', 'AUTHENTICATION_REQUIRED');
     }
+
+    private function changePassword(string $sessionId): TestResponse
+    {
+        return $this->request('PATCH', '/api/v1/auth/password', $sessionId, [
+            'current_password' => 'password',
+            'password' => 'brand-new-secret-7',
+            'password_confirmation' => 'brand-new-secret-7',
+        ]);
+    }
+
+    public function test_changing_the_password_invalidates_the_current_session(): void
+    {
+        $sessionId = $this->sessionIdFrom($this->login()->assertOk());
+
+        $response = $this->changePassword($sessionId)->assertNoContent();
+
+        $this->assertNotSame($sessionId, $this->sessionIdFrom($response), 'a fresh session ID is issued');
+        $this->assertFalse($this->sessionExists($sessionId), 'the authenticated session is destroyed');
+        $this->request('GET', '/api/v1/me', $sessionId)->assertUnauthorized();
+        $this->request('GET', '/api/v1/me', $this->sessionIdFrom($response))->assertUnauthorized();
+    }
+
+    public function test_changing_the_password_signs_out_other_sessions(): void
+    {
+        $laptop = $this->sessionIdFrom($this->login()->assertOk());
+        $phone = $this->sessionIdFrom($this->login()->assertOk());
+        // Each session records the password hash it was authenticated with
+        // (Sanctum's AuthenticateSession middleware) on its first request.
+        $this->request('GET', '/api/v1/me', $phone)->assertOk();
+
+        $this->changePassword($laptop)->assertNoContent();
+
+        $this->request('GET', '/api/v1/me', $phone)
+            ->assertUnauthorized()
+            ->assertJsonPath('error.code', 'AUTHENTICATION_REQUIRED');
+        $this->request('GET', '/api/v1/me', $phone)->assertUnauthorized();
+    }
 }

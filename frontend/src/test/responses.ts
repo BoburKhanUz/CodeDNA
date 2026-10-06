@@ -1,4 +1,4 @@
-import type { ApiErrorCode, User, ValidationErrors } from "@/lib/api/types";
+import type { ApiErrorCode, DeveloperProfile, User, ValidationErrors } from "@/lib/api/types";
 
 /** Builders for responses shaped exactly like the Laravel API's. */
 
@@ -31,4 +31,23 @@ export const user: User = {
   email: "ada@example.com",
   email_verified_at: null,
   created_at: "2026-10-05T12:00:00Z",
+};
+
+export const profile: DeveloperProfile = {
+  id: "01k6m2y5a7j1x9v3q8n4r2t6xa",
+  type: "developer_profile",
+  display_name: null,
+  bio: null,
+  avatar_url: null,
+  timezone: "UTC",
+  locale: "en",
+  country_code: null,
+  city: null,
+  job_title: null,
+  company: null,
+  website_url: null,
+  github_username: null,
+  linkedin_url: null,
+  preferred_language: null,
+  updated_at: "2026-10-06T12:00:00Z",
 };

@@ -1,9 +1,10 @@
 # Backend Architecture (Laravel)
 
-Laravel is the product and business backend. **Status: Phase 03
-foundation.** It provides authentication, the versioned API skeleton,
-standard responses and errors, health checks, and Redis-backed sessions,
-cache and queues. No business domain exists yet.
+Laravel is the product and business backend. **Status: Phase 06.** It
+provides authentication, the developer profile, password change, the
+versioned API skeleton, standard responses and errors, health checks, and
+Redis-backed sessions, cache and queues. The domain model (Phase 05) exists,
+but no project or analysis API does yet.
 
 Related: [ADR-001](../decisions/ADR-001-stack.md),
 [ADR-005](../decisions/ADR-005-service-communication.md),
@@ -13,8 +14,8 @@ Related: [ADR-001](../decisions/ADR-001-stack.md),
 
 ## Responsibilities
 
-Laravel owns users and authentication. In later phases it also owns
-profiles, projects, repositories and provider integrations, source
+Laravel owns users, authentication and developer profiles. In later phases
+it also owns projects, repositories and provider integrations, source
 snapshots, analysis orchestration and status, result persistence, DNA
 snapshots, competencies, learning data, organizations, teams and billing.
 It also owns authorization, rate limiting and every business rule.
@@ -54,24 +55,31 @@ Nginx ──FastCGI──► PHP-FPM ──► global middleware
 ```text
 backend/
 ├── app/
-│   ├── Actions/Auth/              RegisterUser, AuthenticateUser, StartUserSession, LogoutUser
+│   ├── Actions/Auth/              RegisterUser, AuthenticateUser, StartUserSession, LogoutUser, ChangePassword
+│   ├── Actions/Profile/           ResolveDeveloperProfile, UpdateDeveloperProfile
+│   ├── Actions/Snapshots/         RecordSourceSnapshot
+│   ├── Casts/JsonObject.php       JSONB object cast ({} for empty, lists rejected)
+│   ├── Enums/                     domain states, SupportedLocale, ProgrammingLanguage
 │   ├── Exceptions/                ApiException (client-facing, carries an ErrorCode),
 │   │                              InvalidConfigurationException
 │   ├── Http/
-│   │   ├── Controllers/Api/V1/    HealthController, MeController, Auth/{Register,Login,Logout}Controller
+│   │   ├── Controllers/Api/V1/    HealthController, MeController, Auth/{Register,Login,Logout,Password}Controller,
+│   │   │                          Profile/ProfileController
 │   │   ├── Errors/                ErrorCode (vocabulary), ApiExceptionRenderer
 │   │   ├── Middleware/            AssignRequestId, RequireSession
-│   │   ├── Requests/Auth/         RegisterRequest, LoginRequest
-│   │   └── Resources/             UserResource
-│   ├── Models/User.php
-│   ├── Policies/UserPolicy.php
+│   │   ├── Requests/              Auth/{Register,Login,ChangePassword}Request,
+│   │   │                          Profile/UpdateDeveloperProfileRequest
+│   │   └── Resources/             UserResource, DeveloperProfileResource
+│   ├── Models/                    User, DeveloperProfile, Project, SourceSnapshot, AnalysisRun, DnaSnapshot
+│   ├── Policies/                  UserPolicy, DeveloperProfilePolicy
+│   ├── Rules/HttpsUrl.php         https:// URL, host required, no embedded credentials
 │   ├── Providers/AppServiceProvider.php   config validation, rate limiters, password rules, strict models
 │   ├── Services/SystemHealth.php          database/Redis readiness checks
 │   └── Support/ConfigurationValidator.php
 ├── bootstrap/app.php              routing (api prefix), middleware, exception rendering
 ├── config/codedna.php             CodeDNA settings (service, version, proxies, rate limits)
 ├── routes/api.php                 mounts /api/v1 → routes/api_v1.php
-└── tests/{Unit,Feature/{Auth,Api,Infrastructure}}
+└── tests/{Unit,Feature/{Auth,Api,Domain,Infrastructure,Profile}}
 ```
 
 ### Conventions
@@ -132,13 +140,31 @@ redirect.
   redesign: the `personal_access_tokens` table exists (with ULID morphs) so
   Sanctum can reject unknown bearer tokens cleanly. Issuing tokens, and the
   `HasApiTokens` trait, come with that feature.
-- **Email verification** is not active. `email_verified_at` exists. To
-  enable it, implement `MustVerifyEmail`, configure a mailer and add the
-  verification routes. `Registered` is already dispatched on sign-up.
-  Mail goes to the log for now (`MAIL_MAILER=log`).
+- **Email verification** is not active. `email_verified_at` exists and is
+  returned by `/me`, and the profile page shows "not verified". The future
+  workflow: implement `MustVerifyEmail`, configure a real mailer, add the
+  signed verification and resend routes (rate limited), then require
+  `verified` on the routes that need it. `Registered` is already dispatched
+  after sign-up, so the notification hooks in without changing
+  registration. Mail goes to the log for now (`MAIL_MAILER=log`).
+- **Password change** (`PATCH /api/v1/auth/password`, `ChangePassword`):
+  the current password is checked with the `current_password` rule (the
+  configured hasher), the new one follows `Password::defaults()` and must
+  differ. The action stores the new hash, rotates `remember_token`, logs
+  `Password changed.` with the user ID only, and invalidates the session
+  like logout. Other sessions are rejected on their next request by
+  Sanctum's `AuthenticateSession` middleware, which is already part of the
+  stateful stack and compares the password hash stored in each session.
+  Laravel never flashes `password`, `password_confirmation` or
+  `current_password`, and password parameters are `#[SensitiveParameter]`.
+- **Account deletion** is not available. `users` is referenced by
+  `RESTRICT` foreign keys (profiles, projects, DNA history), so deletion will
+  be an explicit purge workflow in a later phase.
 - **Authorization** uses policies, resolved by Laravel's naming convention.
   `UserPolicy::view` allows a user to view only their own account, and `/me`
-  checks it through the `Gate` contract. Organization, team and project
+  checks it through the `Gate` contract. `DeveloperProfilePolicy` allows
+  `view` and `update` for the owner only; the profile endpoints have no ID
+  in the URL, and the controller authorizes the resolved profile anyway. Organization, team and project
   authorization will be added as new policies on top of the same guard,
   without changing authentication.
 
@@ -151,6 +177,8 @@ redirect.
   `failed_jobs`, and `migrations`. Laravel's default `sessions`, `cache`,
   `jobs`, `job_batches` and `password_reset_tokens` tables are not created,
   because those features run on Redis or don't exist yet.
+- Developer profiles (Phase 06): `developer_profiles`, 1:1 with `users`
+  (see [data-model.md](data-model.md#developer_profiles)).
 - Domain tables (Phase 05): `projects`, `source_snapshots`,
   `analysis_runs`, `dna_snapshots`. Schema, states, lifecycle, immutability
   and indexes are documented in [data-model.md](data-model.md). States are
@@ -173,17 +201,15 @@ row that must change together**, for example marking an analysis run
 when the row must be locked to assign a value safely
 (`RecordSourceSnapshot` locks the project to assign the next snapshot
 version). Don't
-add transactions mechanically: registration performs a single insert and
-uses none. The Redis queue connection has `after_commit = true`, so jobs
+add transactions mechanically. Registration writes the user and its
+developer profile in one transaction (`RegisterUser`), so a failed profile
+insert rolls the user back; the `Registered` event and the session start only
+after the commit. The Redis queue connection has `after_commit = true`, so jobs
 dispatched inside a transaction are pushed only after it commits.
 `RegisterUser` turns a unique-constraint race on `email` into a normal
 validation error.
 
 ### Planned tables (later phases)
-
-| Table | Purpose | Phase |
-|---|---|---|
-| `profiles` | Developer profile data (1:1 with users) | 06 |
 
 Whether metrics, features and findings of a run get dedicated tables, or
 stay in the run's `metadata`, is decided in Phase 10. Provider integrations

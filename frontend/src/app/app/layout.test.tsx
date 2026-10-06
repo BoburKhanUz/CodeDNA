@@ -12,7 +12,7 @@ const redirect = vi.fn((path: string) => {
 });
 vi.mock("next/navigation", async () => {
   const { router } = await import("@/test/router");
-  return { redirect: (path: string) => redirect(path), useRouter: () => router };
+  return { redirect: (path: string) => redirect(path), useRouter: () => router, usePathname: () => "/app" };
 });
 
 const { default: AuthenticatedLayout } = await import("@/app/app/layout");
@@ -40,6 +40,9 @@ describe("/app (authenticated area)", () => {
     expect(screen.getByText(user.name)).toBeInTheDocument();
     expect(screen.getByText(user.email)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Profile" })).toHaveAttribute("href", "/app/profile");
+    expect(screen.getByRole("link", { name: "Profile" })).not.toHaveAttribute("aria-current");
   });
 
   it("propagates API failures to the error boundary instead of logging the user out", async () => {

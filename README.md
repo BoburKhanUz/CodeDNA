@@ -21,11 +21,13 @@ ASSESS ─► ANALYZE ─► IDENTIFY GAPS ─► LEARN ─► PRACTICE ─► R
 | 03 | Laravel backend foundation | ✅ Done |
 | 04 | Next.js frontend foundation | ✅ Done |
 | 05 | Database and domain model | ✅ Done |
-| 06 | Authentication and developer profile | ⏭ Next |
+| 06 | Authentication and developer profile | ✅ Done |
+| 07 | Projects and repository management | ⏭ Next |
 
-**No product features exist yet.** The Docker environment runs every
+**No analysis features exist yet.** The Docker environment runs every
 component: Nginx, Laravel 13, Next.js 16, the FastAPI analyzer, PostgreSQL
-16, Redis 7 and MinIO. You can register, sign in and sign out at
+16, Redis 7 and MinIO. You can register, sign in and sign out, edit your
+developer profile and change your password at
 <http://localhost> (Next.js UI, Laravel Sanctum session cookies; see
 [frontend](docs/architecture/frontend.md) and the [API reference](docs/api/README.md)).
 The PostgreSQL domain model exists (projects, source snapshots, analysis
