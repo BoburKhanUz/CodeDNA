@@ -82,6 +82,7 @@ description is introduced, they move to `packages/types` and are generated.
 | `/app/projects/[project]/dna` | dynamic | Same gate. CodeDNA dashboard of the newest assessment, or an empty state. |
 | `/app/projects/[project]/dna/[snapshot]` | dynamic | Same gate. One assessment from the history. Unknown or foreign IDs show "Assessment not found" / "Project not found". |
 | `/app/projects/[project]/competencies` | dynamic | Same gate. Competency Matrix of the newest competency snapshot, or an empty state. |
+| `/app/projects/[project]/skill-gaps` | dynamic | Same gate. Skill gaps of the newest skill gap snapshot against the target profile, or an empty state. |
 | anything else | — | Not-found page. |
 
 There is no `?next=` return-URL parameter, so there is no open-redirect
@@ -274,6 +275,36 @@ types in `lib/api/types.ts`). Reached from the CodeDNA dashboard's
   API error with reference and retry, 401 → `/login`, 404 → "Project not
   found". No score, level, weight or threshold is computed in the browser;
   a test renders an inconsistent payload to prove values are shown as given.
+
+## Skill gaps (`/app/projects/[project]/skill-gaps`)
+
+> Skill Gap results describe measurable differences between observed source-code competency evidence and a versioned target definition. They do not establish developer seniority, intelligence, personality, professional worth, or future potential.
+
+Presentation only (Phase 14), from the read-only
+[skill gap API](../api/README.md#skill-gaps) (`lib/skill-gap/client.ts`).
+Reached from the Competency Matrix's "Skill Gaps" card; links back to the
+project, CodeDNA and the Competency Matrix.
+
+- Target profile card: profile and version, its description, the
+  calibration notice, material-gap and priority thresholds, and the counts
+  of material gaps per priority (backend counts; there is no aggregate).
+- One card per competency: status ("Material gap", "No material gap", …),
+  priority badge, current and target scores with neutral bars, "Gap: 30.00
+  points" (immaterial raw gaps are shown and marked), the capped-priority
+  note, evidence quality, competency level as context, partially supported
+  languages, and an evidence disclosure with the target rationale and each
+  CodeDNA source.
+- Unmeasured competencies show "Insufficient evidence to determine this
+  competency gap." (or the unsupported / unavailable / not targeted text)
+  with the target, and never a gap or priority.
+- "No material competency gaps were identified against the selected
+  engineering standard." for `NO_MATERIAL_GAPS`; a separate "Insufficient
+  evidence" notice for `INSUFFICIENT_DATA`; an empty state when no analysis
+  exists (says whether a competency matrix exists); skeleton, error with
+  reference and retry, 401 → `/login`, 404 → "Project not found".
+- Fixed product text only; no recommendations, courses or generated prose.
+  No gap, priority, target or score is computed in the browser; a test
+  renders an inconsistent payload to prove values are shown as given.
 
 ## API client (`lib/api`)
 

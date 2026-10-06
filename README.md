@@ -52,7 +52,9 @@ these snapshots (score, data quality, dimensions and their evidence) from a
 read-only API; there is no analysis screen yet. Since Phase 13 each DNA
 snapshot also yields a deterministic competency matrix
 ([competency-matrix-v1.md](docs/architecture/competency-matrix-v1.md)) that
-describes evidence in the code, never a developer's seniority or level. The full plan is in
+describes evidence in the code, never a developer's seniority or level, and
+since Phase 14 a skill gap analysis against a versioned engineering target
+([skill-gap-v1.md](docs/architecture/skill-gap-v1.md)). The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance

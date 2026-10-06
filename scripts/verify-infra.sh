@@ -237,6 +237,16 @@ done
 check "static_analysis run has one competency snapshot (competency 1.0.0, linked to its DNA)" bash -c "[[ '$static_competency' == '1.0.0 '*' true' ]]"
 check "GET competencies -> 200 with the snapshot; POST -> 405 (read-only)" bash -c \
     "out=\$(api_json GET /api/v1/projects/$project_id/competencies); [[ \$out == 200* && \$out == *'\"competency_version\":\"1.0.0\"'* && \$out != *storage* ]] && api_json POST /api/v1/projects/$project_id/competencies '{}' | grep -q '^405 '"
+# Phase 14: the worker compares the matrix with the target profile; read-only API.
+static_skill_gap=''
+for _ in $(seq 1 20); do
+    static_skill_gap=$(db "SELECT g.skill_gap_version || ' ' || g.target_profile || ' ' || (SELECT count(*) FROM skill_gap_results r WHERE r.skill_gap_snapshot_id = g.id) FROM skill_gap_snapshots g JOIN competency_snapshots c ON c.id = g.competency_snapshot_id JOIN dna_snapshots d ON d.id = c.dna_snapshot_id WHERE d.analysis_run_id = '$static_run'" 2>/dev/null)
+    [[ -n "$static_skill_gap" ]] && break
+    sleep 0.5
+done
+check "static_analysis run has one skill gap snapshot (1.0.0, ENGINEERING_STANDARD, 4 results)" bash -c "[[ '$static_skill_gap' == '1.0.0 ENGINEERING_STANDARD 4' ]]"
+check "GET skill-gaps -> 200 with the snapshot; POST with a target -> 405 (read-only)" bash -c \
+    "out=\$(api_json GET /api/v1/projects/$project_id/skill-gaps); [[ \$out == 200* && \$out == *'\"target_profile\":{\"key\":\"ENGINEERING_STANDARD\"'* && \$out != *storage* ]] && api_json POST /api/v1/projects/$project_id/skill-gaps '{\"target\":0.95}' | grep -q '^405 '"
 check "repeating a request returns the existing run (200, same ID)" bash -c \
     "out=\$(api_json POST /api/v1/projects/$project_id/analyses '{\"source_snapshot_id\":\"$snapshot_id\"}'); [[ \$out == 200* && \$out == *'$foundation_run'* ]]"
 check "GET result -> verified IR 1.1 static analysis with metrics, no source or URLs" bash -c \
@@ -260,8 +270,8 @@ rm -rf "$jar" "$upload_dir"
 if [[ -n "$project_id" ]]; then
     check "remove probe objects from MinIO" mc_app "mc rm --recursive --force \"app/\$SOURCE_STORAGE_BUCKET/projects/$project_id/\""
 fi
-check "remove probe rows (competencies, DNA, results, runs, snapshots, project, profile, user)" db \
-    "BEGIN; DELETE FROM competency_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM dna_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM analysis_results WHERE analysis_run_id IN (SELECT r.id FROM analysis_runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM analysis_runs WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
+check "remove probe rows (skill gaps, competencies, DNA, results, runs, snapshots, project, profile, user)" db \
+    "BEGIN; DELETE FROM skill_gap_results WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM skill_gap_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM competency_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM dna_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM analysis_results WHERE analysis_run_id IN (SELECT r.id FROM analysis_runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM analysis_runs WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
 
 echo "Analyzer service (Phases 08-09)"
 check "analyzer publishes no host port" bash -c \

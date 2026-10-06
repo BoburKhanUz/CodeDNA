@@ -110,6 +110,15 @@ return [
         'version' => (string) env('CODEDNA_COMPETENCY_VERSION', '1.0.0'),
     ],
 
+    /*
+    | Skill gap analysis (docs/architecture/skill-gap-v1.md). The version
+    | selects a definition, including its target profile, in
+    | App\Services\SkillGap\SkillGapSpecification.
+    */
+    'skill_gap' => [
+        'version' => (string) env('CODEDNA_SKILL_GAP_VERSION', '1.0.0'),
+    ],
+
     'rate_limits' => [
         // Every /api/v1 route, per authenticated user or per IP.
         'api_per_minute' => 120,

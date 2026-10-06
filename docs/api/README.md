@@ -50,12 +50,15 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `GET` | `/api/v1/projects/{project}/dna/{snapshot}` | owner | 200 | One DNA snapshot with dimensions and evidence |
 | `GET` | `/api/v1/projects/{project}/competencies` | owner | 200 | Competency snapshots (paginated, newest first) |
 | `GET` | `/api/v1/projects/{project}/competencies/{snapshot}` | owner | 200 | One competency matrix with levels, evidence and provenance |
+| `GET` | `/api/v1/projects/{project}/skill-gaps` | owner | 200 | Skill gap snapshots (paginated, newest first) |
+| `GET` | `/api/v1/projects/{project}/skill-gaps/{snapshot}` | owner | 200 | One skill gap analysis: targets, gaps, priorities, provenance |
 
 There is no `DELETE` for projects (`405`) and no update, delete or download
-for snapshots. DNA and competency snapshots are read-only (no write method
-on `/dna` or `/competencies`). See [Projects](#projects),
-[Source snapshots](#source-snapshots), [Analyses](#analyses), [DNA](#dna)
-and [Competencies](#competencies).
+for snapshots. DNA, competency and skill gap snapshots are read-only (no
+write method on `/dna`, `/competencies` or `/skill-gaps`). See
+[Projects](#projects), [Source snapshots](#source-snapshots),
+[Analyses](#analyses), [DNA](#dna), [Competencies](#competencies) and
+[Skill gaps](#skill-gaps).
 
 ### `GET /api/v1/health`
 
@@ -624,6 +627,65 @@ Newest first (`created_at`, then `id`), paginated (`?page`, `?per_page` ≤ 100)
 - `description`, `rationale`, `share` and `levels` come from the
   snapshot's own competency and scoring versions (`null` when unknown).
 
+## Skill gaps
+
+Read-only access to the immutable skill gap analyses that compare a
+competency matrix with a versioned, server-owned target profile (Phase 14,
+[skill-gap-v1.md](../architecture/skill-gap-v1.md)). Same rules as
+[Competencies](#competencies): owner-only (`404` for another user's or a
+missing project or snapshot, and for a snapshot of another project),
+archived projects stay readable, every write method answers `405`, and no
+target, gap, priority or version is ever accepted from a client.
+
+> Skill Gap results describe measurable differences between observed source-code competency evidence and a versioned target definition. They do not establish developer seniority, intelligence, personality, professional worth, or future potential.
+
+| Field | Values |
+|---|---|
+| snapshot `status` | `GAPS_IDENTIFIED` · `NO_MATERIAL_GAPS` (measured, none material) · `INSUFFICIENT_DATA` (nothing measured) |
+| result `status` | `GAP` · `NO_GAP` · `INSUFFICIENT_EVIDENCE` · `UNSUPPORTED` · `MISSING` · `NOT_TARGETED` |
+| `raw_gap` | `max(target − current, 0)` as a 4-place string; `null` unless `GAP`/`NO_GAP` (never "target − 0") |
+| `priority` | `LOW` · `MEDIUM` · `HIGH`, only for `GAP`; `priority_capped: true` when HIGH was capped for low evidence quality |
+
+A project without an analysis lists `"data": []`.
+
+### `GET /api/v1/projects/{project}/skill-gaps`
+
+Newest first (`created_at`, then `id`), paginated (`?page`, `?per_page` ≤ 100):
+`id`, `type: "skill_gap_snapshot"`, `project_id`, `competency_snapshot_id`,
+`dna_snapshot_id`, `analysis_run_id`, `source_snapshot_id`, `status`,
+`skill_gap_version`, `target_profile` (`key`, `version`),
+`competency_version`, `summary` (`competencies`, `material_gaps`, counts per
+`statuses` and `priorities`; no aggregate gap), `created_at`.
+
+### `GET /api/v1/projects/{project}/skill-gaps/{snapshot}`
+
+```json
+{ "data": {
+  "id": "…", "type": "skill_gap_snapshot", "project_id": "…", "competency_snapshot_id": "…", "dna_snapshot_id": "…",
+  "analysis_run_id": "…", "source_snapshot_id": "…", "status": "GAPS_IDENTIFIED", "skill_gap_version": "1.0.0",
+  "specification_fingerprint": "<64 hex>",
+  "target_profile": { "key": "ENGINEERING_STANDARD", "version": "1.0.0", "description": "…" },
+  "thresholds": { "material_gap": "0.0500",
+                  "priorities": [ { "priority": "LOW", "minimum_gap": "0.0500" }, { "priority": "MEDIUM", "minimum_gap": "0.1500" },
+                                  { "priority": "HIGH", "minimum_gap": "0.3000" } ],
+                  "high_priority_minimum_evidence_quality": "0.6000" },
+  "competency_version": "1.0.0", "dna_scoring_version": "1.0.0", "created_at": "…",
+  "summary": { "competencies": 4, "material_gaps": 1, "statuses": { "GAP": 1, "NO_GAP": 3, … }, "priorities": { "HIGH": 1, … } },
+  "languages": ["php", "python"],
+  "competency_snapshot": { "id": "…", "status": "ASSESSED", "specification_fingerprint": "<64 hex>", "created_at": "…" },
+  "source_snapshot": { "id": "…", "version": 3, "file_count": 12, "primary_language": "php", "created_at": "…" },
+  "results": [
+    { "competency_key": "CODE_HYGIENE", "name": "Code hygiene", "status": "GAP",
+      "current_score": "0.6000", "target_score": "0.9000", "raw_gap": "0.3000", "material_gap": true,
+      "priority": "HIGH", "priority_capped": false, "evidence_quality": "0.9000",
+      "competency_status": "ASSESSED", "current_level": "DEVELOPING", "target_rationale": "…",
+      "limitations": [],
+      "evidence": [ { "source": "CODE_HYGIENE.syntax_error_share", "status": "AVAILABLE", "value": "0.1000", "score": "0.6000" } ] } ] } }
+```
+
+`results` list targeted competencies in the profile's order, then untargeted
+ones by key.
+
 ## Authentication (browser, Sanctum SPA)
 
 Browsers authenticate with Laravel's **session cookie**. No token is ever
@@ -794,9 +856,9 @@ configured in `config/codedna.php`.
 
 ## Planned endpoints (not implemented)
 
-A developer-wide DNA or competency profile across projects (ADR-004's
-aggregation) is not implemented; DNA and competencies are served per
-project ([DNA](#dna), [Competencies](#competencies)). Future paths
+A developer-wide DNA, competency or skill gap profile across projects
+(ADR-004's aggregation) is not implemented; results are served per project
+([DNA](#dna), [Competencies](#competencies), [Skill gaps](#skill-gaps)). Future paths
 follow the domain model in [data-model.md](../architecture/data-model.md):
 projects own snapshots, snapshots have analysis runs, and runs produce DNA
 snapshots.

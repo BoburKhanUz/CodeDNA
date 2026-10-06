@@ -101,6 +101,14 @@ class Project extends Model
         return $this->hasMany(CompetencySnapshot::class);
     }
 
+    /**
+     * @return HasMany<SkillGapSnapshot, $this>
+     */
+    public function skillGapSnapshots(): HasMany
+    {
+        return $this->hasMany(SkillGapSnapshot::class);
+    }
+
     public function isActive(): bool
     {
         return $this->status === ProjectStatus::Active;

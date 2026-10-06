@@ -6,7 +6,7 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 13 (competency matrix) complete. The
+**Current status:** Phase 14 (skill gap analysis) complete. The
 local environment runs every component. Users can register, sign in and
 sign out, edit their developer profile, change their password, create and
 archive projects, and upload ZIP archives that become immutable, versioned
@@ -29,7 +29,9 @@ no analysis screen yet (analyses are started through the API). Each DNA
 snapshot is then turned into a deterministic, versioned competency matrix
 (complexity management, function design, type structure, code hygiene;
 [competency-matrix-v1.md](competency-matrix-v1.md)), readable through the
-API and on the Competency Matrix page. Everything below is the target
+API and on the Competency Matrix page, and compared with a versioned
+engineering target into per-competency skill gaps with priorities
+([skill-gap-v1.md](skill-gap-v1.md)). Everything below is the target
 architecture.
 
 ## System context
@@ -126,4 +128,5 @@ at a time:
 | 11 | CodeDNA scoring engine | Done (scoring version 1.0.0, in Laravel; [dna-scoring-v1.md](dna-scoring-v1.md)) |
 | 12 | DNA dashboard (**MVP complete**) | Done (per-project dashboard and read-only DNA API) |
 | 13 | Competency matrix | Done (competency version 1.0.0; [competency-matrix-v1.md](competency-matrix-v1.md)) |
-| 14–25 | Skill gaps, AI, challenges, learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |
+| 14 | Skill gap analysis | Done (skill gap version 1.0.0, ENGINEERING_STANDARD; [skill-gap-v1.md](skill-gap-v1.md)) |
+| 15–25 | AI, challenges, learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |

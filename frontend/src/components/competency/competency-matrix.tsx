@@ -215,6 +215,22 @@ function Matrix({ snapshot, projectId }: { snapshot: CompetencySnapshot; project
         ))}
       </div>
 
+      <Card data-testid="skill-gap-link">
+        <CardHeader>
+          <CardTitle>
+            <h2>Skill Gaps</h2>
+          </CardTitle>
+          <CardDescription>
+            Compares these competency scores with a versioned engineering target and lists the measurable differences.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link href={`/app/projects/${projectId}/skill-gaps`} className="text-sm font-medium underline underline-offset-4">
+            View Skill Gaps →
+          </Link>
+        </CardContent>
+      </Card>
+
       <Provenance snapshot={snapshot} projectId={projectId} />
     </div>
   );

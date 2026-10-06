@@ -27,6 +27,8 @@ final class CompetencyMigrationAndConcurrencyTest extends TestCase
 {
     private const MIGRATION = 'database/migrations/2026_10_10_000001_create_competency_snapshots_table.php';
 
+    private const SKILL_GAP_MIGRATION = 'database/migrations/2026_10_11_000001_create_skill_gap_tables.php';
+
     private ?DnaSnapshot $dna = null;
 
     private string $resultDir;
@@ -130,6 +132,8 @@ final class CompetencyMigrationAndConcurrencyTest extends TestCase
         $this->assertSame(0, (int) DB::scalar("select count(*) from pg_constraint where conrelid = 'competency_snapshots'::regclass and contype = 'f' and confdeltype <> 'r'"));
 
         $dna = $this->dna();
+        // The skill gap tables (Phase 14) depend on competency_snapshots and are rolled back first.
+        $this->artisan('migrate:rollback', ['--path' => self::SKILL_GAP_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION])->assertSuccessful();
         $this->assertFalse(Schema::hasTable('competency_snapshots'));
         $this->assertNotContains('dna_snapshots_lineage_unique', $constraints('dna_snapshots'));

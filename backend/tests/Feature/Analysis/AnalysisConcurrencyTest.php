@@ -57,6 +57,8 @@ final class AnalysisConcurrencyTest extends TestCase
         if ($this->project !== null) {
             // Runs, results and snapshots are immutable through Eloquent; test cleanup uses the query builder.
             $runs = DB::table('analysis_runs')->where('project_id', $this->project->id)->pluck('id');
+            DB::table('skill_gap_results')->whereIn('skill_gap_snapshot_id', DB::table('skill_gap_snapshots')->whereIn('analysis_run_id', $runs)->select('id'))->delete();
+            DB::table('skill_gap_snapshots')->whereIn('analysis_run_id', $runs)->delete();
             DB::table('competency_snapshots')->whereIn('analysis_run_id', $runs)->delete();
             DB::table('dna_snapshots')->whereIn('analysis_run_id', $runs)->delete();
             DB::table('analysis_results')->whereIn('analysis_run_id', $runs)->delete();

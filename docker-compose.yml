@@ -80,6 +80,8 @@ x-backend-environment: &backend-environment
   CODEDNA_SCORING_VERSION: ${CODEDNA_SCORING_VERSION:-1.0.0}
   # Competency matrix version (Phase 13).
   CODEDNA_COMPETENCY_VERSION: ${CODEDNA_COMPETENCY_VERSION:-1.0.0}
+  # Skill gap version (Phase 14).
+  CODEDNA_SKILL_GAP_VERSION: ${CODEDNA_SKILL_GAP_VERSION:-1.0.0}
 
 x-backend-volumes: &backend-volumes
   - ./backend:/var/www/backend

@@ -41,6 +41,7 @@ final class ConfigurationValidatorTest extends TestCase
             'queue.connections.analysis.retry_after' => 360,
             'codedna.scoring.version' => '1.0.0',
             'codedna.competency.version' => '1.0.0',
+            'codedna.skill_gap.version' => '1.0.0',
         ], $overrides) as $key => $value) {
             $config->set($key, $value);
         }
@@ -181,6 +182,16 @@ final class ConfigurationValidatorTest extends TestCase
             $this->assertSame(
                 ['CODEDNA_COMPETENCY_VERSION must be one of: 1.0.0.'],
                 (new ConfigurationValidator)->problems($this->config(['codedna.competency.version' => $version]), 'production'),
+            );
+        }
+    }
+
+    public function test_the_skill_gap_version_must_be_a_defined_specification(): void
+    {
+        foreach (['1.0', '2.0.0', '', null] as $version) {
+            $this->assertSame(
+                ['CODEDNA_SKILL_GAP_VERSION must be one of: 1.0.0.'],
+                (new ConfigurationValidator)->problems($this->config(['codedna.skill_gap.version' => $version]), 'production'),
             );
         }
     }

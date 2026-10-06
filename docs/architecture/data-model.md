@@ -32,6 +32,8 @@ users ──1:n──► projects ──1:n──► source_snapshots ──1:n�
 | `analysis_results` | The verified analyzer result of one successful run (Phase 10) | **never** |
 | `dna_snapshots` | Immutable DNA result of one successful run, one per scoring version (Phase 11) | **never** |
 | `competency_snapshots` | Immutable competency matrix of one DNA snapshot, one per competency version (Phase 13) | **never** |
+| `skill_gap_snapshots` | Immutable skill gap analysis of one competency snapshot, one per skill gap version and target profile (Phase 14) | **never** |
+| `skill_gap_results` | One immutable gap per competency of a skill gap snapshot (Phase 14) | **never** |
 
 There is deliberately no separate `repositories` or `analyses` table. A
 project carries its source origin (`source_type`, `repository_url`). A
@@ -48,7 +50,9 @@ integrations (Phase 19) will add their own tables when they exist.
 | `SourceSnapshot` | `project()` belongsTo; `analysisRuns()` hasMany |
 | `AnalysisRun` | `project()`, `sourceSnapshot()` belongsTo; `result()` hasOne; `dnaSnapshots()` hasMany (one per scoring version), `dnaSnapshot()` hasOne |
 | `DnaSnapshot` | `user()`, `project()`, `analysisRun()`, `sourceSnapshot()` belongsTo; `competencySnapshots()` hasMany |
-| `CompetencySnapshot` | `dnaSnapshot()`, `project()`, `analysisRun()`, `sourceSnapshot()` belongsTo |
+| `CompetencySnapshot` | `dnaSnapshot()`, `project()`, `analysisRun()`, `sourceSnapshot()` belongsTo; `skillGapSnapshots()` hasMany |
+| `SkillGapSnapshot` | `competencySnapshot()`, `project()`, `sourceSnapshot()` belongsTo; `results()` hasMany (ordered) |
+| `SkillGapResult` | `snapshot()` belongsTo |
 
 All relationships carry generic return types (`BelongsTo<Project, $this>`).
 Outside production, strict mode makes lazy loading throw, so callers must
@@ -261,7 +265,41 @@ Phase 13 ([competency-matrix-v1.md](competency-matrix-v1.md)).
 | `provenance` | jsonb | object: versions, fingerprints, DNA status/score/data quality, run, source snapshot, result hash, measured languages, ≤ 16 KiB |
 | `created_at` | timestamp | **no `updated_at`** |
 
-Indexes: `(project_id, created_at)`, `(user_id, created_at)`.
+Indexes: `(project_id, created_at)`, `(user_id, created_at)`. A unique
+index on `(id, project_id, dna_snapshot_id, analysis_run_id,
+source_snapshot_id, user_id)` (Phase 14) is the target of the skill gap
+snapshots' lineage key.
+
+### skill_gap_snapshots
+
+Phase 14 ([skill-gap-v1.md](skill-gap-v1.md)).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `user_id`, `project_id`, `competency_snapshot_id`, `dna_snapshot_id`, `analysis_run_id`, `source_snapshot_id` | ulid | one composite FK onto `competency_snapshots`' lineage index, `RESTRICT`; `user_id` also FK → users |
+| `skill_gap_version`, `target_profile`, `target_profile_version`, `competency_version`, `dna_scoring_version` | varchar | `UNIQUE (competency_snapshot_id, skill_gap_version, target_profile)` |
+| `specification_fingerprint` | char(64) | SHA-256 hex (CHECK) |
+| `status` | varchar(32) | `GAPS_IDENTIFIED` \| `NO_MATERIAL_GAPS` \| `INSUFFICIENT_DATA` |
+| `summary`, `provenance` | jsonb | objects ≤ 16 KiB; counts only (no aggregate gap); versions, fingerprints and lineage |
+| `created_at` | timestamp | **no `updated_at`** |
+
+### skill_gap_results
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `skill_gap_snapshot_id`, `project_id`, `user_id` | ulid | composite FK → `skill_gap_snapshots(id, project_id, user_id)`, `RESTRICT` |
+| `position`, `competency_key` | smallint, varchar(64) | both unique per snapshot |
+| `status` | varchar(32) | `GAP`, `NO_GAP`, `INSUFFICIENT_EVIDENCE`, `UNSUPPORTED`, `MISSING`, `NOT_TARGETED` |
+| `competency_status`, `current_level` | varchar null | copied from the competency |
+| `current_score`, `target_score`, `raw_gap`, `evidence_quality` | numeric(5,4) null | 0–1; CHECK `raw_gap = GREATEST(target − current, 0)`; scores present ⇔ `GAP`/`NO_GAP`; target null ⇔ `NOT_TARGETED` |
+| `material_gap` | boolean null | `GAP` ⇔ true |
+| `priority`, `priority_capped` | varchar(16), boolean null | present ⇔ `GAP` |
+| `evidence` | jsonb | object ≤ 16 KiB: language limitations and the competency's evidence |
+| `created_at` | timestamp | **no `updated_at`** |
+
+Indexes: `(project_id, competency_key)`, `(user_id, status, priority)`.
 
 ## States
 
@@ -275,6 +313,7 @@ enums (`app/Enums`) through Eloquent enum casts:
 | `AnalysisRunStatus` | `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED` |
 | `DnaSnapshotStatus` | `READY`, `INSUFFICIENT_DATA` |
 | `CompetencySnapshotStatus` | `ASSESSED`, `INSUFFICIENT_DATA` (competency statuses and levels live in the JSONB) |
+| `SkillGapSnapshotStatus`, `SkillGapStatus`, `GapPriority` | see `skill_gap_snapshots` and `skill_gap_results` |
 
 **Why not PostgreSQL `ENUM` types?** Adding or renaming a value then needs
 `ALTER TYPE`, which has transaction restrictions and couples deployments to
@@ -320,7 +359,8 @@ DNA snapshot:     created (READY or INSUFFICIENT_DATA) from a SUCCEEDED run ─�
 ## Immutability
 
 Historical records (`source_snapshots`, terminal `analysis_runs`,
-`analysis_results`, `dna_snapshots`, `competency_snapshots`) are append-only. This is an architectural invariant.
+`analysis_results`, `dna_snapshots`, `competency_snapshots`,
+`skill_gap_snapshots`, `skill_gap_results`) are append-only. This is an architectural invariant.
 
 | Layer | Mechanism |
 |---|---|

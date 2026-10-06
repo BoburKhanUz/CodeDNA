@@ -23,6 +23,8 @@ final class DnaSnapshotMigrationTest extends TestCase
 
     private const COMPETENCY_MIGRATION = 'database/migrations/2026_10_10_000001_create_competency_snapshots_table.php';
 
+    private const SKILL_GAP_MIGRATION = 'database/migrations/2026_10_11_000001_create_skill_gap_tables.php';
+
     /** @var list<string> */
     private array $projects = [];
 
@@ -84,7 +86,8 @@ final class DnaSnapshotMigrationTest extends TestCase
 
     public function test_rollback_restores_the_phase_05_shape_and_the_upgrade_backfills_existing_rows(): void
     {
-        // The competency table (Phase 13) depends on dna_snapshots and is rolled back first.
+        // The skill gap (Phase 14) and competency (Phase 13) tables depend on dna_snapshots and are rolled back first.
+        $this->artisan('migrate:rollback', ['--path' => self::SKILL_GAP_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::COMPETENCY_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION])->assertSuccessful();
 

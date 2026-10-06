@@ -267,7 +267,8 @@ Failures (`CompetencyFailure`), with fixed, safe messages:
     evidence-quality terms and the level boundaries;
   - provenance, linked to the CodeDNA assessment.
 
-  The CodeDNA dashboard links to it. The frontend computes nothing.
+  The CodeDNA dashboard links to it, and it links on to the
+  [skill gaps](skill-gap-v1.md). The frontend computes nothing.
 
 ## Determinism
 

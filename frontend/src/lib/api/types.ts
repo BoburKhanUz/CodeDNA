@@ -1,7 +1,7 @@
 /**
  * TypeScript mirror of the Laravel API contract (docs/api/README.md).
  *
- * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary}Resource.php,
+ * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary,SkillGapSnapshot,SkillGapSnapshotSummary}Resource.php,
  * backend/app/Http/Resources/PaginatedCollection.php,
  * backend/app/Enums/{SupportedLocale,ProgrammingLanguage}.php and
  * backend/app/Http/Errors/{ErrorCode,ApiExceptionRenderer}.php. When those
@@ -498,3 +498,104 @@ export interface CompetencySnapshot {
 }
 
 export type CompetencySnapshotResponse = DataEnvelope<CompetencySnapshot>;
+
+/*
+ * Skill gap analysis (Phase 14; docs/architecture/skill-gap-v1.md). A gap is
+ * the difference between a measured competency score and a versioned,
+ * server-owned target. It describes the analyzed code, never a person.
+ * Every value is a backend decimal string; the frontend never computes one.
+ */
+
+/** GAP / NO_GAP: measured. The others: no gap could be measured (never "target − 0"). */
+export const SKILL_GAP_STATUSES = ["GAP", "NO_GAP", "INSUFFICIENT_EVIDENCE", "UNSUPPORTED", "MISSING", "NOT_TARGETED"] as const;
+export type SkillGapStatus = (typeof SKILL_GAP_STATUSES)[number];
+
+export const GAP_PRIORITIES = ["LOW", "MEDIUM", "HIGH"] as const;
+export type GapPriority = (typeof GAP_PRIORITIES)[number];
+
+/** GAPS_IDENTIFIED, NO_MATERIAL_GAPS (measured, none material) or INSUFFICIENT_DATA (nothing measured). */
+export type SkillGapSnapshotStatus = "GAPS_IDENTIFIED" | "NO_MATERIAL_GAPS" | "INSUFFICIENT_DATA";
+
+/** Stored counts; there is deliberately no aggregate gap. */
+export interface SkillGapSummary {
+  competencies: number;
+  material_gaps: number;
+  statuses: Record<SkillGapStatus, number>;
+  priorities: Record<GapPriority, number>;
+}
+
+export interface TargetProfileRef {
+  key: string;
+  version: string;
+}
+
+/** `SkillGapSnapshotSummaryResource` — GET /api/v1/projects/{project}/skill-gaps (newest first). */
+export interface SkillGapSnapshotSummary {
+  id: string;
+  type: "skill_gap_snapshot";
+  project_id: string;
+  competency_snapshot_id: string;
+  dna_snapshot_id: string;
+  analysis_run_id: string;
+  source_snapshot_id: string;
+  status: SkillGapSnapshotStatus;
+  skill_gap_version: string;
+  target_profile: TargetProfileRef;
+  competency_version: string;
+  summary: SkillGapSummary;
+  created_at: string | null;
+}
+
+export interface SkillGapResult {
+  competency_key: string;
+  name: string;
+  status: SkillGapStatus;
+  /** Null unless measured (GAP, NO_GAP) or for an assessed untargeted competency. */
+  current_score: DecimalString | null;
+  /** Null only when NOT_TARGETED. */
+  target_score: DecimalString | null;
+  /** max(target − current, 0); null unless measured. Kept even when not material. */
+  raw_gap: DecimalString | null;
+  material_gap: boolean | null;
+  /** Only for GAP. */
+  priority: GapPriority | null;
+  /** true: a HIGH gap was capped at MEDIUM because evidence quality is below the bound. */
+  priority_capped: boolean | null;
+  evidence_quality: DecimalString | null;
+  competency_status: CompetencyStatus | null;
+  current_level: CompetencyLevel | null;
+  target_rationale: string | null;
+  limitations: { language: string | null; note: string | null }[];
+  evidence: { source: string | null; status: string | null; value: DecimalString | null; score: DecimalString | null }[];
+}
+
+/** `SkillGapSnapshotResource` — GET /api/v1/projects/{project}/skill-gaps/{snapshot}. Immutable. */
+export interface SkillGapSnapshot {
+  id: string;
+  type: "skill_gap_snapshot";
+  project_id: string;
+  competency_snapshot_id: string;
+  dna_snapshot_id: string;
+  analysis_run_id: string;
+  source_snapshot_id: string;
+  status: SkillGapSnapshotStatus;
+  skill_gap_version: string;
+  specification_fingerprint: string;
+  target_profile: TargetProfileRef & { description: string | null };
+  thresholds: {
+    material_gap: DecimalString;
+    priorities: { priority: GapPriority; minimum_gap: DecimalString }[];
+    high_priority_minimum_evidence_quality: DecimalString;
+  } | null;
+  competency_version: string;
+  dna_scoring_version: string;
+  created_at: string | null;
+  summary: SkillGapSummary;
+  languages: string[] | null;
+  competency_snapshot: { id: string; status: CompetencySnapshotStatus; specification_fingerprint: string | null; created_at: string | null } | null;
+  source_snapshot: { id: string; version: number; file_count: number; primary_language: string | null; created_at: string | null } | null;
+  /** Targeted competencies in profile order, then untargeted ones. */
+  results: SkillGapResult[];
+}
+
+export type SkillGapSnapshotResponse = DataEnvelope<SkillGapSnapshot>;

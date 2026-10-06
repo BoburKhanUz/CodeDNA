@@ -6,6 +6,7 @@ namespace App\Support;
 
 use App\Services\Competency\CompetencySpecification;
 use App\Services\Dna\ScoringSpecification;
+use App\Services\SkillGap\SkillGapSpecification;
 use Illuminate\Contracts\Config\Repository;
 
 /**
@@ -41,6 +42,9 @@ final class ConfigurationValidator
         }
         if (! in_array($config->get('codedna.competency.version'), CompetencySpecification::VERSIONS, true)) {
             $problems[] = 'CODEDNA_COMPETENCY_VERSION must be one of: '.implode(', ', CompetencySpecification::VERSIONS).'.';
+        }
+        if (! in_array($config->get('codedna.skill_gap.version'), SkillGapSpecification::VERSIONS, true)) {
+            $problems[] = 'CODEDNA_SKILL_GAP_VERSION must be one of: '.implode(', ', SkillGapSpecification::VERSIONS).'.';
         }
 
         // The test suite swaps in in-memory drivers; every other environment

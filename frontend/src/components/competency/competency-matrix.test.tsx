@@ -106,6 +106,14 @@ describe("CompetencyMatrix", () => {
     expect(screen.getByRole("link", { name: "CodeDNA" })).toHaveAttribute("href", `/app/projects/${project.id}/dna`);
   });
 
+  it("links to the skill gaps", async () => {
+    respondWith(assessedMatrix);
+    render(<CompetencyMatrix projectId={project.id} />);
+
+    const card = await screen.findByTestId("skill-gap-link");
+    expect(within(card).getByRole("link", { name: "View Skill Gaps →" })).toHaveAttribute("href", `/app/projects/${project.id}/skill-gaps`);
+  });
+
   it("shows insufficient and unsupported evidence without a score or level, never 0", async () => {
     respondWith(insufficientMatrix);
     const ui = userEvent.setup();

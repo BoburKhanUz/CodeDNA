@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\Projects\ArchiveProjectController;
 use App\Http\Controllers\Api\V1\Projects\CompetencySnapshotController;
 use App\Http\Controllers\Api\V1\Projects\DnaSnapshotController;
 use App\Http\Controllers\Api\V1\Projects\ProjectController;
+use App\Http\Controllers\Api\V1\Projects\SkillGapSnapshotController;
 use App\Http\Controllers\Api\V1\Projects\SourceSnapshotController;
 use App\Http\Middleware\RequireSession;
 use Illuminate\Support\Facades\Route;
@@ -117,4 +118,14 @@ Route::middleware('auth:sanctum')->prefix('projects')->name('projects.')->group(
         ->whereUlid(['project', 'competencySnapshot'])
         ->scopeBindings()
         ->name('competencies.show');
+
+    // Skill gap snapshots (Phase 14): read-only, derived from competency
+    // snapshots against server-owned target profiles and never changed.
+    Route::get('{project}/skill-gaps', [SkillGapSnapshotController::class, 'index'])
+        ->whereUlid('project')
+        ->name('skill-gaps.index');
+    Route::get('{project}/skill-gaps/{skillGapSnapshot}', [SkillGapSnapshotController::class, 'show'])
+        ->whereUlid(['project', 'skillGapSnapshot'])
+        ->scopeBindings()
+        ->name('skill-gaps.show');
 });
