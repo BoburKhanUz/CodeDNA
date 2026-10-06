@@ -1,6 +1,6 @@
 # analyzer/ — Python Code Analysis Engine
 
-**Status: Phase 08 foundation.** An internal FastAPI service that:
+**Status: Phase 09 static analysis.** An internal FastAPI service that:
 
 - authenticates `POST /internal/v1/analyze` with HMAC-SHA256 (timestamp
   window, constant-time comparison, secret rotation, bounded replay cache)
@@ -10,13 +10,23 @@
   size, checksum and timeout limits;
 - extracts the ZIP safely into a random per-run workspace that is always
   removed (no traversal, symlinks, special files, bombs);
-- discovers files deterministically, detects languages by extension and
-  returns a versioned **foundation result** (IR 1.0 file records) with a
-  deterministic `result_hash`.
+- discovers files deterministically and detects languages by extension
+  (Phase 08);
+- parses PHP, Python, JavaScript, TypeScript/TSX, Go, Java, C#, Rust, C and
+  C++ with pinned Tree-sitter grammars, in process and bounded per file and
+  per run (bytes, time, syntax-tree nodes, files), giving every file a parse
+  status (`PARSED`, `PARSE_ERROR`, `PARSE_TIMEOUT`, `LIMIT_EXCEEDED`,
+  `UNSUPPORTED_PARSER`);
+- lowers syntax trees to **IR 1.1** (declarations, imports, types,
+  functions, parameters, visibility, inheritance, complexity, nesting,
+  positions; never source text) and computes deterministic **static metrics
+  1.0** and **structural findings**, returned as a versioned
+  `static_analysis` result with a deterministic `result_hash`.
 
-It computes **no metrics, features or scores** yet: parsers and metrics come
-in **Phase 09**, DNA scoring in **Phase 11**. It never executes, imports or
-installs anything from a source archive.
+It computes **no features, DNA scores or AI output**: scoring comes in
+**Phase 11**. It never executes, imports or installs anything from a source
+archive. Metric definitions, the cyclomatic complexity formula, per-language
+support and finding rules: [metrics-v1.md](../docs/architecture/metrics-v1.md).
 
 Everything runs in Docker (see
 [infrastructure.md](../docs/architecture/infrastructure.md)): Python 3.11,
@@ -32,8 +42,12 @@ make lint-analyzer   # ruff check, ruff format --check, mypy --strict
 make shell-analyzer
 ```
 
-Dependencies are hash-locked and baked into the image (runtime: FastAPI and
-Uvicorn only; HTTP, ZIP and HMAC use the standard library):
+Dependencies are pinned, hash-locked and baked into the image (runtime:
+FastAPI, Uvicorn, the Tree-sitter runtime 0.25.2 and ten official grammar
+packages; HTTP, ZIP, HMAC and metrics use the standard library). Grammar
+versions are part of every result; after changing one, regenerate the golden
+fixture (`tests/test_golden.py` explains how) and check the change is
+intended:
 
 ```bash
 pip-compile --generate-hashes --strip-extras -o requirements.txt requirements.in
@@ -41,7 +55,8 @@ pip-compile --generate-hashes --strip-extras -o requirements-dev.txt requirement
 make build
 ```
 
-- Architecture, limits and the IR: [docs/architecture/analyzer.md](../docs/architecture/analyzer.md)
+- Architecture, parsing, limits and the IR: [docs/architecture/analyzer.md](../docs/architecture/analyzer.md)
+- Static metrics and findings: [docs/architecture/metrics-v1.md](../docs/architecture/metrics-v1.md)
 - HTTP contract: [docs/api/internal-analyzer-contract.md](../docs/api/internal-analyzer-contract.md)
 - JSON Schemas: [packages/api-contracts/](../packages/api-contracts/README.md)
 - Scoring rules (later): [ADR-004](../docs/decisions/ADR-004-dna-scoring.md)

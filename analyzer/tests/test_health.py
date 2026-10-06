@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from app.metrics.aggregate import METRICS_VERSION
 from app.versions import ANALYZER_VERSION, CONTRACT_VERSION, IR_VERSION
 
 
@@ -12,7 +13,7 @@ def test_health_reports_only_status_versions_and_limits(settings: Settings) -> N
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
-        "versions": {"analyzer": ANALYZER_VERSION, "contract": CONTRACT_VERSION, "ir": IR_VERSION},
+        "versions": {"analyzer": ANALYZER_VERSION, "contract": CONTRACT_VERSION, "ir": IR_VERSION, "metrics": METRICS_VERSION},
         "limits": settings.limits(),
     }
     body = response.text

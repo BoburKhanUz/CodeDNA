@@ -1,8 +1,9 @@
 # Internal Analyzer Contract — v1
 
 - **Contract version:** `1.0`, **frozen in Phase 08** with the amendments
-  listed in [§ 9](#9-phase-08-amendments). Implemented by the analyzer
-  (`analyzer/app`); the Laravel client arrives in Phase 10.
+  listed in [§ 9](#9-amendments) (Phase 08, and the additive Phase 09
+  `static_analysis` result). Implemented by the analyzer (`analyzer/app`);
+  the Laravel client arrives in Phase 10.
 - **Audience:** Laravel backend (client) and the Python analyzer (server)
 - **Decision record:** [ADR-005](../decisions/ADR-005-service-communication.md)
 
@@ -35,11 +36,12 @@ them in its tests; the Laravel client will do the same in Phase 10.
 ```json
 {
   "status": "ok",
-  "versions": { "analyzer": "0.1.0", "contract": "1.0", "ir": "1.0" },
+  "versions": { "analyzer": "0.2.0", "contract": "1.0", "ir": "1.1", "metrics": "1.0" },
   "limits": {
     "hard_timeout_seconds": 240, "max_archive_bytes": 52428800, "max_extracted_bytes": 209715200,
     "max_files": 20000, "max_entry_bytes": 26214400, "max_file_bytes": 1048576,
-    "max_path_length": 512, "max_concurrency": 2
+    "max_path_length": 512, "max_concurrency": 2,
+    "parse_timeout_ms": 5000, "max_ast_nodes": 1000000, "max_total_ast_nodes": 10000000, "max_parsed_files": 20000
   }
 }
 ```
@@ -147,13 +149,13 @@ integer) are rejected as `422 INVALID_REQUEST`, whose `details.fields` names
 the offending fields (never their values). An `Idempotency-Key` that differs
 from `analysis_run_id` is also `INVALID_REQUEST`.
 
-### Successful response, `result_type: "foundation"` (Phase 08)
+### Successful response, `result_type: "foundation"` (Phase 08, no longer produced)
 
-Until parsers, metrics and scoring exist, the analyzer returns a
-**foundation result**: source inspection and file discovery only. It
-contains no `metrics`, `features`, `dna` or `findings`, and `versions.metrics`
-and `versions.scoring` are `null`. Laravel must not create a DNA snapshot
-from it.
+Phase 08 returned a **foundation result** (since Phase 09 the analyzer
+returns `static_analysis`, below, which contains every foundation field with
+the same meaning). The foundation result was source inspection and file
+discovery only. It contained no `metrics`, `features`, `dna` or `findings`,
+and `versions.metrics` and `versions.scoring` were `null`.
 
 ```json
 {
@@ -189,11 +191,118 @@ from it.
 ```
 
 (`analysis.ignored_directories` is abbreviated here.) Field rules are in the
-JSON Schema and [analyzer.md](../architecture/analyzer.md#foundation-result).
+JSON Schema and [analyzer.md](../architecture/analyzer.md#analysis-result).
 `result_hash` is computed as for the full result below; `analysis` is part
 of it, so a configuration change visibly changes the hash.
 
-### Successful response, `result_type: "full"` (Phases 09–11, not implemented)
+### Successful response, `result_type: "static_analysis"` (Phase 09)
+
+The analyzer parses every analyzable file with a pinned Tree-sitter grammar,
+derives IR 1.1 and computes static metrics 1.0 and structural findings 1.0.
+It contains **no features, DNA scores, AI output or source text**, and
+`versions.scoring` is `null`; Laravel must not create a DNA snapshot from it.
+Schema: `packages/api-contracts/analyzer/v1/static-analysis-result.schema.json`.
+Definitions: [analyzer.md](../architecture/analyzer.md#parsing-phase-09)
+(parsing, statuses, limits, IR 1.1) and
+[metrics-v1.md](../architecture/metrics-v1.md) (metrics, complexity formula,
+findings).
+
+```json
+{
+  "contract_version": "1.0",
+  "result_type": "static_analysis",
+  "analysis_run_id": "01jbx7t3k4q9z8v6m2n5p1r0sa",
+  "request_id": "6f1c2a4e-1d3b-4c55-9a7e-2b8f0c9d1e23",
+  "versions": {
+    "analyzer": "0.2.0", "ir": "1.1", "metrics": "1.0", "scoring": null,
+    "parser_runtime": "tree-sitter@0.25.2",
+    "parsers": { "php": "tree-sitter-php@0.24.1", "python": "tree-sitter-python@0.25.0" }
+  },
+  "analysis": {
+    "languages": ["php", "python"],
+    "ignored_directories": [".git", "node_modules", "vendor"],
+    "max_file_bytes": 1048576,
+    "parse_timeout_ms": 5000, "max_ast_nodes": 1000000, "max_total_ast_nodes": 10000000, "max_parsed_files": 20000
+  },
+  "source": {
+    "sha256": "<64 hex>", "size_bytes": 453, "files_total": 3, "files_analyzed": 2,
+    "files_skipped": { "ignored_path": 0, "unsupported_language": 1, "too_large": 0, "binary": 0 },
+    "bytes_total": 152
+  },
+  "languages": [
+    { "language": "php", "files": 1, "bytes": 135, "lines": 8 },
+    { "language": "python", "files": 1, "bytes": 7, "lines": 1 }
+  ],
+  "parsing": {
+    "files": { "PARSED": 1, "PARSE_ERROR": 1, "PARSE_TIMEOUT": 0, "LIMIT_EXCEEDED": 0, "UNSUPPORTED_PARSER": 0 },
+    "languages": [ { "language": "php", "files": { "PARSED": 1, "PARSE_ERROR": 0, "PARSE_TIMEOUT": 0, "LIMIT_EXCEEDED": 0, "UNSUPPORTED_PARSER": 0 } } ]
+  },
+  "ir": {
+    "version": "1.1",
+    "files": [
+      { "path": "README.md", "extension": ".md", "language": null, "size_bytes": 10, "lines": null,
+        "skip_reason": "unsupported_language", "parse": null, "structure": null },
+      { "path": "src/Invoice.php", "extension": ".php", "language": "php", "size_bytes": 135, "lines": 8, "skip_reason": null,
+        "parse": { "status": "PARSED", "limit": null, "ast_nodes": 45, "ast_max_depth": 11, "error_nodes": 0, "first_error": null },
+        "structure": {
+          "lines": { "total": 8, "code": 8, "comment": 0, "blank": 0 },
+          "imports": [],
+          "types": [ { "kind": "class", "name": "Invoice", "line": 2, "column": 0, "end_line": 8,
+                       "visibility": null, "bases": ["Model"], "methods": 1 } ],
+          "functions": [ { "kind": "method", "name": "total", "line": 4, "column": 4, "end_line": 7, "visibility": "public",
+                           "parameters": 1, "parent_type": 0, "complexity": 1, "max_nesting": 0 } ]
+        } },
+      { "path": "src/broken.py", "extension": ".py", "language": "python", "size_bytes": 7, "lines": 1, "skip_reason": null,
+        "parse": { "status": "PARSE_ERROR", "limit": null, "ast_nodes": 5, "ast_max_depth": 3, "error_nodes": 1,
+                   "first_error": { "line": 1, "column": 0 } },
+        "structure": null }
+    ]
+  },
+  "metrics": {
+    "version": "1.0",
+    "overall": { "files_parsed": 1, "files_parse_error": 1, "lines_code": 8, "functions_total": 1,
+                 "complexity_avg": 1.0, "complexity_max": 1, "types_with_bases": 1, "unsupported": [] },
+    "by_language": { "php": { "files_parsed": 1 } }
+  },
+  "findings": {
+    "total": 1,
+    "by_rule": { "complexity/cyclomatic": 0, "structure/nesting-depth": 0, "structure/function-length": 0,
+                 "structure/parameter-count": 0, "structure/class-length": 0, "parse/syntax-error": 1 },
+    "truncated": false,
+    "items": [ { "rule_id": "parse/syntax-error", "severity": "medium", "path": "src/broken.py", "line": 1, "column": 0,
+                 "value": 1, "threshold": null, "message": "File has 1 syntax error node(s) and was not measured." } ]
+  },
+  "result_hash": "<64 hex>",
+  "diagnostics": { "duration_ms": 31, "replayed": false }
+}
+```
+
+(Abbreviated: `parsers`, `analysis.languages`, `ignored_directories`,
+`parsing.languages` and the metric groups list fewer entries than a real
+result, which always has every metric key of the catalogue.)
+
+Rules:
+
+- Every foundation field keeps its name and meaning. IR 1.1 adds `parse` and
+  `structure` to each file record; IR 1.0 fields are unchanged.
+- Each analyzable file has exactly one `parse.status`: `PARSED`,
+  `PARSE_ERROR`, `PARSE_TIMEOUT`, `LIMIT_EXCEEDED` (with `limit`) or
+  `UNSUPPORTED_PARSER`. Only `PARSED` files have `structure` and contribute
+  to `metrics`. One failing file never fails the run.
+- A metric that cannot be computed is `null`, never `0`; metrics a language
+  cannot provide are also listed in that group's `unsupported`.
+- Findings carry `rule_id`, `severity`, `path`, `line`, `column`, `value`,
+  `threshold` and a fixed-format `message`. They never contain names,
+  snippets or source text. At most 2,000 items; `total`, `by_rule` and
+  `truncated` describe the full set.
+- `result_hash` is computed as for the foundation result. It is identical
+  for identical source bytes, versions and configuration, except when a file
+  is `PARSE_TIMEOUT` (wall-clock dependent; reported in `parsing.files`).
+
+### Successful response, `result_type: "full"` (Phase 11, not implemented)
+
+Scoring (Phase 11) adds `features` and `dna` to the static-analysis fields.
+The sketch below predates Phase 09; the exact shape is frozen with scoring.
 
 ```json
 {
@@ -346,6 +455,9 @@ unsigned; every later error is signed like a success.
 | Max single archive entry extracted | 25 MiB | `ANALYZER_MAX_ENTRY_BYTES` |
 | Max single file analyzed | 1 MiB (larger files are skipped as `too_large`) | `ANALYZER_MAX_FILE_BYTES` |
 | Max entry path length | 512 bytes | `ANALYZER_MAX_PATH_LENGTH` |
+| Parse time per file | 5000 ms (`PARSE_TIMEOUT` beyond) | `ANALYZER_PARSE_TIMEOUT_MS` |
+| Syntax-tree nodes per file / per run | 1 000 000 / 10 000 000 (`LIMIT_EXCEEDED` beyond) | `ANALYZER_MAX_AST_NODES`, `ANALYZER_MAX_TOTAL_AST_NODES` |
+| Files parsed per run | 20 000 (`LIMIT_EXCEEDED` beyond) | `ANALYZER_MAX_PARSED_FILES` |
 | Source download timeouts (connect / read / total) | 5 s / 30 s / 120 s | `ANALYZER_SOURCE_CONNECT_TIMEOUT_SECONDS`, `..._READ_...`, `..._DOWNLOAD_...` |
 | Max pre-signed URL lifetime accepted | 3600 s | `ANALYZER_MAX_URL_LIFETIME_SECONDS` |
 | Concurrent analyses per analyzer instance | 2 | `ANALYZER_MAX_CONCURRENCY` |
@@ -365,7 +477,9 @@ reports a misconfiguration if the chain is broken.
   secret values, pre-signed URLs (they are bearer credentials) or HMAC
   secrets or signatures. Unexpected errors log the exception type only.
 
-## 9. Phase 08 amendments
+## 9. Amendments
+
+### Phase 08
 
 Freezing the draft for implementation changed or clarified:
 
@@ -380,3 +494,16 @@ Freezing the draft for implementation changed or clarified:
 | `ANALYZER_MAX_ENTRY_BYTES`, `ANALYZER_MAX_PATH_LENGTH`, download timeouts | Independent limits matching the Laravel upload limits |
 | Health reports `versions.contract`, `versions.ir` and `limits` | As planned for Phase 08 |
 | IR 1.0 = file records | The parsed-document IR is frozen with the first parser in Phase 09 (IR 1.1, additive) |
+
+### Phase 09 (additive; contract stays `1.0`)
+
+| Change | Why |
+|---|---|
+| `result_type: "static_analysis"` replaces `"foundation"` as the response; it contains every foundation field unchanged | Phase 09 produces real parsing, metrics and findings, but still no scores; a new contract version is not needed because nothing is removed or redefined |
+| IR 1.1: `parse` and `structure` added to every file record | The parsed IR frozen with the first parser, as planned; smaller than the Phase 00 draft (only what metrics and findings use) |
+| `versions.metrics = "1.0"`, `versions.parser_runtime`, `versions.parsers` filled | Results name the exact metric definitions and grammar versions that produced them |
+| `analysis` records the four parser limits; new `parsing`, `metrics`, `findings` sections | Limits shape results, so they are hashed; statuses, measurements and threshold findings are the phase's output |
+| `ANALYZER_PARSE_TIMEOUT_MS`, `ANALYZER_MAX_AST_NODES`, `ANALYZER_MAX_TOTAL_AST_NODES`, `ANALYZER_MAX_PARSED_FILES` | Bound parsing per file and per run without failing the run |
+| Health reports `versions.metrics` and the parser limits | Laravel can check what an analyzer instance computes |
+| `findings` is a flat, sorted, capped list of structural findings (`parse_errors` from the draft became the `parse/syntax-error` rule) | One shape for every rule; secret findings are a later phase |
+| No new error codes | Per-file problems are statuses, not errors; the run-level codes of Phase 08 still apply |

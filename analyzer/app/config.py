@@ -81,6 +81,16 @@ class Settings:
     # Largest file that is analyzed; larger files are skipped as too_large.
     max_file_bytes: int = 1 * MIB
     max_path_length: int = 512
+    # Parsing (Phase 09). Wall-clock budget for parsing one file; when it runs
+    # out the file is PARSE_TIMEOUT (the only time-dependent status).
+    parse_timeout_ms: int = 5000
+    # Largest syntax tree (in nodes) that is analyzed; larger trees are
+    # LIMIT_EXCEEDED. Bounds the walk's time and memory per file.
+    max_ast_nodes: int = 1_000_000
+    # Total syntax-tree nodes analyzed per run; later files are LIMIT_EXCEEDED.
+    max_total_ast_nodes: int = 10_000_000
+    # Most files parsed per run; later files are LIMIT_EXCEEDED.
+    max_parsed_files: int = 20_000
     workspace_root: str = DEFAULT_WORKSPACE_ROOT
     ignored_directories: tuple[str, ...] = DEFAULT_IGNORED_DIRECTORIES
     # Bounded in-memory state (per analyzer process).
@@ -119,6 +129,10 @@ class Settings:
             "max_entry_bytes",
             "max_file_bytes",
             "max_path_length",
+            "parse_timeout_ms",
+            "max_ast_nodes",
+            "max_total_ast_nodes",
+            "max_parsed_files",
             "replay_cache_entries",
             "result_cache_seconds",
             "max_request_body_bytes",
@@ -130,6 +144,8 @@ class Settings:
                 problems.append(f"{name} must be positive")
         if self.result_cache_bytes < 0:
             problems.append("result_cache_bytes must not be negative")
+        if self.max_ast_nodes > self.max_total_ast_nodes:
+            problems.append("ANALYZER_MAX_AST_NODES must not exceed ANALYZER_MAX_TOTAL_AST_NODES")
         if self.max_entry_bytes > self.max_extracted_bytes:
             problems.append("ANALYZER_MAX_ENTRY_BYTES must not exceed ANALYZER_MAX_EXTRACTED_BYTES")
         if not os.path.isabs(self.workspace_root) or os.path.normpath(self.workspace_root) in ("/", ""):
@@ -155,6 +171,10 @@ class Settings:
             "max_file_bytes": self.max_file_bytes,
             "max_path_length": self.max_path_length,
             "max_concurrency": self.max_concurrency,
+            "parse_timeout_ms": self.parse_timeout_ms,
+            "max_ast_nodes": self.max_ast_nodes,
+            "max_total_ast_nodes": self.max_total_ast_nodes,
+            "max_parsed_files": self.max_parsed_files,
         }
 
     @classmethod
@@ -205,6 +225,10 @@ class Settings:
             max_entry_bytes=integer("ANALYZER_MAX_ENTRY_BYTES", 25 * MIB),
             max_file_bytes=integer("ANALYZER_MAX_FILE_BYTES", 1 * MIB),
             max_path_length=integer("ANALYZER_MAX_PATH_LENGTH", 512),
+            parse_timeout_ms=integer("ANALYZER_PARSE_TIMEOUT_MS", 5000),
+            max_ast_nodes=integer("ANALYZER_MAX_AST_NODES", 1_000_000),
+            max_total_ast_nodes=integer("ANALYZER_MAX_TOTAL_AST_NODES", 10_000_000),
+            max_parsed_files=integer("ANALYZER_MAX_PARSED_FILES", 20_000),
             workspace_root=text("ANALYZER_WORKSPACE_ROOT", DEFAULT_WORKSPACE_ROOT) or DEFAULT_WORKSPACE_ROOT,
             ignored_directories=ignored or DEFAULT_IGNORED_DIRECTORIES,
             replay_cache_entries=integer("ANALYZER_REPLAY_CACHE_ENTRIES", 100_000),

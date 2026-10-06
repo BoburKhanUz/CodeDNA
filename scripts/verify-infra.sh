@@ -191,7 +191,7 @@ fi
 check "remove probe rows (snapshots, project, profile, user)" db \
     "BEGIN; DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
 
-echo "Analyzer service (Phase 08)"
+echo "Analyzer service (Phases 08-09)"
 check "analyzer publishes no host port" bash -c \
     "[[ \$(docker inspect --format '{{range \$p, \$b := .NetworkSettings.Ports}}{{if \$b}}{{\$p}} {{end}}{{end}}' \$(${compose[*]} ps -q analyzer)) == '' ]]"
 check "health reports versions and limits only" bash -c \
@@ -206,7 +206,8 @@ with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
     archive.writestr("README.md", "# verify\n")
 print(base64.b64encode(buffer.getvalue()).decode())')
 # Laravel -> analyzer over the internal network: pre-signed MinIO URL, HMAC,
-# download, extraction, discovery, signed response (scripts/verify-analyzer.php).
+# download, extraction, discovery, parsing, metrics, signed response
+# (scripts/verify-analyzer.php).
 while IFS= read -r line; do
     case "$line" in
         "PASS "*) pass "Laravel -> analyzer: ${line#PASS }" ;;

@@ -34,9 +34,12 @@ archives of their source (stored as immutable, versioned snapshots in
 MinIO; nothing is executed or analyzed) at
 <http://localhost> (Next.js UI, Laravel Sanctum session cookies; see
 [frontend](docs/architecture/frontend.md) and the [API reference](docs/api/README.md)).
-The internal analyzer (Phase 08) can securely fetch, extract and inventory a
-snapshot and return a versioned foundation result, but nothing calls it from
-the product yet and it computes no metrics or scores; analysis runs and DNA
+The internal analyzer (Phases 08–09) can securely fetch, extract and
+inventory a snapshot, parse ten languages with Tree-sitter (nothing is
+executed) and return a versioned static-analysis result (IR 1.1,
+deterministic metrics and structural findings; see
+[metrics-v1.md](docs/architecture/metrics-v1.md)), but nothing calls it from
+the product yet and it computes no scores; analysis runs and DNA
 snapshots exist in the [data model](docs/architecture/data-model.md) but
 nothing creates them yet. The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).

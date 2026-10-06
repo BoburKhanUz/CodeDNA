@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Internal integration check for `make verify` (Phase 08): Laravel → analyzer
+ * Internal integration check for `make verify` (Phases 08–09): Laravel → analyzer
  * over the private Docker network, exactly as the contract specifies.
  *
  * Runs inside the backend container. It stores a small ZIP (passed in
@@ -93,14 +93,21 @@ try {
 
     [$first, $firstId] = $call($payload);
     $data = $first->json();
-    $check('signed request -> 200 foundation result', $first->status() === 200 && ($data['result_type'] ?? null) === 'foundation');
+    $check('signed request -> 200 static_analysis result', $first->status() === 200 && ($data['result_type'] ?? null) === 'static_analysis');
     $check('response signature verifies', $responseSignatureValid($first, $firstId));
-    $check('contract and IR versions present', ($data['contract_version'] ?? null) === '1.0' && ($data['versions']['ir'] ?? null) === '1.0');
+    $check('contract, IR 1.1 and metrics 1.0 versions present',
+        ($data['contract_version'] ?? null) === '1.0' && ($data['versions']['ir'] ?? null) === '1.1'
+        && ($data['versions']['metrics'] ?? null) === '1.0'
+        && array_key_exists('scoring', $data['versions'] ?? []) && $data['versions']['scoring'] === null);
     $check('source downloaded, verified and discovered (3 files, php + python)',
         ($data['source']['files_total'] ?? null) === 3
         && array_column($data['languages'] ?? [], 'language') === ['php', 'python']);
-    $check('no scores, metrics or source text in the result',
-        ! isset($data['dna']) && ! isset($data['metrics']) && ! str_contains($first->body(), 'echo')
+    $check('both source files parsed and measured (Tree-sitter, IR 1.1)',
+        ($data['parsing']['files']['PARSED'] ?? null) === 2
+        && ($data['metrics']['overall']['files_parsed'] ?? null) === 2
+        && ($data['metrics']['overall']['lines_code'] ?? null) === 2);
+    $check('no scores, features or source text in the result',
+        ! isset($data['dna']) && ! isset($data['features']) && ! str_contains($first->body(), 'echo')
         && ! str_contains($first->body(), 'X-Amz'));
 
     // A fresh URL and request ID for the same run: same deterministic result.

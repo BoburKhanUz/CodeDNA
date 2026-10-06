@@ -11,6 +11,9 @@ from fastapi.testclient import TestClient
 from app.auth.hmac_signing import response_canonical_string, sign
 from app.config import Settings
 from app.main import create_app
+from app.metrics.aggregate import METRICS_VERSION
+from app.parsing.grammars import GRAMMARS, RUNTIME
+from app.parsing.specs import SPECS
 from app.versions import ANALYZER_VERSION, IR_VERSION
 from app.workspace.workspace import active_runs
 from tests.support import (
@@ -57,7 +60,7 @@ def assert_signed(response, request_id: str) -> None:  # type: ignore[no-untyped
     assert response.headers["x-codedna-signature"] == expected
 
 
-def test_a_signed_request_returns_a_versioned_foundation_result(settings: Settings) -> None:
+def test_a_signed_request_returns_a_versioned_static_analysis_result(settings: Settings) -> None:
     with client_for(settings) as client:
         body = request_body(ARCHIVE)
         response = post(client, body)
@@ -75,12 +78,22 @@ def test_a_signed_request_returns_a_versioned_foundation_result(settings: Settin
         "analysis",
         "source",
         "languages",
+        "parsing",
         "ir",
+        "metrics",
+        "findings",
         "result_hash",
         "diagnostics",
     }
-    assert data["contract_version"] == "1.0" and data["result_type"] == "foundation"
-    assert data["versions"] == {"analyzer": ANALYZER_VERSION, "ir": IR_VERSION, "metrics": None, "scoring": None, "parsers": {}}
+    assert data["contract_version"] == "1.0" and data["result_type"] == "static_analysis"
+    assert data["versions"] == {
+        "analyzer": ANALYZER_VERSION,
+        "ir": IR_VERSION,
+        "metrics": METRICS_VERSION,
+        "scoring": None,
+        "parser_runtime": RUNTIME,
+        "parsers": {language: GRAMMARS[SPECS[language].grammar].label for language in SPECS},
+    }
     assert data["analysis_run_id"] == RUN_ID
     assert data["source"] == {
         "sha256": body["source"]["sha256"],
@@ -102,8 +115,25 @@ def test_a_signed_request_returns_a_versioned_foundation_result(settings: Settin
     assert [entry["language"] for entry in data["languages"]] == ["php", "python", "typescript"]
     assert data["ir"]["version"] == IR_VERSION
     assert [f["path"] for f in data["ir"]["files"]] == ["README.md", "src/Invoice.php", "src/app.py", "web/index.ts"]
-    # No scores, metrics or findings in a foundation result, and never source text.
-    for absent in ("metrics", "features", "dna", "findings"):
+    # Every IR 1.0 field is unchanged; IR 1.1 adds parse and structure.
+    readme = data["ir"]["files"][0]
+    assert readme == {
+        "path": "README.md",
+        "extension": ".md",
+        "language": None,
+        "size_bytes": 10,
+        "lines": None,
+        "skip_reason": "unsupported_language",
+        "parse": None,
+        "structure": None,
+    }
+    assert [f["parse"]["status"] for f in data["ir"]["files"][1:]] == ["PARSED", "PARSED", "PARSED"]
+    assert data["parsing"]["files"] == {"PARSED": 3, "PARSE_ERROR": 0, "PARSE_TIMEOUT": 0, "LIMIT_EXCEEDED": 0, "UNSUPPORTED_PARSER": 0}
+    assert data["metrics"]["overall"]["files_parsed"] == 3
+    assert data["metrics"]["overall"]["types_by_kind"] == {"class": 1}
+    assert data["findings"]["total"] == 0
+    # Static analysis is not scoring: no features, DNA or scores, and never source text.
+    for absent in ("features", "dna", "score", "scores"):
         assert absent not in data
     assert "never-in-the-output" not in response.text and "final class" not in response.text
     assert body["source"]["url"].split("?")[1] not in response.text

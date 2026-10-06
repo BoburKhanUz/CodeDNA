@@ -7,7 +7,11 @@ description = "CodeDNA code analysis engine (internal service)"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # The one deprecated call the parser relies on (app/parsing/parser.py), filtered at import in production.
+    "ignore:Use the progress_callback in parse:DeprecationWarning",
+]
 # The source tree is mounted read-only in the analyzer container.
 addopts = "-p no:cacheprovider"
 
@@ -16,6 +20,8 @@ target-version = "py311"
 line-length = 140
 # The source tree is mounted read-only in the container.
 cache-dir = "/tmp/ruff-cache"
+# Parser fixtures are sample source in ten languages, some deliberately invalid.
+extend-exclude = ["tests/fixtures"]
 
 [tool.ruff.lint]
 # pycodestyle, pyflakes, isort, bugbear, pyupgrade, simplify, bandit (security),

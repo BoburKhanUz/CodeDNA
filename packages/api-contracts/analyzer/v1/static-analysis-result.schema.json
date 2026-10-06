@@ -1,0 +1,346 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codedna.dev/contracts/analyzer/v1/static-analysis-result.schema.json",
+  "title": "POST /internal/v1/analyze 200 response, result_type \"static_analysis\" (contract 1.0, IR 1.1, metrics 1.0)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "result_type", "analysis_run_id", "request_id", "versions", "analysis", "source", "languages", "parsing", "ir", "metrics", "findings", "result_hash", "diagnostics"],
+  "properties": {
+    "contract_version": { "type": "string", "pattern": "^1\\.[0-9]{1,3}$" },
+    "result_type": { "const": "static_analysis" },
+    "analysis_run_id": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$" },
+    "request_id": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analyzer", "ir", "metrics", "scoring", "parser_runtime", "parsers"],
+      "properties": {
+        "analyzer": { "type": "string", "minLength": 1 },
+        "ir": { "const": "1.1" },
+        "metrics": { "const": "1.0" },
+        "scoring": { "type": "null" },
+        "parser_runtime": { "type": "string", "pattern": "^tree-sitter@[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "parsers": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "pattern": "^tree-sitter-[a-z-]+@[0-9]+\\.[0-9]+\\.[0-9]+$" }
+        }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languages", "ignored_directories", "max_file_bytes", "parse_timeout_ms", "max_ast_nodes", "max_total_ast_nodes", "max_parsed_files"],
+      "properties": {
+        "languages": { "type": "array", "items": { "$ref": "#/$defs/language" } },
+        "ignored_directories": { "type": "array", "items": { "type": "string" } },
+        "max_file_bytes": { "type": "integer", "minimum": 1 },
+        "parse_timeout_ms": { "type": "integer", "minimum": 1 },
+        "max_ast_nodes": { "type": "integer", "minimum": 1 },
+        "max_total_ast_nodes": { "type": "integer", "minimum": 1 },
+        "max_parsed_files": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "size_bytes", "files_total", "files_analyzed", "files_skipped", "bytes_total"],
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "size_bytes": { "type": "integer", "minimum": 1 },
+        "files_total": { "type": "integer", "minimum": 0 },
+        "files_analyzed": { "type": "integer", "minimum": 1 },
+        "files_skipped": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ignored_path", "unsupported_language", "too_large", "binary"],
+          "properties": {
+            "ignored_path": { "type": "integer", "minimum": 0 },
+            "unsupported_language": { "type": "integer", "minimum": 0 },
+            "too_large": { "type": "integer", "minimum": 0 },
+            "binary": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "bytes_total": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "languages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["language", "files", "bytes", "lines"],
+        "properties": {
+          "language": { "$ref": "#/$defs/language" },
+          "files": { "type": "integer", "minimum": 1 },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "lines": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "parsing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "languages"],
+      "properties": {
+        "files": { "$ref": "#/$defs/status_counts" },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["language", "files"],
+            "properties": {
+              "language": { "$ref": "#/$defs/language" },
+              "files": { "$ref": "#/$defs/status_counts" }
+            }
+          }
+        }
+      }
+    },
+    "ir": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "files"],
+      "properties": {
+        "version": { "const": "1.1" },
+        "files": { "type": "array", "items": { "$ref": "#/$defs/file" } }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "overall", "by_language"],
+      "properties": {
+        "version": { "const": "1.0" },
+        "overall": { "$ref": "#/$defs/metrics" },
+        "by_language": { "type": "object", "additionalProperties": { "$ref": "#/$defs/metrics" } }
+      }
+    },
+    "findings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "by_rule", "truncated", "items"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "by_rule": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["complexity/cyclomatic", "structure/nesting-depth", "structure/function-length", "structure/parameter-count", "structure/class-length", "parse/syntax-error"],
+          "properties": {
+            "complexity/cyclomatic": { "type": "integer", "minimum": 0 },
+            "structure/nesting-depth": { "type": "integer", "minimum": 0 },
+            "structure/function-length": { "type": "integer", "minimum": 0 },
+            "structure/parameter-count": { "type": "integer", "minimum": 0 },
+            "structure/class-length": { "type": "integer", "minimum": 0 },
+            "parse/syntax-error": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "truncated": { "type": "boolean" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/finding" } }
+      }
+    },
+    "result_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "diagnostics": {
+      "type": "object",
+      "required": ["duration_ms"],
+      "properties": {
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "replayed": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "language": { "enum": ["c", "cpp", "csharp", "go", "java", "javascript", "php", "python", "rust", "typescript"] },
+    "count": { "type": "integer", "minimum": 0 },
+    "line": { "type": "integer", "minimum": 1 },
+    "column": { "type": "integer", "minimum": 0 },
+    "status_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["PARSED", "PARSE_ERROR", "PARSE_TIMEOUT", "LIMIT_EXCEEDED", "UNSUPPORTED_PARSER"],
+      "properties": {
+        "PARSED": { "$ref": "#/$defs/count" },
+        "PARSE_ERROR": { "$ref": "#/$defs/count" },
+        "PARSE_TIMEOUT": { "$ref": "#/$defs/count" },
+        "LIMIT_EXCEEDED": { "$ref": "#/$defs/count" },
+        "UNSUPPORTED_PARSER": { "$ref": "#/$defs/count" }
+      }
+    },
+    "name": { "type": ["string", "null"], "minLength": 1, "maxLength": 200, "pattern": "^[^\\s\"'`;(){}]+( [^\\s\"'`;(){}]+)*$" },
+    "visibility": { "enum": [null, "public", "protected", "private", "internal", "protected internal", "private protected", "restricted"] },
+    "file": {
+      "title": "IR 1.1 file record: the IR 1.0 fields unchanged, plus parse and structure (never source text)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "extension", "language", "size_bytes", "lines", "skip_reason", "parse", "structure"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "extension": { "type": ["string", "null"] },
+        "language": { "type": ["string", "null"] },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "lines": { "type": ["integer", "null"], "minimum": 0 },
+        "skip_reason": { "enum": [null, "unsupported_language", "too_large", "binary"] },
+        "parse": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["status", "limit", "ast_nodes", "ast_max_depth", "error_nodes", "first_error"],
+          "properties": {
+            "status": { "enum": ["PARSED", "PARSE_ERROR", "PARSE_TIMEOUT", "LIMIT_EXCEEDED", "UNSUPPORTED_PARSER"] },
+            "limit": { "enum": [null, "ast_nodes", "total_ast_nodes", "parsed_files"] },
+            "ast_nodes": { "type": ["integer", "null"], "minimum": 1 },
+            "ast_max_depth": { "type": ["integer", "null"], "minimum": 1 },
+            "error_nodes": { "type": ["integer", "null"], "minimum": 0 },
+            "first_error": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["line", "column"],
+              "properties": { "line": { "$ref": "#/$defs/line" }, "column": { "$ref": "#/$defs/column" } }
+            }
+          }
+        },
+        "structure": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["lines", "imports", "types", "functions"],
+          "properties": {
+            "lines": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["total", "code", "comment", "blank"],
+              "properties": {
+                "total": { "$ref": "#/$defs/count" },
+                "code": { "$ref": "#/$defs/count" },
+                "comment": { "$ref": "#/$defs/count" },
+                "blank": { "$ref": "#/$defs/count" }
+              }
+            },
+            "imports": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["line", "target"],
+                "properties": {
+                  "line": { "$ref": "#/$defs/line" },
+                  "target": { "type": ["string", "null"], "minLength": 1, "maxLength": 256, "pattern": "^[^\\s\"'`;(){}]+$" }
+                }
+              }
+            },
+            "types": { "type": "array", "items": { "$ref": "#/$defs/type" } },
+            "functions": { "type": "array", "items": { "$ref": "#/$defs/function" } }
+          }
+        }
+      }
+    },
+    "type": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "line", "column", "end_line", "visibility", "bases", "methods"],
+      "properties": {
+        "kind": { "enum": ["class", "interface", "trait", "enum", "struct", "union", "record", "annotation"] },
+        "name": { "$ref": "#/$defs/name" },
+        "line": { "$ref": "#/$defs/line" },
+        "column": { "$ref": "#/$defs/column" },
+        "end_line": { "$ref": "#/$defs/line" },
+        "visibility": { "$ref": "#/$defs/visibility" },
+        "bases": { "type": ["array", "null"], "items": { "$ref": "#/$defs/name" } },
+        "methods": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "line", "column", "end_line", "visibility", "parameters", "parent_type", "complexity", "max_nesting"],
+      "properties": {
+        "kind": { "enum": ["function", "method", "anonymous"] },
+        "name": { "$ref": "#/$defs/name" },
+        "line": { "$ref": "#/$defs/line" },
+        "column": { "$ref": "#/$defs/column" },
+        "end_line": { "$ref": "#/$defs/line" },
+        "visibility": { "$ref": "#/$defs/visibility" },
+        "parameters": { "$ref": "#/$defs/count" },
+        "parent_type": { "type": ["integer", "null"], "minimum": 0 },
+        "complexity": { "type": "integer", "minimum": 1 },
+        "max_nesting": { "$ref": "#/$defs/count" }
+      }
+    },
+    "nullable_count": { "type": ["integer", "null"], "minimum": 0 },
+    "nullable_average": { "type": ["number", "null"], "minimum": 0 },
+    "metrics": {
+      "title": "Static metrics 1.0 (docs/architecture/metrics-v1.md); structural metrics cover PARSED files only",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "files_analyzable", "files_parsed", "files_parse_error", "files_parse_timeout", "files_limit_exceeded", "files_unsupported_parser",
+        "lines_total", "lines_code", "lines_comment", "lines_blank", "ast_nodes", "ast_max_depth",
+        "imports", "types", "types_by_kind", "types_with_bases",
+        "functions_total", "functions", "methods", "anonymous_functions",
+        "function_lines_avg", "function_lines_max", "parameters_avg", "parameters_max", "nesting_avg", "nesting_max",
+        "complexity_total", "complexity_avg", "complexity_max", "complexity_threshold", "complexity_over_threshold",
+        "unsupported"
+      ],
+      "properties": {
+        "files_analyzable": { "$ref": "#/$defs/count" },
+        "files_parsed": { "$ref": "#/$defs/count" },
+        "files_parse_error": { "$ref": "#/$defs/count" },
+        "files_parse_timeout": { "$ref": "#/$defs/count" },
+        "files_limit_exceeded": { "$ref": "#/$defs/count" },
+        "files_unsupported_parser": { "$ref": "#/$defs/count" },
+        "lines_total": { "$ref": "#/$defs/count" },
+        "lines_code": { "$ref": "#/$defs/count" },
+        "lines_comment": { "$ref": "#/$defs/count" },
+        "lines_blank": { "$ref": "#/$defs/count" },
+        "ast_nodes": { "$ref": "#/$defs/count" },
+        "ast_max_depth": { "$ref": "#/$defs/nullable_count" },
+        "imports": { "$ref": "#/$defs/count" },
+        "types": { "$ref": "#/$defs/count" },
+        "types_by_kind": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "class": { "$ref": "#/$defs/count" },
+            "interface": { "$ref": "#/$defs/count" },
+            "trait": { "$ref": "#/$defs/count" },
+            "enum": { "$ref": "#/$defs/count" },
+            "struct": { "$ref": "#/$defs/count" },
+            "union": { "$ref": "#/$defs/count" },
+            "record": { "$ref": "#/$defs/count" },
+            "annotation": { "$ref": "#/$defs/count" }
+          }
+        },
+        "types_with_bases": { "$ref": "#/$defs/nullable_count" },
+        "functions_total": { "$ref": "#/$defs/count" },
+        "functions": { "$ref": "#/$defs/count" },
+        "methods": { "$ref": "#/$defs/count" },
+        "anonymous_functions": { "$ref": "#/$defs/count" },
+        "function_lines_avg": { "$ref": "#/$defs/nullable_average" },
+        "function_lines_max": { "$ref": "#/$defs/nullable_count" },
+        "parameters_avg": { "$ref": "#/$defs/nullable_average" },
+        "parameters_max": { "$ref": "#/$defs/nullable_count" },
+        "nesting_avg": { "$ref": "#/$defs/nullable_average" },
+        "nesting_max": { "$ref": "#/$defs/nullable_count" },
+        "complexity_total": { "$ref": "#/$defs/count" },
+        "complexity_avg": { "$ref": "#/$defs/nullable_average" },
+        "complexity_max": { "$ref": "#/$defs/nullable_count" },
+        "complexity_threshold": { "type": "integer", "minimum": 1 },
+        "complexity_over_threshold": { "$ref": "#/$defs/count" },
+        "unsupported": { "type": "array", "uniqueItems": true, "items": { "enum": ["types_with_bases"] } }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule_id", "severity", "path", "line", "column", "value", "threshold", "message"],
+      "properties": {
+        "rule_id": { "enum": ["complexity/cyclomatic", "structure/nesting-depth", "structure/function-length", "structure/parameter-count", "structure/class-length", "parse/syntax-error"] },
+        "severity": { "enum": ["low", "medium", "high"] },
+        "path": { "type": "string", "minLength": 1 },
+        "line": { "type": ["integer", "null"], "minimum": 1 },
+        "column": { "type": ["integer", "null"], "minimum": 0 },
+        "value": { "$ref": "#/$defs/count" },
+        "threshold": { "type": ["integer", "null"], "minimum": 0 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[A-Za-z][A-Za-z0-9 (),.]*$" }
+      }
+    }
+  }
+}

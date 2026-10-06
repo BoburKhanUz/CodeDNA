@@ -21,7 +21,7 @@ Register / log in ─► create project ─► upload source (ZIP) ─► start 
 | Source input | ZIP upload into an `UPLOAD` project, stored as an immutable source snapshot (Phase 07) |
 | Languages | PHP, Python, JavaScript, TypeScript, delivered in that order. A language is listed as supported only once its parser and tests are in. |
 | Analysis | Asynchronous pipeline via queue → internal analyzer; visible status; visible failures with a reason; re-run |
-| Metrics | Deterministic static metrics ([analyzer.md](../architecture/analyzer.md#metrics-v1-outline)) |
+| Metrics | Deterministic static metrics ([metrics-v1.md](../architecture/metrics-v1.md)) |
 | DNA | Deterministic, versioned scores for the scoring 1.0 dimensions ([ADR-004](../decisions/ADR-004-dna-scoring.md)) |
 | Dashboard | Latest DNA, per-dimension scores with statuses, key metrics, analysis history list |
 | Security | Secret detection (locations only), ignore rules, size, file and time limits, no code execution |

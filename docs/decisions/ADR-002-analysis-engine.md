@@ -73,3 +73,16 @@ code it analyzes.
   drift, and some of them load or execute project configuration.
 - **LLM-based analysis:** rejected for metrics. Metrics must be
   deterministic (master instruction §15).
+
+## Implementation note (Phase 09)
+
+- All ten detected languages were delivered together rather than one at a
+  time: each has an adapter (`analyzer/app/parsing/specs.py`, the "lowering
+  module"), a valid and a broken fixture with hand-derived expectations, and
+  is part of the golden fixture, which is the bar point 6 sets.
+- The IR frozen as 1.1 is smaller than the Phase 00 draft (no comment,
+  identifier or formatting lists); see
+  [analyzer.md](../architecture/analyzer.md#ir-11-phase-09-frozen-parse-status-and-structure).
+- The Tree-sitter runtime is pinned to 0.25.2 because it is the newest
+  release whose per-file parse timeout works from Python (see
+  [analyzer.md](../architecture/analyzer.md#parser-resource-limits)).

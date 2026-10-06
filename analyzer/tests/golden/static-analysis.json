@@ -1,0 +1,1658 @@
+{
+ "findings": {
+  "by_rule": {
+   "complexity/cyclomatic": 0,
+   "parse/syntax-error": 10,
+   "structure/class-length": 0,
+   "structure/function-length": 0,
+   "structure/nesting-depth": 0,
+   "structure/parameter-count": 0
+  },
+  "items": [
+   {
+    "column": 15,
+    "line": 1,
+    "message": "File has 1 syntax error node(s) and was not measured.",
+    "path": "Error.cs",
+    "rule_id": "parse/syntax-error",
+    "severity": "medium",
+    "threshold": null,
+    "value": 1
+   },
+   {
+    "column": 15,
+    "line": 1,
+    "message": "File has 1 syntax error node(s) and was not measured.",
+    "path": "Error.java",
+    "rule_id": "parse/syntax-error",
+    "severity": "medium",
+    "threshold": null,
+    "value": 1
+   },
+   {
+    "column": 0,
+    "line": 1,
+    "message": "File has 1 syntax error node(s) and was not measured.",
+    "path": "error.c",
+    "rule_id": "parse/syntax-error",
+    "severity": "medium",
+    "threshold": null,
+    "value": 1
+   },
+   {
+    "column": 15,
+    "line": 1,
+    "message": "File has 1 syntax error node(s) and was not measured.",
+    "path": "error.cpp",
+    "rule_id": "parse/syntax-error",
+    "severity": "medium",
+    "threshold": null,
+    "value": 1
+   },
+   {
+    "column": 0,
+    "line": 2,
+    "message": "File has 1 syntax error node(s) and was not measured.",
+    "path": "error.go",
+    "rule_id": "parse/syntax-error",
+    "severity": "medium",
+    "threshold": null,
+    "value": 1
+   },
+   {
+    "column": 0,
+    "line": 1,
+    "message": "File has 1 syntax error node(s) and was not measured.",
+    "path": "error.js",
+    "rule_id": "parse/syntax-error",
+    "severity": "medium",
+    "threshold": null,
+    "value": 1
+   },
+   {
+    "column": 0,
+    "line": 2,
+    "message": "File has 1 syntax error node(s) and was not measured.",
+    "path": "error.php",
+    "rule_id": "parse/syntax-error",
+    "severity": "medium",
+    "threshold": null,
+    "value": 1
+   },
+   {
+    "column": 11,
+    "line": 1,
+    "message": "File has 1 syntax error node(s) and was not measured.",
+    "path": "error.py",
+    "rule_id": "parse/syntax-error",
+    "severity": "medium",
+    "threshold": null,
+    "value": 1
+   },
+   {
+    "column": 0,
+    "line": 1,
+    "message": "File has 1 syntax error node(s) and was not measured.",
+    "path": "error.rs",
+    "rule_id": "parse/syntax-error",
+    "severity": "medium",
+    "threshold": null,
+    "value": 1
+   },
+   {
+    "column": 17,
+    "line": 1,
+    "message": "File has 1 syntax error node(s) and was not measured.",
+    "path": "error.ts",
+    "rule_id": "parse/syntax-error",
+    "severity": "medium",
+    "threshold": null,
+    "value": 1
+   }
+  ],
+  "total": 10,
+  "truncated": false
+ },
+ "ir": [
+  {
+   "extension": ".cs",
+   "language": "csharp",
+   "lines": 1,
+   "parse": {
+    "ast_max_depth": 5,
+    "ast_nodes": 11,
+    "error_nodes": 1,
+    "first_error": {
+     "column": 15,
+     "line": 1
+    },
+    "limit": null,
+    "status": "PARSE_ERROR"
+   },
+   "path": "Error.cs",
+   "size_bytes": 25,
+   "skip_reason": null,
+   "structure": null
+  },
+  {
+   "extension": ".java",
+   "language": "java",
+   "lines": 1,
+   "parse": {
+    "ast_max_depth": 5,
+    "ast_nodes": 11,
+    "error_nodes": 1,
+    "first_error": {
+     "column": 15,
+     "line": 1
+    },
+    "limit": null,
+    "status": "PARSE_ERROR"
+   },
+   "path": "Error.java",
+   "size_bytes": 25,
+   "skip_reason": null,
+   "structure": null
+  },
+  {
+   "extension": ".cs",
+   "language": "csharp",
+   "lines": 28,
+   "parse": {
+    "ast_max_depth": 15,
+    "ast_nodes": 178,
+    "error_nodes": 0,
+    "first_error": null,
+    "limit": null,
+    "status": "PARSED"
+   },
+   "path": "Valid.cs",
+   "size_bytes": 649,
+   "skip_reason": null,
+   "structure": {
+    "functions": [
+     {
+      "column": 8,
+      "complexity": 4,
+      "end_line": 22,
+      "kind": "method",
+      "line": 11,
+      "max_nesting": 1,
+      "name": "Add",
+      "parameters": 2,
+      "parent_type": 0,
+      "visibility": "public"
+     },
+     {
+      "column": 8,
+      "complexity": 3,
+      "end_line": 24,
+      "kind": "method",
+      "line": 24,
+      "max_nesting": 1,
+      "name": "Label",
+      "parameters": 1,
+      "parent_type": 0,
+      "visibility": "internal"
+     },
+     {
+      "column": 8,
+      "complexity": 1,
+      "end_line": 26,
+      "kind": "method",
+      "line": 26,
+      "max_nesting": 0,
+      "name": "Dispose",
+      "parameters": 0,
+      "parent_type": 0,
+      "visibility": "public"
+     }
+    ],
+    "imports": [
+     {
+      "line": 1,
+      "target": "System"
+     },
+     {
+      "line": 2,
+      "target": "System.Collections.Generic"
+     }
+    ],
+    "lines": {
+     "blank": 4,
+     "code": 23,
+     "comment": 1,
+     "total": 28
+    },
+    "types": [
+     {
+      "bases": [
+       "BaseLedger",
+       "IDisposable"
+      ],
+      "column": 4,
+      "end_line": 27,
+      "kind": "class",
+      "line": 7,
+      "methods": 3,
+      "name": "Ledger",
+      "visibility": "public"
+     }
+    ]
+   }
+  },
+  {
+   "extension": ".java",
+   "language": "java",
+   "lines": 27,
+   "parse": {
+    "ast_max_depth": 13,
+    "ast_nodes": 180,
+    "error_nodes": 0,
+    "first_error": null,
+    "limit": null,
+    "status": "PARSED"
+   },
+   "path": "Valid.java",
+   "size_bytes": 604,
+   "skip_reason": null,
+   "structure": {
+    "functions": [
+     {
+      "column": 4,
+      "complexity": 1,
+      "end_line": 12,
+      "kind": "method",
+      "line": 10,
+      "max_nesting": 0,
+      "name": "OrderService",
+      "parameters": 1,
+      "parent_type": 0,
+      "visibility": "public"
+     },
+     {
+      "column": 4,
+      "complexity": 5,
+      "end_line": 22,
+      "kind": "method",
+      "line": 14,
+      "max_nesting": 2,
+      "name": "count",
+      "parameters": 2,
+      "parent_type": 0,
+      "visibility": "protected"
+     }
+    ],
+    "imports": [
+     {
+      "line": 3,
+      "target": "java.util.List"
+     },
+     {
+      "line": 4,
+      "target": "java.util.*"
+     }
+    ],
+    "lines": {
+     "blank": 5,
+     "code": 21,
+     "comment": 1,
+     "total": 27
+    },
+    "types": [
+     {
+      "bases": [
+       "BaseService",
+       "Auditable",
+       "Closeable"
+      ],
+      "column": 0,
+      "end_line": 27,
+      "kind": "class",
+      "line": 7,
+      "methods": 2,
+      "name": "OrderService",
+      "visibility": "public"
+     },
+     {
+      "bases": [],
+      "column": 4,
+      "end_line": 26,
+      "kind": "class",
+      "line": 24,
+      "methods": 0,
+      "name": "Inner",
+      "visibility": null
+     }
+    ]
+   }
+  },
+  {
+   "extension": ".c",
+   "language": "c",
+   "lines": 1,
+   "parse": {
+    "ast_max_depth": 3,
+    "ast_nodes": 6,
+    "error_nodes": 1,
+    "first_error": {
+     "column": 0,
+     "line": 1
+    },
+    "limit": null,
+    "status": "PARSE_ERROR"
+   },
+   "path": "error.c",
+   "size_bytes": 14,
+   "skip_reason": null,
+   "structure": null
+  },
+  {
+   "extension": ".cpp",
+   "language": "cpp",
+   "lines": 1,
+   "parse": {
+    "ast_max_depth": 5,
+    "ast_nodes": 12,
+    "error_nodes": 1,
+    "first_error": {
+     "column": 15,
+     "line": 1
+    },
+    "limit": null,
+    "status": "PARSE_ERROR"
+   },
+   "path": "error.cpp",
+   "size_bytes": 26,
+   "skip_reason": null,
+   "structure": null
+  },
+  {
+   "extension": ".go",
+   "language": "go",
+   "lines": 2,
+   "parse": {
+    "ast_max_depth": 3,
+    "ast_nodes": 9,
+    "error_nodes": 1,
+    "first_error": {
+     "column": 0,
+     "line": 2
+    },
+    "limit": null,
+    "status": "PARSE_ERROR"
+   },
+   "path": "error.go",
+   "size_bytes": 25,
+   "skip_reason": null,
+   "structure": null
+  },
+  {
+   "extension": ".js",
+   "language": "javascript",
+   "lines": 1,
+   "parse": {
+    "ast_max_depth": 3,
+    "ast_nodes": 6,
+    "error_nodes": 1,
+    "first_error": {
+     "column": 0,
+     "line": 1
+    },
+    "limit": null,
+    "status": "PARSE_ERROR"
+   },
+   "path": "error.js",
+   "size_bytes": 19,
+   "skip_reason": null,
+   "structure": null
+  },
+  {
+   "extension": ".php",
+   "language": "php",
+   "lines": 2,
+   "parse": {
+    "ast_max_depth": 3,
+    "ast_nodes": 7,
+    "error_nodes": 1,
+    "first_error": {
+     "column": 0,
+     "line": 2
+    },
+    "limit": null,
+    "status": "PARSE_ERROR"
+   },
+   "path": "error.php",
+   "size_bytes": 25,
+   "skip_reason": null,
+   "structure": null
+  },
+  {
+   "extension": ".py",
+   "language": "python",
+   "lines": 2,
+   "parse": {
+    "ast_max_depth": 5,
+    "ast_nodes": 11,
+    "error_nodes": 1,
+    "first_error": {
+     "column": 11,
+     "line": 1
+    },
+    "limit": null,
+    "status": "PARSE_ERROR"
+   },
+   "path": "error.py",
+   "size_bytes": 22,
+   "skip_reason": null,
+   "structure": null
+  },
+  {
+   "extension": ".rs",
+   "language": "rust",
+   "lines": 1,
+   "parse": {
+    "ast_max_depth": 3,
+    "ast_nodes": 6,
+    "error_nodes": 1,
+    "first_error": {
+     "column": 0,
+     "line": 1
+    },
+    "limit": null,
+    "status": "PARSE_ERROR"
+   },
+   "path": "error.rs",
+   "size_bytes": 13,
+   "skip_reason": null,
+   "structure": null
+  },
+  {
+   "extension": ".ts",
+   "language": "typescript",
+   "lines": 1,
+   "parse": {
+    "ast_max_depth": 7,
+    "ast_nodes": 19,
+    "error_nodes": 1,
+    "first_error": {
+     "column": 17,
+     "line": 1
+    },
+    "limit": null,
+    "status": "PARSE_ERROR"
+   },
+   "path": "error.ts",
+   "size_bytes": 32,
+   "skip_reason": null,
+   "structure": null
+  },
+  {
+   "extension": ".c",
+   "language": "c",
+   "lines": 22,
+   "parse": {
+    "ast_max_depth": 11,
+    "ast_nodes": 137,
+    "error_nodes": 0,
+    "first_error": null,
+    "limit": null,
+    "status": "PARSED"
+   },
+   "path": "valid.c",
+   "size_bytes": 389,
+   "skip_reason": null,
+   "structure": {
+    "functions": [
+     {
+      "column": 0,
+      "complexity": 5,
+      "end_line": 20,
+      "kind": "function",
+      "line": 10,
+      "max_nesting": 2,
+      "name": "add",
+      "parameters": 2,
+      "parent_type": null,
+      "visibility": null
+     },
+     {
+      "column": 0,
+      "complexity": 1,
+      "end_line": 22,
+      "kind": "function",
+      "line": 22,
+      "max_nesting": 0,
+      "name": "noop",
+      "parameters": 0,
+      "parent_type": null,
+      "visibility": null
+     }
+    ],
+    "imports": [
+     {
+      "line": 1,
+      "target": "stdio.h"
+     },
+     {
+      "line": 2,
+      "target": "ledger.h"
+     }
+    ],
+    "lines": {
+     "blank": 3,
+     "code": 17,
+     "comment": 2,
+     "total": 22
+    },
+    "types": [
+     {
+      "bases": null,
+      "column": 0,
+      "end_line": 7,
+      "kind": "struct",
+      "line": 5,
+      "methods": 0,
+      "name": "ledger",
+      "visibility": null
+     }
+    ]
+   }
+  },
+  {
+   "extension": ".cpp",
+   "language": "cpp",
+   "lines": 24,
+   "parse": {
+    "ast_max_depth": 10,
+    "ast_nodes": 170,
+    "error_nodes": 0,
+    "first_error": null,
+    "limit": null,
+    "status": "PARSED"
+   },
+   "path": "valid.cpp",
+   "size_bytes": 481,
+   "skip_reason": null,
+   "structure": {
+    "functions": [
+     {
+      "column": 4,
+      "complexity": 1,
+      "end_line": 7,
+      "kind": "method",
+      "line": 7,
+      "max_nesting": 0,
+      "name": "Circle",
+      "parameters": 1,
+      "parent_type": 0,
+      "visibility": "public"
+     },
+     {
+      "column": 4,
+      "complexity": 2,
+      "end_line": 10,
+      "kind": "method",
+      "line": 8,
+      "max_nesting": 0,
+      "name": "area",
+      "parameters": 0,
+      "parent_type": 0,
+      "visibility": "public"
+     },
+     {
+      "column": 4,
+      "complexity": 1,
+      "end_line": 13,
+      "kind": "method",
+      "line": 13,
+      "max_nesting": 0,
+      "name": "reset",
+      "parameters": 0,
+      "parent_type": 0,
+      "visibility": "private"
+     },
+     {
+      "column": 0,
+      "complexity": 3,
+      "end_line": 24,
+      "kind": "function",
+      "line": 17,
+      "max_nesting": 1,
+      "name": "clamp",
+      "parameters": 3,
+      "parent_type": null,
+      "visibility": null
+     }
+    ],
+    "imports": [
+     {
+      "line": 1,
+      "target": "vector"
+     },
+     {
+      "line": 2,
+      "target": "shape.hpp"
+     }
+    ],
+    "lines": {
+     "blank": 2,
+     "code": 21,
+     "comment": 1,
+     "total": 24
+    },
+    "types": [
+     {
+      "bases": [
+       "Shape"
+      ],
+      "column": 0,
+      "end_line": 14,
+      "kind": "class",
+      "line": 5,
+      "methods": 3,
+      "name": "Circle",
+      "visibility": null
+     }
+    ]
+   }
+  },
+  {
+   "extension": ".go",
+   "language": "go",
+   "lines": 32,
+   "parse": {
+    "ast_max_depth": 16,
+    "ast_nodes": 202,
+    "error_nodes": 0,
+    "first_error": null,
+    "limit": null,
+    "status": "PARSED"
+   },
+   "path": "valid.go",
+   "size_bytes": 531,
+   "skip_reason": null,
+   "structure": {
+    "functions": [
+     {
+      "column": 0,
+      "complexity": 5,
+      "end_line": 30,
+      "kind": "method",
+      "line": 16,
+      "max_nesting": 2,
+      "name": "Total",
+      "parameters": 2,
+      "parent_type": null,
+      "visibility": "public"
+     },
+     {
+      "column": 0,
+      "complexity": 1,
+      "end_line": 32,
+      "kind": "function",
+      "line": 32,
+      "max_nesting": 0,
+      "name": "normalize",
+      "parameters": 2,
+      "parent_type": null,
+      "visibility": "private"
+     }
+    ],
+    "imports": [
+     {
+      "line": 5,
+      "target": "errors"
+     },
+     {
+      "line": 6,
+      "target": "strings"
+     }
+    ],
+    "lines": {
+     "blank": 5,
+     "code": 25,
+     "comment": 2,
+     "total": 32
+    },
+    "types": [
+     {
+      "bases": null,
+      "column": 5,
+      "end_line": 12,
+      "kind": "struct",
+      "line": 10,
+      "methods": null,
+      "name": "Invoice",
+      "visibility": "public"
+     },
+     {
+      "bases": null,
+      "column": 5,
+      "end_line": 14,
+      "kind": "interface",
+      "line": 14,
+      "methods": null,
+      "name": "totaler",
+      "visibility": "private"
+     }
+    ]
+   }
+  },
+  {
+   "extension": ".js",
+   "language": "javascript",
+   "lines": 26,
+   "parse": {
+    "ast_max_depth": 17,
+    "ast_nodes": 205,
+    "error_nodes": 0,
+    "first_error": null,
+    "limit": null,
+    "status": "PARSED"
+   },
+   "path": "valid.js",
+   "size_bytes": 542,
+   "skip_reason": null,
+   "structure": {
+    "functions": [
+     {
+      "column": 2,
+      "complexity": 6,
+      "end_line": 19,
+      "kind": "method",
+      "line": 10,
+      "max_nesting": 3,
+      "name": "add",
+      "parameters": 2,
+      "parent_type": 0,
+      "visibility": null
+     },
+     {
+      "column": 21,
+      "complexity": 1,
+      "end_line": 22,
+      "kind": "anonymous",
+      "line": 22,
+      "max_nesting": 0,
+      "name": null,
+      "parameters": 1,
+      "parent_type": null,
+      "visibility": null
+     },
+     {
+      "column": 45,
+      "complexity": 1,
+      "end_line": 22,
+      "kind": "anonymous",
+      "line": 22,
+      "max_nesting": 0,
+      "name": null,
+      "parameters": 2,
+      "parent_type": null,
+      "visibility": null
+     },
+     {
+      "column": 0,
+      "complexity": 3,
+      "end_line": 26,
+      "kind": "function",
+      "line": 24,
+      "max_nesting": 1,
+      "name": "legacy",
+      "parameters": 3,
+      "parent_type": null,
+      "visibility": null
+     }
+    ],
+    "imports": [
+     {
+      "line": 2,
+      "target": "node:fs"
+     },
+     {
+      "line": 3,
+      "target": "./helper.js"
+     }
+    ],
+    "lines": {
+     "blank": 4,
+     "code": 19,
+     "comment": 3,
+     "total": 26
+    },
+    "types": [
+     {
+      "bases": [
+       "Base"
+      ],
+      "column": 7,
+      "end_line": 20,
+      "kind": "class",
+      "line": 7,
+      "methods": 1,
+      "name": "Cart",
+      "visibility": null
+     }
+    ]
+   }
+  },
+  {
+   "extension": ".php",
+   "language": "php",
+   "lines": 30,
+   "parse": {
+    "ast_max_depth": 14,
+    "ast_nodes": 227,
+    "error_nodes": 0,
+    "first_error": null,
+    "limit": null,
+    "status": "PARSED"
+   },
+   "path": "valid.php",
+   "size_bytes": 652,
+   "skip_reason": null,
+   "structure": {
+    "functions": [
+     {
+      "column": 4,
+      "complexity": 6,
+      "end_line": 23,
+      "kind": "method",
+      "line": 12,
+      "max_nesting": 2,
+      "name": "total",
+      "parameters": 2,
+      "parent_type": 0,
+      "visibility": "public"
+     },
+     {
+      "column": 4,
+      "complexity": 1,
+      "end_line": 25,
+      "kind": "method",
+      "line": 25,
+      "max_nesting": 0,
+      "name": "check",
+      "parameters": 1,
+      "parent_type": 0,
+      "visibility": "private"
+     },
+     {
+      "column": 0,
+      "complexity": 3,
+      "end_line": 30,
+      "kind": "function",
+      "line": 28,
+      "max_nesting": 1,
+      "name": "helper",
+      "parameters": 1,
+      "parent_type": null,
+      "visibility": null
+     }
+    ],
+    "imports": [
+     {
+      "line": 5,
+      "target": "App\\Models\\Invoice"
+     }
+    ],
+    "lines": {
+     "blank": 4,
+     "code": 22,
+     "comment": 4,
+     "total": 30
+    },
+    "types": [
+     {
+      "bases": [
+       "Service",
+       "Billable"
+      ],
+      "column": 0,
+      "end_line": 26,
+      "kind": "class",
+      "line": 10,
+      "methods": 2,
+      "name": "InvoiceService",
+      "visibility": null
+     }
+    ]
+   }
+  },
+  {
+   "extension": ".py",
+   "language": "python",
+   "lines": 18,
+   "parse": {
+    "ast_max_depth": 12,
+    "ast_nodes": 135,
+    "error_nodes": 0,
+    "first_error": null,
+    "limit": null,
+    "status": "PARSED"
+   },
+   "path": "valid.py",
+   "size_bytes": 430,
+   "skip_reason": null,
+   "structure": {
+    "functions": [
+     {
+      "column": 4,
+      "complexity": 5,
+      "end_line": 14,
+      "kind": "method",
+      "line": 8,
+      "max_nesting": 2,
+      "name": "deposit",
+      "parameters": 2,
+      "parent_type": 0,
+      "visibility": null
+     },
+     {
+      "column": 0,
+      "complexity": 4,
+      "end_line": 18,
+      "kind": "function",
+      "line": 17,
+      "max_nesting": 0,
+      "name": "helper",
+      "parameters": 3,
+      "parent_type": null,
+      "visibility": null
+     }
+    ],
+    "imports": [
+     {
+      "line": 3,
+      "target": "os"
+     },
+     {
+      "line": 4,
+      "target": "collections"
+     }
+    ],
+    "lines": {
+     "blank": 4,
+     "code": 13,
+     "comment": 1,
+     "total": 18
+    },
+    "types": [
+     {
+      "bases": [
+       "Base"
+      ],
+      "column": 0,
+      "end_line": 14,
+      "kind": "class",
+      "line": 7,
+      "methods": 1,
+      "name": "Account",
+      "visibility": null
+     }
+    ]
+   }
+  },
+  {
+   "extension": ".rs",
+   "language": "rust",
+   "lines": 30,
+   "parse": {
+    "ast_max_depth": 12,
+    "ast_nodes": 212,
+    "error_nodes": 0,
+    "first_error": null,
+    "limit": null,
+    "status": "PARSED"
+   },
+   "path": "valid.rs",
+   "size_bytes": 545,
+   "skip_reason": null,
+   "structure": {
+    "functions": [
+     {
+      "column": 4,
+      "complexity": 5,
+      "end_line": 25,
+      "kind": "method",
+      "line": 15,
+      "max_nesting": 1,
+      "name": "add",
+      "parameters": 2,
+      "parent_type": null,
+      "visibility": "public"
+     },
+     {
+      "column": 0,
+      "complexity": 1,
+      "end_line": 30,
+      "kind": "function",
+      "line": 28,
+      "max_nesting": 0,
+      "name": "helper",
+      "parameters": 1,
+      "parent_type": null,
+      "visibility": null
+     },
+     {
+      "column": 22,
+      "complexity": 1,
+      "end_line": 29,
+      "kind": "anonymous",
+      "line": 29,
+      "max_nesting": 0,
+      "name": null,
+      "parameters": 1,
+      "parent_type": null,
+      "visibility": null
+     }
+    ],
+    "imports": [
+     {
+      "line": 1,
+      "target": "std::collections::HashMap"
+     },
+     {
+      "line": 2,
+      "target": "crate::model"
+     }
+    ],
+    "lines": {
+     "blank": 4,
+     "code": 24,
+     "comment": 2,
+     "total": 30
+    },
+    "types": [
+     {
+      "bases": null,
+      "column": 0,
+      "end_line": 8,
+      "kind": "struct",
+      "line": 6,
+      "methods": null,
+      "name": "Cart",
+      "visibility": "public"
+     },
+     {
+      "bases": null,
+      "column": 0,
+      "end_line": 12,
+      "kind": "trait",
+      "line": 10,
+      "methods": null,
+      "name": "Priced",
+      "visibility": "public"
+     }
+    ]
+   }
+  },
+  {
+   "extension": ".ts",
+   "language": "typescript",
+   "lines": 28,
+   "parse": {
+    "ast_max_depth": 14,
+    "ast_nodes": 279,
+    "error_nodes": 0,
+    "first_error": null,
+    "limit": null,
+    "status": "PARSED"
+   },
+   "path": "valid.ts",
+   "size_bytes": 703,
+   "skip_reason": null,
+   "structure": {
+    "functions": [
+     {
+      "column": 2,
+      "complexity": 1,
+      "end_line": 11,
+      "kind": "method",
+      "line": 11,
+      "max_nesting": 0,
+      "name": "constructor",
+      "parameters": 1,
+      "parent_type": 1,
+      "visibility": null
+     },
+     {
+      "column": 2,
+      "complexity": 5,
+      "end_line": 23,
+      "kind": "method",
+      "line": 13,
+      "max_nesting": 1,
+      "name": "find",
+      "parameters": 1,
+      "parent_type": 1,
+      "visibility": "public"
+     },
+     {
+      "column": 2,
+      "complexity": 2,
+      "end_line": 25,
+      "kind": "method",
+      "line": 25,
+      "max_nesting": 0,
+      "name": "load",
+      "parameters": 1,
+      "parent_type": 1,
+      "visibility": "protected"
+     }
+    ],
+    "imports": [
+     {
+      "line": 1,
+      "target": "@angular/core"
+     }
+    ],
+    "lines": {
+     "blank": 6,
+     "code": 21,
+     "comment": 1,
+     "total": 28
+    },
+    "types": [
+     {
+      "bases": [
+       "Base<T>"
+      ],
+      "column": 7,
+      "end_line": 6,
+      "kind": "interface",
+      "line": 4,
+      "methods": 0,
+      "name": "Repository",
+      "visibility": null
+     },
+     {
+      "bases": [
+       "Repository<User>"
+      ],
+      "column": 7,
+      "end_line": 26,
+      "kind": "class",
+      "line": 8,
+      "methods": 3,
+      "name": "UserService",
+      "visibility": null
+     },
+     {
+      "bases": [],
+      "column": 7,
+      "end_line": 28,
+      "kind": "enum",
+      "line": 28,
+      "methods": 0,
+      "name": "Role",
+      "visibility": null
+     }
+    ]
+   }
+  },
+  {
+   "extension": ".tsx",
+   "language": "typescript",
+   "lines": 7,
+   "parse": {
+    "ast_max_depth": 11,
+    "ast_nodes": 72,
+    "error_nodes": 0,
+    "first_error": null,
+    "limit": null,
+    "status": "PARSED"
+   },
+   "path": "valid.tsx",
+   "size_bytes": 162,
+   "skip_reason": null,
+   "structure": {
+    "functions": [
+     {
+      "column": 7,
+      "complexity": 2,
+      "end_line": 7,
+      "kind": "function",
+      "line": 5,
+      "max_nesting": 0,
+      "name": "Header",
+      "parameters": 1,
+      "parent_type": null,
+      "visibility": null
+     }
+    ],
+    "imports": [
+     {
+      "line": 1,
+      "target": "react"
+     }
+    ],
+    "lines": {
+     "blank": 2,
+     "code": 5,
+     "comment": 0,
+     "total": 7
+    },
+    "types": []
+   }
+  }
+ ],
+ "metrics": {
+  "by_language": {
+   "c": {
+    "anonymous_functions": 0,
+    "ast_max_depth": 11,
+    "ast_nodes": 137,
+    "complexity_avg": 3.0,
+    "complexity_max": 5,
+    "complexity_over_threshold": 0,
+    "complexity_threshold": 10,
+    "complexity_total": 6,
+    "files_analyzable": 2,
+    "files_limit_exceeded": 0,
+    "files_parse_error": 1,
+    "files_parse_timeout": 0,
+    "files_parsed": 1,
+    "files_unsupported_parser": 0,
+    "function_lines_avg": 6.0,
+    "function_lines_max": 11,
+    "functions": 2,
+    "functions_total": 2,
+    "imports": 2,
+    "lines_blank": 3,
+    "lines_code": 17,
+    "lines_comment": 2,
+    "lines_total": 22,
+    "methods": 0,
+    "nesting_avg": 1.0,
+    "nesting_max": 2,
+    "parameters_avg": 1.0,
+    "parameters_max": 2,
+    "types": 1,
+    "types_by_kind": {
+     "struct": 1
+    },
+    "types_with_bases": null,
+    "unsupported": [
+     "types_with_bases"
+    ]
+   },
+   "cpp": {
+    "anonymous_functions": 0,
+    "ast_max_depth": 10,
+    "ast_nodes": 170,
+    "complexity_avg": 1.75,
+    "complexity_max": 3,
+    "complexity_over_threshold": 0,
+    "complexity_threshold": 10,
+    "complexity_total": 7,
+    "files_analyzable": 2,
+    "files_limit_exceeded": 0,
+    "files_parse_error": 1,
+    "files_parse_timeout": 0,
+    "files_parsed": 1,
+    "files_unsupported_parser": 0,
+    "function_lines_avg": 3.25,
+    "function_lines_max": 8,
+    "functions": 1,
+    "functions_total": 4,
+    "imports": 2,
+    "lines_blank": 2,
+    "lines_code": 21,
+    "lines_comment": 1,
+    "lines_total": 24,
+    "methods": 3,
+    "nesting_avg": 0.25,
+    "nesting_max": 1,
+    "parameters_avg": 1.0,
+    "parameters_max": 3,
+    "types": 1,
+    "types_by_kind": {
+     "class": 1
+    },
+    "types_with_bases": 1,
+    "unsupported": []
+   },
+   "csharp": {
+    "anonymous_functions": 0,
+    "ast_max_depth": 15,
+    "ast_nodes": 178,
+    "complexity_avg": 2.6667,
+    "complexity_max": 4,
+    "complexity_over_threshold": 0,
+    "complexity_threshold": 10,
+    "complexity_total": 8,
+    "files_analyzable": 2,
+    "files_limit_exceeded": 0,
+    "files_parse_error": 1,
+    "files_parse_timeout": 0,
+    "files_parsed": 1,
+    "files_unsupported_parser": 0,
+    "function_lines_avg": 4.6667,
+    "function_lines_max": 12,
+    "functions": 0,
+    "functions_total": 3,
+    "imports": 2,
+    "lines_blank": 4,
+    "lines_code": 23,
+    "lines_comment": 1,
+    "lines_total": 28,
+    "methods": 3,
+    "nesting_avg": 0.6667,
+    "nesting_max": 1,
+    "parameters_avg": 1.0,
+    "parameters_max": 2,
+    "types": 1,
+    "types_by_kind": {
+     "class": 1
+    },
+    "types_with_bases": 1,
+    "unsupported": []
+   },
+   "go": {
+    "anonymous_functions": 0,
+    "ast_max_depth": 16,
+    "ast_nodes": 202,
+    "complexity_avg": 3.0,
+    "complexity_max": 5,
+    "complexity_over_threshold": 0,
+    "complexity_threshold": 10,
+    "complexity_total": 6,
+    "files_analyzable": 2,
+    "files_limit_exceeded": 0,
+    "files_parse_error": 1,
+    "files_parse_timeout": 0,
+    "files_parsed": 1,
+    "files_unsupported_parser": 0,
+    "function_lines_avg": 8.0,
+    "function_lines_max": 15,
+    "functions": 1,
+    "functions_total": 2,
+    "imports": 2,
+    "lines_blank": 5,
+    "lines_code": 25,
+    "lines_comment": 2,
+    "lines_total": 32,
+    "methods": 1,
+    "nesting_avg": 1.0,
+    "nesting_max": 2,
+    "parameters_avg": 2.0,
+    "parameters_max": 2,
+    "types": 2,
+    "types_by_kind": {
+     "interface": 1,
+     "struct": 1
+    },
+    "types_with_bases": null,
+    "unsupported": [
+     "types_with_bases"
+    ]
+   },
+   "java": {
+    "anonymous_functions": 0,
+    "ast_max_depth": 13,
+    "ast_nodes": 180,
+    "complexity_avg": 3.0,
+    "complexity_max": 5,
+    "complexity_over_threshold": 0,
+    "complexity_threshold": 10,
+    "complexity_total": 6,
+    "files_analyzable": 2,
+    "files_limit_exceeded": 0,
+    "files_parse_error": 1,
+    "files_parse_timeout": 0,
+    "files_parsed": 1,
+    "files_unsupported_parser": 0,
+    "function_lines_avg": 6.0,
+    "function_lines_max": 9,
+    "functions": 0,
+    "functions_total": 2,
+    "imports": 2,
+    "lines_blank": 5,
+    "lines_code": 21,
+    "lines_comment": 1,
+    "lines_total": 27,
+    "methods": 2,
+    "nesting_avg": 1.0,
+    "nesting_max": 2,
+    "parameters_avg": 1.5,
+    "parameters_max": 2,
+    "types": 2,
+    "types_by_kind": {
+     "class": 2
+    },
+    "types_with_bases": 1,
+    "unsupported": []
+   },
+   "javascript": {
+    "anonymous_functions": 2,
+    "ast_max_depth": 17,
+    "ast_nodes": 205,
+    "complexity_avg": 2.75,
+    "complexity_max": 6,
+    "complexity_over_threshold": 0,
+    "complexity_threshold": 10,
+    "complexity_total": 11,
+    "files_analyzable": 2,
+    "files_limit_exceeded": 0,
+    "files_parse_error": 1,
+    "files_parse_timeout": 0,
+    "files_parsed": 1,
+    "files_unsupported_parser": 0,
+    "function_lines_avg": 3.75,
+    "function_lines_max": 10,
+    "functions": 1,
+    "functions_total": 4,
+    "imports": 2,
+    "lines_blank": 4,
+    "lines_code": 19,
+    "lines_comment": 3,
+    "lines_total": 26,
+    "methods": 1,
+    "nesting_avg": 1.0,
+    "nesting_max": 3,
+    "parameters_avg": 2.0,
+    "parameters_max": 3,
+    "types": 1,
+    "types_by_kind": {
+     "class": 1
+    },
+    "types_with_bases": 1,
+    "unsupported": []
+   },
+   "php": {
+    "anonymous_functions": 0,
+    "ast_max_depth": 14,
+    "ast_nodes": 227,
+    "complexity_avg": 3.3333,
+    "complexity_max": 6,
+    "complexity_over_threshold": 0,
+    "complexity_threshold": 10,
+    "complexity_total": 10,
+    "files_analyzable": 2,
+    "files_limit_exceeded": 0,
+    "files_parse_error": 1,
+    "files_parse_timeout": 0,
+    "files_parsed": 1,
+    "files_unsupported_parser": 0,
+    "function_lines_avg": 5.3333,
+    "function_lines_max": 12,
+    "functions": 1,
+    "functions_total": 3,
+    "imports": 1,
+    "lines_blank": 4,
+    "lines_code": 22,
+    "lines_comment": 4,
+    "lines_total": 30,
+    "methods": 2,
+    "nesting_avg": 1.0,
+    "nesting_max": 2,
+    "parameters_avg": 1.3333,
+    "parameters_max": 2,
+    "types": 1,
+    "types_by_kind": {
+     "class": 1
+    },
+    "types_with_bases": 1,
+    "unsupported": []
+   },
+   "python": {
+    "anonymous_functions": 0,
+    "ast_max_depth": 12,
+    "ast_nodes": 135,
+    "complexity_avg": 4.5,
+    "complexity_max": 5,
+    "complexity_over_threshold": 0,
+    "complexity_threshold": 10,
+    "complexity_total": 9,
+    "files_analyzable": 2,
+    "files_limit_exceeded": 0,
+    "files_parse_error": 1,
+    "files_parse_timeout": 0,
+    "files_parsed": 1,
+    "files_unsupported_parser": 0,
+    "function_lines_avg": 4.5,
+    "function_lines_max": 7,
+    "functions": 1,
+    "functions_total": 2,
+    "imports": 2,
+    "lines_blank": 4,
+    "lines_code": 13,
+    "lines_comment": 1,
+    "lines_total": 18,
+    "methods": 1,
+    "nesting_avg": 1.0,
+    "nesting_max": 2,
+    "parameters_avg": 2.5,
+    "parameters_max": 3,
+    "types": 1,
+    "types_by_kind": {
+     "class": 1
+    },
+    "types_with_bases": 1,
+    "unsupported": []
+   },
+   "rust": {
+    "anonymous_functions": 1,
+    "ast_max_depth": 12,
+    "ast_nodes": 212,
+    "complexity_avg": 2.3333,
+    "complexity_max": 5,
+    "complexity_over_threshold": 0,
+    "complexity_threshold": 10,
+    "complexity_total": 7,
+    "files_analyzable": 2,
+    "files_limit_exceeded": 0,
+    "files_parse_error": 1,
+    "files_parse_timeout": 0,
+    "files_parsed": 1,
+    "files_unsupported_parser": 0,
+    "function_lines_avg": 5.0,
+    "function_lines_max": 11,
+    "functions": 1,
+    "functions_total": 3,
+    "imports": 2,
+    "lines_blank": 4,
+    "lines_code": 24,
+    "lines_comment": 2,
+    "lines_total": 30,
+    "methods": 1,
+    "nesting_avg": 0.3333,
+    "nesting_max": 1,
+    "parameters_avg": 1.3333,
+    "parameters_max": 2,
+    "types": 2,
+    "types_by_kind": {
+     "struct": 1,
+     "trait": 1
+    },
+    "types_with_bases": null,
+    "unsupported": [
+     "types_with_bases"
+    ]
+   },
+   "typescript": {
+    "anonymous_functions": 0,
+    "ast_max_depth": 14,
+    "ast_nodes": 351,
+    "complexity_avg": 2.5,
+    "complexity_max": 5,
+    "complexity_over_threshold": 0,
+    "complexity_threshold": 10,
+    "complexity_total": 10,
+    "files_analyzable": 3,
+    "files_limit_exceeded": 0,
+    "files_parse_error": 1,
+    "files_parse_timeout": 0,
+    "files_parsed": 2,
+    "files_unsupported_parser": 0,
+    "function_lines_avg": 4.0,
+    "function_lines_max": 11,
+    "functions": 1,
+    "functions_total": 4,
+    "imports": 2,
+    "lines_blank": 8,
+    "lines_code": 26,
+    "lines_comment": 1,
+    "lines_total": 35,
+    "methods": 3,
+    "nesting_avg": 0.25,
+    "nesting_max": 1,
+    "parameters_avg": 1.0,
+    "parameters_max": 1,
+    "types": 3,
+    "types_by_kind": {
+     "class": 1,
+     "enum": 1,
+     "interface": 1
+    },
+    "types_with_bases": 2,
+    "unsupported": []
+   }
+  },
+  "overall": {
+   "anonymous_functions": 3,
+   "ast_max_depth": 17,
+   "ast_nodes": 1997,
+   "complexity_avg": 2.7586,
+   "complexity_max": 6,
+   "complexity_over_threshold": 0,
+   "complexity_threshold": 10,
+   "complexity_total": 80,
+   "files_analyzable": 21,
+   "files_limit_exceeded": 0,
+   "files_parse_error": 10,
+   "files_parse_timeout": 0,
+   "files_parsed": 11,
+   "files_unsupported_parser": 0,
+   "function_lines_avg": 4.7586,
+   "function_lines_max": 15,
+   "functions": 9,
+   "functions_total": 29,
+   "imports": 19,
+   "lines_blank": 43,
+   "lines_code": 211,
+   "lines_comment": 18,
+   "lines_total": 272,
+   "methods": 17,
+   "nesting_avg": 0.6897,
+   "nesting_max": 3,
+   "parameters_avg": 1.4138,
+   "parameters_max": 3,
+   "types": 15,
+   "types_by_kind": {
+    "class": 8,
+    "enum": 1,
+    "interface": 2,
+    "struct": 3,
+    "trait": 1
+   },
+   "types_with_bases": null,
+   "unsupported": [
+    "types_with_bases"
+   ]
+  },
+  "version": "1.0"
+ }
+}

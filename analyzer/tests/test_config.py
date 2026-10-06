@@ -23,6 +23,25 @@ def test_reads_the_documented_environment_variables() -> None:
     assert (settings.max_archive_bytes, settings.max_extracted_bytes, settings.max_entry_bytes) == (52428800, 209715200, 26214400)
 
 
+def test_reads_the_parser_limits() -> None:
+    defaults = Settings.from_env(env())
+    assert (defaults.parse_timeout_ms, defaults.max_ast_nodes, defaults.max_total_ast_nodes, defaults.max_parsed_files) == (
+        5000,
+        1_000_000,
+        10_000_000,
+        20_000,
+    )
+    custom = Settings.from_env(
+        env(
+            ANALYZER_PARSE_TIMEOUT_MS="250",
+            ANALYZER_MAX_AST_NODES="1000",
+            ANALYZER_MAX_TOTAL_AST_NODES="5000",
+            ANALYZER_MAX_PARSED_FILES="7",
+        )
+    )
+    assert (custom.parse_timeout_ms, custom.max_ast_nodes, custom.max_total_ast_nodes, custom.max_parsed_files) == (250, 1000, 5000, 7)
+
+
 @pytest.mark.parametrize(
     "overrides",
     [
@@ -40,6 +59,10 @@ def test_reads_the_documented_environment_variables() -> None:
         {"ANALYZER_WORKSPACE_ROOT": "relative/dir"},
         {"ANALYZER_WORKSPACE_ROOT": "/"},
         {"ANALYZER_IGNORED_DIRECTORIES": "../etc"},
+        {"ANALYZER_PARSE_TIMEOUT_MS": "0"},
+        {"ANALYZER_MAX_AST_NODES": "-1"},
+        {"ANALYZER_MAX_AST_NODES": "200", "ANALYZER_MAX_TOTAL_AST_NODES": "100"},
+        {"ANALYZER_MAX_PARSED_FILES": "lots"},
     ],
 )
 def test_refuses_to_start_with_an_invalid_configuration(overrides: dict[str, str]) -> None:

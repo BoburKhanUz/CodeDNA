@@ -1,11 +1,13 @@
-"""The foundation analysis pipeline (Phase 08):
+"""The analysis pipeline (Phase 08 foundation + Phase 09 static analysis):
 
     validate source URL -> download (bounded) -> verify size/SHA-256
-    -> safe extraction -> discovery -> versioned foundation result
+    -> safe extraction -> discovery -> bounded AST parsing (IR 1.1)
+    -> static metrics and structural findings -> versioned result
 
 Runs in a worker thread with a hard deadline (ANALYZER_HARD_TIMEOUT_SECONDS)
-inside a fresh workspace that is removed on every exit path. Produces no
-metrics, features, scores or findings: those arrive in Phases 09 and 11.
+inside a fresh workspace that is removed on every exit path. Parsing reads
+files only while the workspace exists; nothing is executed. Produces no
+features, DNA scores or AI output: scoring arrives in Phase 11.
 """
 
 import logging
@@ -20,9 +22,14 @@ from app.contracts.request import AnalyzeRequest
 from app.deadline import Deadline
 from app.discovery.discover import SKIP_BINARY, SKIP_TOO_LARGE, SKIP_UNSUPPORTED_LANGUAGE, Discovery, discover
 from app.errors import AnalyzerError, ErrorCode
+from app.metrics.aggregate import METRICS_VERSION, compute_metrics
+from app.metrics.findings import compute_findings
+from app.parsing.grammars import GRAMMARS, RUNTIME
+from app.parsing.parser import STATUSES, ParsedFile, parse_files
+from app.parsing.specs import SPECS
 from app.source.download import download
 from app.source.url_policy import Resolver, SourceTarget, system_resolver, validate_source_url
-from app.versions import ANALYZER_VERSION, CONTRACT_VERSION, IR_VERSION, RESULT_TYPE_FOUNDATION
+from app.versions import ANALYZER_VERSION, CONTRACT_VERSION, IR_VERSION, RESULT_TYPE_STATIC_ANALYSIS
 from app.workspace.workspace import run_workspace
 
 logger = logging.getLogger("codedna.analyzer")
@@ -72,6 +79,10 @@ def analysis_configuration(request: AnalyzeRequest, settings: Settings) -> dict[
         "languages": list(request.requested_languages()),
         "ignored_directories": sorted(settings.ignored_directories),
         "max_file_bytes": settings.max_file_bytes,
+        "parse_timeout_ms": settings.parse_timeout_ms,
+        "max_ast_nodes": settings.max_ast_nodes,
+        "max_total_ast_nodes": settings.max_total_ast_nodes,
+        "max_parsed_files": settings.max_parsed_files,
     }
 
 
@@ -109,11 +120,11 @@ def analyze(
             max_file_bytes=settings.max_file_bytes,
             deadline=deadline,
         )
+        if not found.analyzable:
+            raise AnalyzerError(ErrorCode.NO_SUPPORTED_FILES)
+        parsed = parse_files(source_root, found.files, settings, deadline)
 
-    if not found.analyzable:
-        raise AnalyzerError(ErrorCode.NO_SUPPORTED_FILES)
-
-    return build_result(request, settings, found, extracted.files, extracted.bytes)
+    return build_result(request, settings, found, extracted.files, extracted.bytes, parsed)
 
 
 def build_result(
@@ -122,6 +133,7 @@ def build_result(
     found: Discovery,
     files_total: int,
     bytes_total: int,
+    parsed: dict[str, ParsedFile],
 ) -> dict[str, Any]:
     analyzable = found.analyzable
     skipped = {SKIP_UNSUPPORTED_LANGUAGE: 0, SKIP_TOO_LARGE: 0, SKIP_BINARY: 0}
@@ -136,17 +148,19 @@ def build_result(
         summary["bytes"] += record.size_bytes
         summary["lines"] += record.lines or 0
 
+    requested = request.requested_languages()
     result: dict[str, Any] = {
         "contract_version": CONTRACT_VERSION,
-        "result_type": RESULT_TYPE_FOUNDATION,
+        "result_type": RESULT_TYPE_STATIC_ANALYSIS,
         "analysis_run_id": request.analysis_run_id,
         "versions": {
             "analyzer": ANALYZER_VERSION,
             "ir": IR_VERSION,
-            # Not produced by the foundation (Phases 09 and 11).
-            "metrics": None,
+            "metrics": METRICS_VERSION,
+            # No scoring before Phase 11.
             "scoring": None,
-            "parsers": {},
+            "parser_runtime": RUNTIME,
+            "parsers": parser_versions(requested),
         },
         "analysis": analysis_configuration(request, settings),
         "source": {
@@ -158,13 +172,51 @@ def build_result(
             "bytes_total": bytes_total,
         },
         "languages": [{"language": language, **summary} for language, summary in sorted(languages.items())],
+        "parsing": parsing_summary(found, parsed),
         "ir": {
             "version": IR_VERSION,
-            "files": [record.to_dict() for record in found.files],
+            "files": [ir_file(record.to_dict(), parsed.get(record.path)) for record in found.files],
         },
+        "metrics": compute_metrics(found.files, parsed),
+        "findings": compute_findings(found.files, parsed),
     }
     result["result_hash"] = result_hash(result)
     return result
+
+
+def parser_versions(languages: tuple[str, ...]) -> dict[str, str]:
+    """Grammar package and version per requested language (TypeScript: both dialects)."""
+    versions: dict[str, str] = {}
+    for language in sorted(languages):
+        spec = SPECS.get(language)
+        if spec is not None:
+            versions[language] = GRAMMARS[spec.grammar].label
+    return versions
+
+
+def ir_file(record: dict[str, Any], parsed: ParsedFile | None) -> dict[str, Any]:
+    """IR 1.1 file record: every IR 1.0 field unchanged, plus ``parse`` and ``structure``."""
+    return {
+        **record,
+        "parse": None if parsed is None else parsed.parse_dict(),
+        "structure": None if parsed is None else parsed.structure_dict(),
+    }
+
+
+def parsing_summary(found: Discovery, parsed: dict[str, ParsedFile]) -> dict[str, Any]:
+    totals = dict.fromkeys(STATUSES, 0)
+    languages: dict[str, dict[str, int]] = {}
+    for record in found.analyzable:
+        result = parsed.get(record.path)
+        if result is None:
+            continue
+        totals[result.status] += 1
+        counts = languages.setdefault(result.language, dict.fromkeys(STATUSES, 0))
+        counts[result.status] += 1
+    return {
+        "files": totals,
+        "languages": [{"language": language, "files": counts} for language, counts in sorted(languages.items())],
+    }
 
 
 def result_hash(result: dict[str, Any]) -> str:

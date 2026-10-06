@@ -6,15 +6,17 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 08 (Python analyzer foundation) complete. The
+**Current status:** Phase 09 (AST and static analysis) complete. The
 local environment runs every component. Users can register, sign in and
 sign out, edit their developer profile, change their password, create and
 archive projects, and upload ZIP archives that become immutable, versioned
 source snapshots in S3-compatible storage. The internal analyzer can
 authenticate a signed request, download a snapshot from an allow-listed
 pre-signed URL, extract it safely, discover files and languages, and return
-a versioned, hashed foundation result, but it computes no metrics or scores
-yet and the product does not call it: analysis runs and DNA snapshots exist
+parse ten languages with Tree-sitter into IR 1.1 and return a versioned,
+hashed static-analysis result with deterministic metrics and structural
+findings ([metrics-v1.md](metrics-v1.md)), but it computes no scores yet and
+the product does not call it: analysis runs and DNA snapshots exist
 in the domain model ([data-model.md](data-model.md)) but nothing creates
 them. Everything below is the target architecture.
 
@@ -107,8 +109,8 @@ at a time:
 | 06 | Authentication and developer profile | Done |
 | 07 | Projects and repository management (ZIP upload) | Done |
 | 08 | Python analyzer foundation (IR frozen first) | Done |
-| 09 | AST and static analysis (PHP → Python → JS → TS) | Next |
-| 10 | Analysis queue and pipeline | — |
+| 09 | AST and static analysis (PHP → Python → JS → TS) | Done (all ten languages) |
+| 10 | Analysis queue and pipeline | Next |
 | 11 | CodeDNA scoring engine | — |
 | 12 | DNA dashboard (**MVP complete**) | — |
 | 13–25 | Competencies, skill gaps, AI, challenges, learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |

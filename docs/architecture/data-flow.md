@@ -120,15 +120,16 @@ per chosen file.
 
 ### Handoff to the analyzer
 
-The analyzer side exists (Phase 08): given a signed request with a
+The analyzer side exists (Phases 08–09): given a signed request with a
 short-lived pre-signed GET URL plus `source_hash` and `size_bytes`, it
 downloads the object from an allow-listed host, re-checks size and SHA-256,
 applies its own extraction limits (the upload inspection does not replace
-them), discovers files and returns a versioned **foundation result**
+them), discovers files, parses them and returns a versioned
+**static-analysis result** with IR 1.1, metrics and findings
 ([analyzer.md](analyzer.md), [contract](../api/internal-analyzer-contract.md)).
 `make verify` exercises this path from the backend container. What is
 missing is the Laravel side: the analysis run, the queued job and the client
-come in Phase 10, and nothing a foundation result contains is persisted
+come in Phase 10, and nothing a static-analysis result contains is persisted
 yet.
 
 ## Run state machine

@@ -150,7 +150,7 @@ credentials reach only `minio` and `minio-init`.
 | `ANALYZER_HMAC_SECRET` | **yes**, generated | analyzer, backend | Signs Laravel → analyzer requests and analyzer responses (≥ 32 characters; the analyzer refuses to start otherwise) |
 | `ANALYZER_HMAC_SECRET_PREVIOUS` | empty | analyzer | Accepted in addition during secret rotation |
 | `ANALYZER_ALLOWED_SOURCE_HOSTS`, `ANALYZER_LOCAL_SOURCE_HOSTS` | `minio`, `minio` | analyzer | Source URL hosts; local ones may use http and private addresses ([analyzer.md](analyzer.md#source-access-ssrf-boundary)). Production: the R2 hostname, and no local hosts |
-| `ANALYZER_HARD_TIMEOUT_SECONDS`, `ANALYZER_MAX_CONCURRENCY`, `ANALYZER_MAX_ARCHIVE_BYTES`, `ANALYZER_MAX_EXTRACTED_BYTES`, `ANALYZER_MAX_FILES`, `ANALYZER_MAX_ENTRY_BYTES`, `ANALYZER_MAX_FILE_BYTES`, `ANALYZER_MAX_PATH_LENGTH` | defaults | analyzer | [Limits](analyzer.md#limits); validated at startup |
+| `ANALYZER_HARD_TIMEOUT_SECONDS`, `ANALYZER_MAX_CONCURRENCY`, `ANALYZER_MAX_ARCHIVE_BYTES`, `ANALYZER_MAX_EXTRACTED_BYTES`, `ANALYZER_MAX_FILES`, `ANALYZER_MAX_ENTRY_BYTES`, `ANALYZER_MAX_FILE_BYTES`, `ANALYZER_MAX_PATH_LENGTH`, `ANALYZER_PARSE_TIMEOUT_MS`, `ANALYZER_MAX_AST_NODES`, `ANALYZER_MAX_TOTAL_AST_NODES`, `ANALYZER_MAX_PARSED_FILES` | defaults | analyzer | [Limits](analyzer.md#limits); validated at startup |
 | `FRONTEND_WATCH_POLLING` | default `false` | frontend | Polling file watcher fallback |
 | `FRONTEND_URL` | default `http://localhost` | frontend (server only) | Origin presented to Sanctum for server-side session checks |
 
@@ -302,13 +302,14 @@ and prints no secrets:
    SOURCE_ARCHIVE_INVALID`; a 56 MiB body is `413 PAYLOAD_TOO_LARGE` as
    JSON from Nginx; archive, then upload is `409 PROJECT_ARCHIVED`. The
    probe's objects and rows are deleted.
-9. Analyzer (Phase 08): no published host port; health returns only status,
+9. Analyzer (Phases 08–09): no published host port; health returns only status,
    versions and limits; an unsigned analyze request is `401`; then
    `scripts/verify-analyzer.php` runs **inside the backend container**: it
    stores a small ZIP in MinIO, pre-signs it with Laravel's `sources` disk,
    signs the request with `ANALYZER_HMAC_SECRET`, calls the analyzer over
    the internal network, verifies the response signature and the
-   foundation result, checks the retry, bad-signature, stale-timestamp,
+   static-analysis result (IR 1.1 and metrics versions, both files parsed
+   and measured, no scores or source text), checks the retry, bad-signature, stale-timestamp,
    replay, run-conflict and metadata-URL cases, and deletes the object.
    Finally the analyzer's workspace must be empty.
 

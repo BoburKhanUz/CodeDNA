@@ -1,7 +1,7 @@
 """A minimal JSON Schema validator for the subset used by
-packages/api-contracts (type, required, properties, additionalProperties,
-items, enum, const, pattern, minLength/maxLength, minimum/maximum,
-minItems, uniqueItems, local $ref). It keeps the analyzer free of a
+packages/api-contracts (type, required, properties, additionalProperties
+as false or a schema, items, enum, const, pattern, minLength/maxLength,
+minimum/maximum, minItems, uniqueItems, local $ref). It keeps the analyzer free of a
 jsonschema dependency; unsupported keywords fail loudly."""
 
 import json
@@ -81,8 +81,8 @@ def validate(instance: Any, schema: dict[str, Any], root: dict[str, Any] | None 
             errors.append(f"{path}: does not match {schema['pattern']}")
         if len(instance) < schema.get("minLength", 0) or len(instance) > schema.get("maxLength", 10**9):
             errors.append(f"{path}: length out of bounds")
-    is_integer = isinstance(instance, int) and not isinstance(instance, bool)
-    if is_integer and not schema.get("minimum", -(10**18)) <= instance <= schema.get("maximum", 10**18):
+    is_number = isinstance(instance, (int, float)) and not isinstance(instance, bool)
+    if is_number and not schema.get("minimum", -(10**18)) <= instance <= schema.get("maximum", 10**18):
         errors.append(f"{path}: {instance} out of bounds")
     if isinstance(instance, list):
         if len(instance) < schema.get("minItems", 0):
@@ -102,6 +102,8 @@ def validate(instance: Any, schema: dict[str, Any], root: dict[str, Any] | None 
                 errors += validate(value, properties[name], root, f"{path}.{name}")
             elif schema.get("additionalProperties") is False:
                 errors.append(f"{path}: unexpected property {name}")
+            elif isinstance(schema.get("additionalProperties"), dict):
+                errors += validate(value, schema["additionalProperties"], root, f"{path}.{name}")
     return errors
 
 

@@ -10,9 +10,14 @@ CONTRACT_MAJOR = 1
 
 # Version of the intermediate representation (the per-file records in `ir`).
 # Bump the minor for additive fields, the major for incompatible changes.
-IR_VERSION = "1.0"
+# 1.0: file records (Phase 08). 1.1: + per-file parse status and AST-derived
+# structure (Phase 09); every 1.0 field is unchanged.
+IR_VERSION = "1.1"
 
-# What a successful response contains. "foundation": source inspection and
-# file discovery only (Phase 08); no metrics, features, DNA or findings.
-# "full" arrives with metrics (Phase 09) and scoring (Phase 11).
+# What a successful response contains. "foundation" (Phase 08, no longer
+# produced): source inspection and file discovery only. "static_analysis"
+# (Phase 09): the foundation fields plus parsing, IR 1.1, static metrics and
+# structural findings; still no features, DNA or scores. "full" arrives with
+# scoring (Phase 11).
 RESULT_TYPE_FOUNDATION = "foundation"
+RESULT_TYPE_STATIC_ANALYSIS = "static_analysis"
