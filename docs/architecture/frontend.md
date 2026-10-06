@@ -81,6 +81,7 @@ description is introduced, they move to `packages/types` and are generated.
 | `/app/projects/[project]` | dynamic | Same gate. Project details, CodeDNA card, ZIP upload (active upload projects only), snapshot history, archive. Unknown, foreign or malformed IDs show "Project not found". |
 | `/app/projects/[project]/dna` | dynamic | Same gate. CodeDNA dashboard of the newest assessment, or an empty state. |
 | `/app/projects/[project]/dna/[snapshot]` | dynamic | Same gate. One assessment from the history. Unknown or foreign IDs show "Assessment not found" / "Project not found". |
+| `/app/projects/[project]/competencies` | dynamic | Same gate. Competency Matrix of the newest competency snapshot, or an empty state. |
 | anything else | — | Not-found page. |
 
 There is no `?next=` return-URL parameter, so there is no open-redirect
@@ -243,6 +244,36 @@ Presentation only (Phase 12). Data comes from the read-only
 - **Project page.** A CodeDNA card shows the newest assessment's score (or
   "Insufficient data" / "No assessment available.") and data quality, and
   links to the dashboard.
+
+## Competency Matrix (`/app/projects/[project]/competencies`)
+
+> CodeDNA competency results describe deterministic evidence observed in analyzed source code. They do not establish developer seniority, intelligence, personality, professional level, or future potential.
+
+Presentation only (Phase 13), from the read-only
+[competency API](../api/README.md#competencies) (`lib/competency/client.ts`,
+types in `lib/api/types.ts`). Reached from the CodeDNA dashboard's
+"Competency Matrix" card.
+
+- One card per competency: score (backend decimal shown on 0–100 by the
+  same digit-based formatter as CodeDNA), level badge ("Level 2 ·
+  Established"), a neutral sentence about the code ("Available source-code
+  evidence meets the defined threshold for this competency."), evidence
+  quality (never called confidence), evidence available, and partially
+  supported languages.
+- "Why this result" expands every piece of evidence: its CodeDNA source
+  (`COMPLEXITY.mean_cyclomatic_complexity`), rationale, raw counts, measured
+  value, evidence score, weight and thresholds, plus the evidence-quality
+  terms and the level boundaries of the version.
+- Not assessed competencies show their status (Insufficient evidence,
+  Unsupported evidence, Evidence unavailable) and "This is not a low
+  result." — no score, level, bar or 0. A snapshot with nothing assessed
+  shows an "Insufficient evidence" notice.
+- Provenance: CodeDNA assessment (link), source snapshot, measured
+  languages, analysis run, versions and fingerprint.
+- States: skeleton, no matrix (says whether a CodeDNA assessment exists),
+  API error with reference and retry, 401 → `/login`, 404 → "Project not
+  found". No score, level, weight or threshold is computed in the browser;
+  a test renders an inconsistent payload to prove values are shown as given.
 
 ## API client (`lib/api`)
 

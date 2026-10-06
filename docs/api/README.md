@@ -48,11 +48,14 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `GET` | `/api/v1/projects/{project}/analyses/{run}/result` | owner | 200 | The verified analyzer result of a `SUCCEEDED` run |
 | `GET` | `/api/v1/projects/{project}/dna` | owner | 200 | DNA snapshots (paginated, newest first) |
 | `GET` | `/api/v1/projects/{project}/dna/{snapshot}` | owner | 200 | One DNA snapshot with dimensions and evidence |
+| `GET` | `/api/v1/projects/{project}/competencies` | owner | 200 | Competency snapshots (paginated, newest first) |
+| `GET` | `/api/v1/projects/{project}/competencies/{snapshot}` | owner | 200 | One competency matrix with levels, evidence and provenance |
 
 There is no `DELETE` for projects (`405`) and no update, delete or download
-for snapshots. DNA snapshots are read-only (no write method on `/dna`).
-See [Projects](#projects), [Source snapshots](#source-snapshots),
-[Analyses](#analyses) and [DNA](#dna).
+for snapshots. DNA and competency snapshots are read-only (no write method
+on `/dna` or `/competencies`). See [Projects](#projects),
+[Source snapshots](#source-snapshots), [Analyses](#analyses), [DNA](#dna)
+and [Competencies](#competencies).
 
 ### `GET /api/v1/health`
 
@@ -557,6 +560,70 @@ The complete snapshot, read from storage (nothing is recomputed):
 - Never included: source contents, storage keys or URLs, the owner's user
   ID, analyzer internals.
 
+## Competencies
+
+Read-only access to the immutable competency matrices derived from DNA
+snapshots (Phase 13, [competency-matrix-v1.md](../architecture/competency-matrix-v1.md)).
+Same rules as [DNA](#dna): owner-only (`404 RESOURCE_NOT_FOUND` for another
+user's or a missing project, a missing snapshot and a snapshot of another
+project), archived projects stay readable, every write method answers
+`405`, and nothing is computed per request.
+
+> CodeDNA competency results describe deterministic evidence observed in analyzed source code. They do not establish developer seniority, intelligence, personality, professional level, or future potential.
+
+| Field | Values |
+|---|---|
+| snapshot `status` | `ASSESSED` (at least one competency assessed) · `INSUFFICIENT_DATA` (none could be) |
+| competency `status` | `ASSESSED` · `INSUFFICIENT_EVIDENCE` · `UNSUPPORTED` · `MISSING` (not assessed: `score` and `level` are `null`, never 0) |
+| `level` | `NOT_ESTABLISHED` · `DEVELOPING` · `ESTABLISHED` · `STRONG`: evidence levels of the analyzed code, not seniority |
+| `score`, `evidence_quality` | 4-place decimal strings on 0–1, as stored |
+
+A project without a matrix lists `"data": []` (there is no fabricated
+result).
+
+### `GET /api/v1/projects/{project}/competencies`
+
+Newest first (`created_at`, then `id`), paginated (`?page`, `?per_page` ≤ 100):
+`id`, `type: "competency_snapshot"`, `project_id`, `dna_snapshot_id`,
+`analysis_run_id`, `source_snapshot_id`, `status`, `competency_version`,
+`dna_scoring_version`, `summary` (`competencies`, counts per `statuses` and
+`levels`), `created_at`.
+
+### `GET /api/v1/projects/{project}/competencies/{snapshot}`
+
+```json
+{ "data": {
+  "id": "…", "type": "competency_snapshot", "project_id": "…", "dna_snapshot_id": "…", "analysis_run_id": "…",
+  "source_snapshot_id": "…", "status": "ASSESSED", "competency_version": "1.0.0",
+  "specification_fingerprint": "<64 hex>", "dna_scoring_version": "1.0.0", "created_at": "…",
+  "levels": [ { "level": "NOT_ESTABLISHED", "name": "Not established", "ordinal": 0, "minimum_score": "0.0000" }, … ],
+  "summary": { "competencies": 4, "statuses": { "ASSESSED": 4, … }, "levels": { "STRONG": 2, … } },
+  "languages": ["php", "python"],
+  "dna_snapshot": { "id": "…", "status": "READY", "overall_score": "0.8050", "data_quality": "0.9000",
+                    "scoring_version": "1.0.0", "specification_fingerprint": "<64 hex>", "created_at": "…" },
+  "source_snapshot": { "id": "…", "version": 3, "file_count": 12, "primary_language": "php", "created_at": "…" },
+  "analysis_run": { "id": "…", "result_type": "static_analysis", "status": "SUCCEEDED", "completed_at": "…" },
+  "competencies": [
+    { "key": "COMPLEXITY_MANAGEMENT", "name": "Complexity management", "description": "…",
+      "status": "ASSESSED", "score": "0.7500", "level": "ESTABLISHED", "evidence_quality": "0.9000",
+      "evidence_quality_terms": { "parse_coverage": "0.9000", "evidence_volume": "0.8000", "evidence_availability": "1.0000" },
+      "limitations": [],
+      "evidence": [
+        { "source": "COMPLEXITY.mean_cyclomatic_complexity", "dimension": "COMPLEXITY", "component": "mean_cyclomatic_complexity",
+          "rationale": "…", "share": false, "weight": "0.6000", "required": true, "status": "AVAILABLE",
+          "value": "4.0000", "score": "0.7500", "best": "2.0000", "worst": "10.0000", "minimum_denominator": 5,
+          "numerator": [ { "metric": "metrics.overall.complexity_total", "value": 160 } ],
+          "denominator": [ { "metric": "metrics.overall.functions_total", "value": 40 } ] } ] } ] } }
+```
+
+- `competencies` and `evidence` follow the specification's order; metric
+  lists are sorted by path.
+- `limitations` lists measured languages for which the evidence is only
+  partially supported (e.g. C/C++ without preprocessing); it never changes
+  a score.
+- `description`, `rationale`, `share` and `levels` come from the
+  snapshot's own competency and scoring versions (`null` when unknown).
+
 ## Authentication (browser, Sanctum SPA)
 
 Browsers authenticate with Laravel's **session cookie**. No token is ever
@@ -727,8 +794,9 @@ configured in `config/codedna.php`.
 
 ## Planned endpoints (not implemented)
 
-A developer-wide DNA across projects (ADR-004's aggregation) is not
-implemented; DNA is served per project ([DNA](#dna), Phase 12). Future paths
+A developer-wide DNA or competency profile across projects (ADR-004's
+aggregation) is not implemented; DNA and competencies are served per
+project ([DNA](#dna), [Competencies](#competencies)). Future paths
 follow the domain model in [data-model.md](../architecture/data-model.md):
 projects own snapshots, snapshots have analysis runs, and runs produce DNA
 snapshots.

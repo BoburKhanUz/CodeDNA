@@ -28,9 +28,10 @@ final class DatabaseTest extends TestCase
         ))->pluck('table_name')->all();
 
         // Framework/auth (Phase 03), the four domain tables (Phase 05),
-        // developer profiles (Phase 06) and analysis results (Phase 10), nothing else.
+        // developer profiles (Phase 06), analysis results (Phase 10) and
+        // competency snapshots (Phase 13), nothing else.
         $this->assertSame([
-            'analysis_results', 'analysis_runs', 'developer_profiles', 'dna_snapshots', 'failed_jobs', 'migrations',
+            'analysis_results', 'analysis_runs', 'competency_snapshots', 'developer_profiles', 'dna_snapshots', 'failed_jobs', 'migrations',
             'personal_access_tokens', 'projects', 'source_snapshots', 'users',
         ], $tables);
     }

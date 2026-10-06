@@ -31,6 +31,7 @@ users ──1:n──► projects ──1:n──► source_snapshots ──1:n�
 | `analysis_runs` | One pipeline execution against one snapshot, for one result type | only until a terminal state |
 | `analysis_results` | The verified analyzer result of one successful run (Phase 10) | **never** |
 | `dna_snapshots` | Immutable DNA result of one successful run, one per scoring version (Phase 11) | **never** |
+| `competency_snapshots` | Immutable competency matrix of one DNA snapshot, one per competency version (Phase 13) | **never** |
 
 There is deliberately no separate `repositories` or `analyses` table. A
 project carries its source origin (`source_type`, `repository_url`). A
@@ -46,7 +47,8 @@ integrations (Phase 19) will add their own tables when they exist.
 | `Project` | `user()` belongsTo; `sourceSnapshots()`, `analysisRuns()`, `dnaSnapshots()` hasMany |
 | `SourceSnapshot` | `project()` belongsTo; `analysisRuns()` hasMany |
 | `AnalysisRun` | `project()`, `sourceSnapshot()` belongsTo; `result()` hasOne; `dnaSnapshots()` hasMany (one per scoring version), `dnaSnapshot()` hasOne |
-| `DnaSnapshot` | `user()`, `project()`, `analysisRun()`, `sourceSnapshot()` belongsTo |
+| `DnaSnapshot` | `user()`, `project()`, `analysisRun()`, `sourceSnapshot()` belongsTo; `competencySnapshots()` hasMany |
+| `CompetencySnapshot` | `dnaSnapshot()`, `project()`, `analysisRun()`, `sourceSnapshot()` belongsTo |
 
 All relationships carry generic return types (`BelongsTo<Project, $this>`).
 Outside production, strict mode makes lazy loading throw, so callers must
@@ -239,7 +241,27 @@ result is kept as one JSONB document rather than normalized into tables.
 
 `user_id` and `project_id` are denormalized on purpose. They are the main
 query dimensions ("my DNA history", "this project's DNA history"), and
-composite foreign keys guarantee they agree with the run.
+composite foreign keys guarantee they agree with the run. A unique index on
+`(id, project_id, analysis_run_id, source_snapshot_id, user_id)` (Phase 13)
+is the target of the competency snapshots' lineage key.
+
+### competency_snapshots
+
+Phase 13 ([competency-matrix-v1.md](competency-matrix-v1.md)).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `user_id`, `project_id`, `dna_snapshot_id`, `analysis_run_id`, `source_snapshot_id` | ulid | one composite FK onto `dna_snapshots(id, project_id, analysis_run_id, source_snapshot_id, user_id)`, `RESTRICT`: the lineage always equals the DNA snapshot's; `user_id` also FK → users |
+| `competency_version`, `dna_scoring_version` | varchar(32) | `UNIQUE (dna_snapshot_id, competency_version)` |
+| `specification_fingerprint` | char(64) | SHA-256 hex (CHECK) |
+| `status` | varchar(32) | `ASSESSED` \| `INSUFFICIENT_DATA` |
+| `competencies` | jsonb | non-empty array in specification order, ≤ 64 KiB |
+| `summary` | jsonb | object: counts per status and level (no aggregate score), ≤ 16 KiB |
+| `provenance` | jsonb | object: versions, fingerprints, DNA status/score/data quality, run, source snapshot, result hash, measured languages, ≤ 16 KiB |
+| `created_at` | timestamp | **no `updated_at`** |
+
+Indexes: `(project_id, created_at)`, `(user_id, created_at)`.
 
 ## States
 
@@ -252,6 +274,7 @@ enums (`app/Enums`) through Eloquent enum casts:
 | `SourceType` | `UPLOAD`, `REPOSITORY` (projects and snapshots) |
 | `AnalysisRunStatus` | `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED` |
 | `DnaSnapshotStatus` | `READY`, `INSUFFICIENT_DATA` |
+| `CompetencySnapshotStatus` | `ASSESSED`, `INSUFFICIENT_DATA` (competency statuses and levels live in the JSONB) |
 
 **Why not PostgreSQL `ENUM` types?** Adding or renaming a value then needs
 `ALTER TYPE`, which has transaction restrictions and couples deployments to
@@ -297,7 +320,7 @@ DNA snapshot:     created (READY or INSUFFICIENT_DATA) from a SUCCEEDED run ─�
 ## Immutability
 
 Historical records (`source_snapshots`, terminal `analysis_runs`,
-`analysis_results`, `dna_snapshots`) are append-only. This is an architectural invariant.
+`analysis_results`, `dna_snapshots`, `competency_snapshots`) are append-only. This is an architectural invariant.
 
 | Layer | Mechanism |
 |---|---|

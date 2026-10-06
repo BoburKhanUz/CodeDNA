@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\Profile\ProfileController;
 use App\Http\Controllers\Api\V1\Projects\AnalysisController;
 use App\Http\Controllers\Api\V1\Projects\ArchiveProjectController;
+use App\Http\Controllers\Api\V1\Projects\CompetencySnapshotController;
 use App\Http\Controllers\Api\V1\Projects\DnaSnapshotController;
 use App\Http\Controllers\Api\V1\Projects\ProjectController;
 use App\Http\Controllers\Api\V1\Projects\SourceSnapshotController;
@@ -106,4 +107,14 @@ Route::middleware('auth:sanctum')->prefix('projects')->name('projects.')->group(
         ->whereUlid(['project', 'dnaSnapshot'])
         ->scopeBindings()
         ->name('dna.show');
+
+    // Competency snapshots (Phase 13): read-only, derived from DNA snapshots
+    // by the competency engine and never changed.
+    Route::get('{project}/competencies', [CompetencySnapshotController::class, 'index'])
+        ->whereUlid('project')
+        ->name('competencies.index');
+    Route::get('{project}/competencies/{competencySnapshot}', [CompetencySnapshotController::class, 'show'])
+        ->whereUlid(['project', 'competencySnapshot'])
+        ->scopeBindings()
+        ->name('competencies.show');
 });

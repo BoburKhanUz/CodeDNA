@@ -262,6 +262,16 @@ code) and the run stays `SUCCEEDED`; `php artisan dna:score <run>` or
 Phase 11, or every run again under a new scoring version). Foundation
 results are never scored. Details: [dna-scoring-v1.md](dna-scoring-v1.md).
 
+### Competency matrix (Phase 13)
+
+After a DNA snapshot is created (or found), the job calls
+`App\Actions\Competency\CalculateCompetencyMatrix` for it: one immutable
+competency snapshot per (DNA snapshot, competency version), derived from
+the stored DNA evidence only. Best effort, like scoring: a failure is
+logged (`competency.failed`) and changes neither the run nor the DNA
+snapshot; `php artisan competency:calculate <dna-snapshot>` or `--missing`
+retries. Details: [competency-matrix-v1.md](competency-matrix-v1.md).
+
 ## Run state machine
 
 ```text
@@ -387,7 +397,8 @@ frees the logical analysis for a new run.
 - Lifecycle log events: `analysis.queued`, `analysis.started`,
   `analysis.retrying`, `analysis.completed`, `analysis.failed`,
   `analysis.result_ignored`, `analysis.duplicate_job_skipped`, and after
-  scoring `dna.scored` or `dna.scoring_failed` (with `scoring_version`), with
+  scoring `dna.scored` or `dna.scoring_failed` (with `scoring_version`), then
+  `competency.calculated` or `competency.failed` (with `competency_version`), with
   `analysis_run_id`, `project_id`, `source_snapshot_id`, `result_type`,
   `attempt`, `request_id`, `duration_ms`, `status`, `error_code`,
   `http_status`, `analyzer_code` and `result_hash` (IDs and codes only).

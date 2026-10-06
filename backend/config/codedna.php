@@ -101,6 +101,15 @@ return [
         'version' => (string) env('CODEDNA_SCORING_VERSION', '1.0.0'),
     ],
 
+    /*
+    | Competency matrix (docs/architecture/competency-matrix-v1.md). The version
+    | selects a definition in App\Services\Competency\CompetencySpecification;
+    | each (DNA snapshot, competency version) is assessed once.
+    */
+    'competency' => [
+        'version' => (string) env('CODEDNA_COMPETENCY_VERSION', '1.0.0'),
+    ],
+
     'rate_limits' => [
         // Every /api/v1 route, per authenticated user or per IP.
         'api_per_minute' => 120,

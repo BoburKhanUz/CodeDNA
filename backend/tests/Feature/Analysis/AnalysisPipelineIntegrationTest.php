@@ -71,6 +71,7 @@ final class AnalysisPipelineIntegrationTest extends TestCase
     {
         if ($this->project !== null) {
             $runs = DB::table('analysis_runs')->where('project_id', $this->project->id)->pluck('id');
+            DB::table('competency_snapshots')->whereIn('analysis_run_id', $runs)->delete();
             DB::table('dna_snapshots')->whereIn('analysis_run_id', $runs)->delete();
             DB::table('analysis_results')->whereIn('analysis_run_id', $runs)->delete();
             DB::table('analysis_runs')->where('project_id', $this->project->id)->delete();

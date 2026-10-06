@@ -21,6 +21,8 @@ final class DnaSnapshotMigrationTest extends TestCase
 {
     private const MIGRATION = 'database/migrations/2026_10_09_000001_add_scoring_to_dna_snapshots.php';
 
+    private const COMPETENCY_MIGRATION = 'database/migrations/2026_10_10_000001_create_competency_snapshots_table.php';
+
     /** @var list<string> */
     private array $projects = [];
 
@@ -82,6 +84,8 @@ final class DnaSnapshotMigrationTest extends TestCase
 
     public function test_rollback_restores_the_phase_05_shape_and_the_upgrade_backfills_existing_rows(): void
     {
+        // The competency table (Phase 13) depends on dna_snapshots and is rolled back first.
+        $this->artisan('migrate:rollback', ['--path' => self::COMPETENCY_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION])->assertSuccessful();
 
         $this->assertFalse(Schema::hasColumn('dna_snapshots', 'source_snapshot_id'));

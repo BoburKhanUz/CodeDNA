@@ -6,7 +6,7 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 12 (CodeDNA dashboard) complete. The
+**Current status:** Phase 13 (competency matrix) complete. The
 local environment runs every component. Users can register, sign in and
 sign out, edit their developer profile, change their password, create and
 archive projects, and upload ZIP archives that become immutable, versioned
@@ -25,8 +25,12 @@ an overall score and a data-quality value) into an immutable DNA snapshot
 ([dna-scoring-v1.md](dna-scoring-v1.md)). A read-only DNA API and the
 CodeDNA dashboard present those snapshots per project
 ([frontend.md](frontend.md#codedna-dashboard-appprojectsprojectdna)); there is
-no analysis screen yet (analyses are started through the API). Everything
-below is the target architecture.
+no analysis screen yet (analyses are started through the API). Each DNA
+snapshot is then turned into a deterministic, versioned competency matrix
+(complexity management, function design, type structure, code hygiene;
+[competency-matrix-v1.md](competency-matrix-v1.md)), readable through the
+API and on the Competency Matrix page. Everything below is the target
+architecture.
 
 ## System context
 
@@ -121,4 +125,5 @@ at a time:
 | 10 | Analysis queue and pipeline | Done |
 | 11 | CodeDNA scoring engine | Done (scoring version 1.0.0, in Laravel; [dna-scoring-v1.md](dna-scoring-v1.md)) |
 | 12 | DNA dashboard (**MVP complete**) | Done (per-project dashboard and read-only DNA API) |
-| 13–25 | Competencies, skill gaps, AI, challenges, learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |
+| 13 | Competency matrix | Done (competency version 1.0.0; [competency-matrix-v1.md](competency-matrix-v1.md)) |
+| 14–25 | Skill gaps, AI, challenges, learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |

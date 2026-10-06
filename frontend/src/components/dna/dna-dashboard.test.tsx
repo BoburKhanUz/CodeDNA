@@ -95,6 +95,14 @@ describe("DnaDashboard", () => {
     expect(within(syntax).getAllByText("Files with syntax errors", { selector: "dt" })).toHaveLength(1);
   });
 
+  it("links to the Competency Matrix", async () => {
+    respondWith();
+    render(<DnaDashboard projectId={project.id} />);
+
+    const card = await screen.findByTestId("competency-link");
+    expect(within(card).getByRole("link", { name: "View Competency Matrix →" })).toHaveAttribute("href", `/app/projects/${project.id}/competencies`);
+  });
+
   it("shows the source, run and scoring version", async () => {
     respondWith();
     render(<DnaDashboard projectId={project.id} />);

@@ -93,6 +93,14 @@ class Project extends Model
         return $this->hasMany(DnaSnapshot::class);
     }
 
+    /**
+     * @return HasMany<CompetencySnapshot, $this>
+     */
+    public function competencySnapshots(): HasMany
+    {
+        return $this->hasMany(CompetencySnapshot::class);
+    }
+
     public function isActive(): bool
     {
         return $this->status === ProjectStatus::Active;

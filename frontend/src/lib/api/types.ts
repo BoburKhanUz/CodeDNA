@@ -1,7 +1,7 @@
 /**
  * TypeScript mirror of the Laravel API contract (docs/api/README.md).
  *
- * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary}Resource.php,
+ * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary}Resource.php,
  * backend/app/Http/Resources/PaginatedCollection.php,
  * backend/app/Enums/{SupportedLocale,ProgrammingLanguage}.php and
  * backend/app/Http/Errors/{ErrorCode,ApiExceptionRenderer}.php. When those
@@ -378,3 +378,123 @@ export interface DnaSnapshot {
 }
 
 export type DnaSnapshotResponse = DataEnvelope<DnaSnapshot>;
+
+/*
+ * Competency matrix (Phase 13; docs/architecture/competency-matrix-v1.md).
+ * Levels describe how strongly the analyzed source code meets measurable
+ * criteria. They are not seniority, career or employment levels. Scores and
+ * evidence quality are backend decimal strings; the frontend never computes them.
+ */
+
+export const COMPETENCY_LEVELS = ["NOT_ESTABLISHED", "DEVELOPING", "ESTABLISHED", "STRONG"] as const;
+export type CompetencyLevel = (typeof COMPETENCY_LEVELS)[number];
+
+/** ASSESSED, or why the competency could not be assessed (then no score and no level, never 0). */
+export const COMPETENCY_STATUSES = ["ASSESSED", "INSUFFICIENT_EVIDENCE", "UNSUPPORTED", "MISSING"] as const;
+export type CompetencyStatus = (typeof COMPETENCY_STATUSES)[number];
+
+/** ASSESSED: at least one competency was assessed. INSUFFICIENT_DATA: none could be. */
+export type CompetencySnapshotStatus = "ASSESSED" | "INSUFFICIENT_DATA";
+
+/** Stored counts per status and level; there is deliberately no aggregate score. */
+export interface CompetencySummary {
+  competencies: number;
+  statuses: Record<CompetencyStatus, number>;
+  levels: Record<CompetencyLevel, number>;
+}
+
+/** `CompetencySnapshotSummaryResource` — GET /api/v1/projects/{project}/competencies (newest first). */
+export interface CompetencySnapshotSummary {
+  id: string;
+  type: "competency_snapshot";
+  project_id: string;
+  dna_snapshot_id: string;
+  analysis_run_id: string;
+  source_snapshot_id: string;
+  status: CompetencySnapshotStatus;
+  competency_version: string;
+  dna_scoring_version: string;
+  summary: CompetencySummary;
+  created_at: string | null;
+}
+
+/** One DNA component used as evidence, passed through from the DNA snapshot. */
+export interface CompetencyEvidence {
+  /** "DIMENSION.component", e.g. "COMPLEXITY.mean_cyclomatic_complexity". */
+  source: string;
+  dimension: string | null;
+  component: string | null;
+  /** Why this evidence belongs to the competency; null for unknown competency versions. */
+  rationale: string | null;
+  /** true: value is a share of the denominator (from the DNA scoring specification); null when unknown. */
+  share: boolean | null;
+  weight: DecimalString | null;
+  required: boolean | null;
+  status: DnaEvidenceStatus;
+  value: DecimalString | null;
+  score: DecimalString | null;
+  best: DecimalString | null;
+  worst: DecimalString | null;
+  minimum_denominator: number | null;
+  numerator: DnaMetricEvidence[];
+  denominator: DnaMetricEvidence[];
+}
+
+export interface Competency {
+  key: string;
+  name: string;
+  description: string | null;
+  status: CompetencyStatus;
+  /** null unless ASSESSED. */
+  score: DecimalString | null;
+  /** null unless ASSESSED. */
+  level: CompetencyLevel | null;
+  /** Objective input coverage of this competency's evidence; not a confidence or probability. */
+  evidence_quality: DecimalString | null;
+  evidence_quality_terms: { parse_coverage: DecimalString; evidence_volume: DecimalString; evidence_availability: DecimalString } | null;
+  /** Measured languages for which the evidence is only partially supported. */
+  limitations: { language: string; note: string }[];
+  evidence: CompetencyEvidence[];
+}
+
+export interface CompetencyLevelBound {
+  level: CompetencyLevel;
+  name: string;
+  ordinal: number;
+  minimum_score: DecimalString;
+}
+
+/** `CompetencySnapshotResource` — GET /api/v1/projects/{project}/competencies/{snapshot}. Immutable. */
+export interface CompetencySnapshot {
+  id: string;
+  type: "competency_snapshot";
+  project_id: string;
+  dna_snapshot_id: string;
+  analysis_run_id: string;
+  source_snapshot_id: string;
+  status: CompetencySnapshotStatus;
+  competency_version: string;
+  specification_fingerprint: string;
+  dna_scoring_version: string;
+  created_at: string | null;
+  /** Level boundaries of this competency version (null for unknown versions). */
+  levels: CompetencyLevelBound[] | null;
+  summary: CompetencySummary;
+  /** Languages the analysis measured; null when unknown. */
+  languages: string[] | null;
+  dna_snapshot: {
+    id: string;
+    status: DnaSnapshotStatus;
+    overall_score: DecimalString | null;
+    data_quality: DecimalString | null;
+    scoring_version: string;
+    specification_fingerprint: string | null;
+    created_at: string | null;
+  } | null;
+  source_snapshot: { id: string; version: number; file_count: number; primary_language: string | null; created_at: string | null } | null;
+  analysis_run: { id: string; result_type: AnalysisResultType; status: AnalysisRunStatus; completed_at: string | null } | null;
+  /** In the competency specification's order. */
+  competencies: Competency[];
+}
+
+export type CompetencySnapshotResponse = DataEnvelope<CompetencySnapshot>;

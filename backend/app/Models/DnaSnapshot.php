@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -104,6 +105,16 @@ class DnaSnapshot extends Model
     public function analysisRun(): BelongsTo
     {
         return $this->belongsTo(AnalysisRun::class);
+    }
+
+    /**
+     * Competency matrices derived from this snapshot, one per competency version (Phase 13).
+     *
+     * @return HasMany<CompetencySnapshot, $this>
+     */
+    public function competencySnapshots(): HasMany
+    {
+        return $this->hasMany(CompetencySnapshot::class);
     }
 
     /**

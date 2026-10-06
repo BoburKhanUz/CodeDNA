@@ -49,7 +49,10 @@ deterministically into an immutable DNA snapshot (scoring version 1.0.0,
 measures characteristics of the analyzed code and makes no claims about
 developers. Since Phase 12 each project has a CodeDNA dashboard that shows
 these snapshots (score, data quality, dimensions and their evidence) from a
-read-only API; there is no analysis screen yet. The full plan is in
+read-only API; there is no analysis screen yet. Since Phase 13 each DNA
+snapshot also yields a deterministic competency matrix
+([competency-matrix-v1.md](docs/architecture/competency-matrix-v1.md)) that
+describes evidence in the code, never a developer's seniority or level. The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance

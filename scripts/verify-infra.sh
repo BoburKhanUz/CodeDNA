@@ -227,6 +227,16 @@ check "foundation run is not scored" bash -c "[[ '$foundation_dna' == 0 ]]"
 check "GET dna -> 200, the static run's snapshot, scores as 4-place strings, no storage details" bash -c \
     "out=\$(api_json GET /api/v1/projects/$project_id/dna); [[ \$out == 200* && \$out == *'\"analysis_run_id\":\"$static_run\"'* && \$out == *'\"data_quality\":\"0.'* && \$out != *storage* && \$out != *X-Amz* ]]"
 check "POST dna -> 405 (read-only)" bash -c "api_json POST /api/v1/projects/$project_id/dna '{}' | grep -q '^405 '"
+# Phase 13: the worker derives the competency matrix from the DNA snapshot; read-only API.
+static_competency=''
+for _ in $(seq 1 20); do
+    static_competency=$(db "SELECT c.competency_version || ' ' || c.status || ' ' || (c.dna_snapshot_id = d.id) FROM competency_snapshots c JOIN dna_snapshots d ON d.id = c.dna_snapshot_id WHERE d.analysis_run_id = '$static_run'" 2>/dev/null)
+    [[ -n "$static_competency" ]] && break
+    sleep 0.5
+done
+check "static_analysis run has one competency snapshot (competency 1.0.0, linked to its DNA)" bash -c "[[ '$static_competency' == '1.0.0 '*' true' ]]"
+check "GET competencies -> 200 with the snapshot; POST -> 405 (read-only)" bash -c \
+    "out=\$(api_json GET /api/v1/projects/$project_id/competencies); [[ \$out == 200* && \$out == *'\"competency_version\":\"1.0.0\"'* && \$out != *storage* ]] && api_json POST /api/v1/projects/$project_id/competencies '{}' | grep -q '^405 '"
 check "repeating a request returns the existing run (200, same ID)" bash -c \
     "out=\$(api_json POST /api/v1/projects/$project_id/analyses '{\"source_snapshot_id\":\"$snapshot_id\"}'); [[ \$out == 200* && \$out == *'$foundation_run'* ]]"
 check "GET result -> verified IR 1.1 static analysis with metrics, no source or URLs" bash -c \
@@ -250,8 +260,8 @@ rm -rf "$jar" "$upload_dir"
 if [[ -n "$project_id" ]]; then
     check "remove probe objects from MinIO" mc_app "mc rm --recursive --force \"app/\$SOURCE_STORAGE_BUCKET/projects/$project_id/\""
 fi
-check "remove probe rows (DNA, results, runs, snapshots, project, profile, user)" db \
-    "BEGIN; DELETE FROM dna_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM analysis_results WHERE analysis_run_id IN (SELECT r.id FROM analysis_runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM analysis_runs WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
+check "remove probe rows (competencies, DNA, results, runs, snapshots, project, profile, user)" db \
+    "BEGIN; DELETE FROM competency_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM dna_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM analysis_results WHERE analysis_run_id IN (SELECT r.id FROM analysis_runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM analysis_runs WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
 
 echo "Analyzer service (Phases 08-09)"
 check "analyzer publishes no host port" bash -c \

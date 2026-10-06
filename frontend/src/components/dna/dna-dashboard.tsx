@@ -103,6 +103,22 @@ export function DnaDashboard({ projectId, snapshotId }: { projectId: string; sna
       ) : (
         <>
           <DnaReport snapshot={state.snapshot} projectId={project.id} />
+          <Card data-testid="competency-link">
+            <CardHeader>
+              <CardTitle>
+                <h2>Competency Matrix</h2>
+              </CardTitle>
+              <CardDescription>
+                Engineering competencies supported by this evidence: complexity management, function design, type structure
+                and code hygiene, each with its level and the evidence behind it.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href={`/app/projects/${project.id}/competencies`} className="text-sm font-medium underline underline-offset-4">
+                View Competency Matrix →
+              </Link>
+            </CardContent>
+          </Card>
           <History history={state.history} projectId={project.id} selectedId={state.snapshot.id} />
         </>
       )}

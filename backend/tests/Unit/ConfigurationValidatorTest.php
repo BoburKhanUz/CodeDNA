@@ -40,6 +40,7 @@ final class ConfigurationValidatorTest extends TestCase
             'codedna.analysis' => ['job_timeout_seconds' => 330],
             'queue.connections.analysis.retry_after' => 360,
             'codedna.scoring.version' => '1.0.0',
+            'codedna.competency.version' => '1.0.0',
         ], $overrides) as $key => $value) {
             $config->set($key, $value);
         }
@@ -170,6 +171,16 @@ final class ConfigurationValidatorTest extends TestCase
             $this->assertSame(
                 ['CODEDNA_SCORING_VERSION must be one of: 1.0.0.'],
                 (new ConfigurationValidator)->problems($this->config(['codedna.scoring.version' => $version]), 'production'),
+            );
+        }
+    }
+
+    public function test_the_competency_version_must_be_a_defined_specification(): void
+    {
+        foreach (['1.0', '2.0.0', '', null] as $version) {
+            $this->assertSame(
+                ['CODEDNA_COMPETENCY_VERSION must be one of: 1.0.0.'],
+                (new ConfigurationValidator)->problems($this->config(['codedna.competency.version' => $version]), 'production'),
             );
         }
     }

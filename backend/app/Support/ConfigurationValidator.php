@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use App\Services\Competency\CompetencySpecification;
 use App\Services\Dna\ScoringSpecification;
 use Illuminate\Contracts\Config\Repository;
 
@@ -37,6 +38,9 @@ final class ConfigurationValidator
 
         if (! in_array($config->get('codedna.scoring.version'), ScoringSpecification::VERSIONS, true)) {
             $problems[] = 'CODEDNA_SCORING_VERSION must be one of: '.implode(', ', ScoringSpecification::VERSIONS).'.';
+        }
+        if (! in_array($config->get('codedna.competency.version'), CompetencySpecification::VERSIONS, true)) {
+            $problems[] = 'CODEDNA_COMPETENCY_VERSION must be one of: '.implode(', ', CompetencySpecification::VERSIONS).'.';
         }
 
         // The test suite swaps in in-memory drivers; every other environment
