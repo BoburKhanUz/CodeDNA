@@ -1,10 +1,11 @@
 # Backend Architecture (Laravel)
 
-Laravel is the product and business backend. **Status: Phase 06.** It
-provides authentication, the developer profile, password change, the
-versioned API skeleton, standard responses and errors, health checks, and
-Redis-backed sessions, cache and queues. The domain model (Phase 05) exists,
-but no project or analysis API does yet.
+Laravel is the product and business backend. **Status: Phase 07.** It
+provides authentication, the developer profile, password change, project
+management, ZIP source upload into immutable source snapshots (stored in
+S3-compatible storage), the versioned API skeleton, standard responses and
+errors, health checks, and Redis-backed sessions, cache and queues. No
+analysis exists yet.
 
 Related: [ADR-001](../decisions/ADR-001-stack.md),
 [ADR-005](../decisions/ADR-005-service-communication.md),
@@ -14,14 +15,17 @@ Related: [ADR-001](../decisions/ADR-001-stack.md),
 
 ## Responsibilities
 
-Laravel owns users, authentication and developer profiles. In later phases
-it also owns projects, repositories and provider integrations, source
-snapshots, analysis orchestration and status, result persistence, DNA
+Laravel owns users, authentication, developer profiles, projects and source
+snapshots (upload, inspection, storage). In later phases it also owns
+repositories and provider integrations, analysis orchestration and status, result persistence, DNA
 snapshots, competencies, learning data, organizations, teams and billing.
 It also owns authorization, rate limiting and every business rule.
 
-**Laravel never parses or analyzes source code.** It validates and stores
-uploads and hands them to the analyzer (ADR-005).
+**Laravel never parses, executes or analyzes source code.** It validates the
+*archive structure* of uploads (without extracting them), stores them, and
+will hand them to the analyzer (ADR-005). Application code contains no
+process-execution or `eval` primitives, and a test enforces this
+(`NoCommandExecutionTest`).
 
 ## Versions
 
@@ -57,29 +61,36 @@ backend/
 ├── app/
 │   ├── Actions/Auth/              RegisterUser, AuthenticateUser, StartUserSession, LogoutUser, ChangePassword
 │   ├── Actions/Profile/           ResolveDeveloperProfile, UpdateDeveloperProfile
-│   ├── Actions/Snapshots/         RecordSourceSnapshot
+│   ├── Actions/Projects/          CreateProject, UpdateProject, ArchiveProject
+│   ├── Actions/Snapshots/         StoreUploadedSource (upload workflow), RecordSourceSnapshot (versioning)
 │   ├── Casts/JsonObject.php       JSONB object cast ({} for empty, lists rejected)
 │   ├── Enums/                     domain states, SupportedLocale, ProgrammingLanguage
 │   ├── Exceptions/                ApiException (client-facing, carries an ErrorCode),
-│   │                              InvalidConfigurationException
+│   │                              InvalidConfigurationException, DomainRuleViolation, SourceArchiveRejected
 │   ├── Http/
 │   │   ├── Controllers/Api/V1/    HealthController, MeController, Auth/{Register,Login,Logout,Password}Controller,
-│   │   │                          Profile/ProfileController
+│   │   │                          Profile/ProfileController,
+│   │   │                          Projects/{Project,ArchiveProject,SourceSnapshot}Controller
 │   │   ├── Errors/                ErrorCode (vocabulary), ApiExceptionRenderer
 │   │   ├── Middleware/            AssignRequestId, RequireSession
 │   │   ├── Requests/              Auth/{Register,Login,ChangePassword}Request,
-│   │   │                          Profile/UpdateDeveloperProfileRequest
-│   │   └── Resources/             UserResource, DeveloperProfileResource
+│   │   │                          Profile/UpdateDeveloperProfileRequest, PaginatedRequest,
+│   │   │                          Projects/{Store,Update,List}ProjectRequest, ProjectRules,
+│   │   │                          Projects/{StoreSourceSnapshot,ListSourceSnapshots}Request
+│   │   └── Resources/             UserResource, DeveloperProfileResource, ProjectResource,
+│   │                              SourceSnapshotResource, PaginatedCollection
 │   ├── Models/                    User, DeveloperProfile, Project, SourceSnapshot, AnalysisRun, DnaSnapshot
-│   ├── Policies/                  UserPolicy, DeveloperProfilePolicy
+│   ├── Policies/                  UserPolicy, DeveloperProfilePolicy, ProjectPolicy (owner-only, 404 otherwise)
 │   ├── Rules/HttpsUrl.php         https:// URL, host required, no embedded credentials
 │   ├── Providers/AppServiceProvider.php   config validation, rate limiters, password rules, strict models
 │   ├── Services/SystemHealth.php          database/Redis readiness checks
-│   └── Support/ConfigurationValidator.php
+│   ├── Support/ConfigurationValidator.php
+│   └── Support/Sources/           ZipArchiveInspector, SourceArchiveLimits, ArchiveSummary, LanguageGuesser
 ├── bootstrap/app.php              routing (api prefix), middleware, exception rendering
-├── config/codedna.php             CodeDNA settings (service, version, proxies, rate limits)
+├── config/codedna.php             CodeDNA settings (service, version, proxies, source storage and limits, rate limits)
+├── config/filesystems.php         `sources` disk (S3 API: MinIO locally, R2 in production)
 ├── routes/api.php                 mounts /api/v1 → routes/api_v1.php
-└── tests/{Unit,Feature/{Auth,Api,Domain,Infrastructure,Profile}}
+└── tests/{Unit,Feature/{Auth,Api,Domain,Infrastructure,Profile,Projects},Support}
 ```
 
 ### Conventions
@@ -219,6 +230,24 @@ stay in the run's `metadata`, is decided in Phase 10. Provider integrations
 for the MVP. Developer DNA is derived from `dna_snapshots`
 ([ADR-004 §7](../decisions/ADR-004-dna-scoring.md#7-developer-level-dna-proposal)).
 
+## Source storage
+
+- **Disk:** `sources` (`config/filesystems.php`), the S3 driver
+  (`league/flysystem-aws-s3-v3`) configured from `SOURCE_STORAGE_*`:
+  MinIO locally, Cloudflare R2 in production, with no code differences.
+  Visibility is private and `throw` is on, so a failed write is an error,
+  never a silent success. Application code uses only the Laravel filesystem
+  contract.
+- **Keys:** `{SOURCE_STORAGE_PREFIX}projects/{project}/snapshots/{snapshot}/source.zip`,
+  generated from ULIDs (`StoreUploadedSource::storageKey`). The prefix is
+  validated at boot (lowercase segments ending in `/`).
+- **Workflow, inspection, cleanup and idempotency:** see
+  [data-flow.md](data-flow.md#source-upload). Limits are in
+  `config('codedna.sources.limits')` (`SOURCE_MAX_*`), validated at boot.
+- **Not yet:** pre-signed URLs for the analyzer (Phase 10), a reconciliation
+  job for orphaned objects, and a purge workflow that deletes a project's
+  objects.
+
 ## Redis: cache, sessions, queues
 
 | Use | Driver | Redis connection / DB (development) |
@@ -281,6 +310,22 @@ make lint-backend   # Laravel Pint --test
   points to.
 - CSRF enforcement is bypassed by Laravel during PHPUnit runs. It is verified
   end to end through Nginx by `make verify`.
+- **Storage tests use the real MinIO bucket.** `phpunit.xml` sets
+  `SOURCE_STORAGE_PREFIX=phpunit/`; each upload test adds a unique ULID
+  sub-prefix and deletes it in `tearDown`, so objects are really written,
+  read back and cleaned up. Failure paths (storage outage, failed delete)
+  use a mocked disk.
+- **ZIP archives in tests** are written byte by byte by
+  `tests/Support/ZipBuilder.php` (the container has no `ext-zip`, and the
+  application does not need it), which can also craft malicious archives.
+  `tests/Support/RealWorldZips.php` holds small archives produced by real
+  tools.
+- `ConcurrentUploadTest` forks six processes that upload to one project at
+  the same moment (real PostgreSQL and MinIO, committed rows it deletes
+  afterwards) to prove versions stay unique and gap-free.
+- `TestCase::asUser()` authenticates a request as a user after resetting
+  guards and default headers: within one test the Sanctum request guard
+  would otherwise keep the previous request's user.
 - Run PHPUnit directly (`vendor/bin/phpunit`, as `make test` does).
   `php artisan test` also works, but its printer lists an `@`-suppressed
   phpdotenv warning about the intentionally absent `backend/.env` for every

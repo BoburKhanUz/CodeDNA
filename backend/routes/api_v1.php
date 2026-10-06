@@ -7,6 +7,9 @@ use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\Profile\ProfileController;
+use App\Http\Controllers\Api\V1\Projects\ArchiveProjectController;
+use App\Http\Controllers\Api\V1\Projects\ProjectController;
+use App\Http\Controllers\Api\V1\Projects\SourceSnapshotController;
 use App\Http\Middleware\RequireSession;
 use Illuminate\Support\Facades\Route;
 
@@ -43,4 +46,35 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::patch('profile', [ProfileController::class, 'update'])
         ->middleware('throttle:profile-update')
         ->name('profile.update');
+});
+
+// Projects and immutable source snapshots (Phase 07). Owner-only: other
+// users' projects answer 404 (ProjectPolicy). No DELETE routes: projects are
+// archived, and snapshots never change.
+Route::middleware('auth:sanctum')->prefix('projects')->name('projects.')->group(function (): void {
+    Route::get('/', [ProjectController::class, 'index'])->name('index');
+    Route::post('/', [ProjectController::class, 'store'])
+        ->middleware('throttle:project-create')
+        ->name('store');
+    Route::get('{project}', [ProjectController::class, 'show'])->whereUlid('project')->name('show');
+    Route::patch('{project}', [ProjectController::class, 'update'])
+        ->whereUlid('project')
+        ->middleware('throttle:project-update')
+        ->name('update');
+    Route::post('{project}/archive', ArchiveProjectController::class)
+        ->whereUlid('project')
+        ->middleware('throttle:project-update')
+        ->name('archive');
+
+    Route::get('{project}/source-snapshots', [SourceSnapshotController::class, 'index'])
+        ->whereUlid('project')
+        ->name('source-snapshots.index');
+    Route::post('{project}/source-snapshots', [SourceSnapshotController::class, 'store'])
+        ->whereUlid('project')
+        ->middleware('throttle:source-upload')
+        ->name('source-snapshots.store');
+    Route::get('{project}/source-snapshots/{sourceSnapshot}', [SourceSnapshotController::class, 'show'])
+        ->whereUlid(['project', 'sourceSnapshot'])
+        ->scopeBindings()
+        ->name('source-snapshots.show');
 });

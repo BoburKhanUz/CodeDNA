@@ -35,6 +35,7 @@ use Illuminate\Support\Carbon;
  * @property int $file_count
  * @property string|null $primary_language
  * @property array<string, mixed>|null $metadata
+ * @property string|null $idempotency_key_hash SHA-256 of the upload's Idempotency-Key header
  * @property Carbon|null $created_at
  */
 class SourceSnapshot extends Model

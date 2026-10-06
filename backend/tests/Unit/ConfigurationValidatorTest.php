@@ -27,6 +27,11 @@ final class ConfigurationValidatorTest extends TestCase
             'cache.default' => 'redis',
             'queue.default' => 'redis',
             'sanctum.stateful' => ['app.codedna.example'],
+            'codedna.sources.key_prefix' => '',
+            'codedna.sources.limits' => [
+                'archive_bytes' => 52428800, 'uncompressed_bytes' => 209715200, 'files' => 20000,
+                'single_file_bytes' => 26214400, 'path_length' => 512,
+            ],
         ], $overrides) as $key => $value) {
             $config->set($key, $value);
         }
@@ -95,5 +100,32 @@ final class ConfigurationValidatorTest extends TestCase
             'app.url' => 'http://localhost',
             'session.secure' => false,
         ]), 'local'));
+    }
+
+    public function test_source_upload_limits_must_be_positive_and_consistent(): void
+    {
+        $problems = (new ConfigurationValidator)->problems($this->config([
+            'codedna.sources.limits' => [
+                'archive_bytes' => 0, 'uncompressed_bytes' => 1000, 'files' => 10,
+                'single_file_bytes' => 2000, 'path_length' => 512,
+            ],
+        ]), 'local');
+
+        $this->assertContains('The source upload limit "archive_bytes" must be a positive integer.', $problems);
+        $this->assertContains('SOURCE_MAX_SINGLE_FILE_BYTES must not exceed SOURCE_MAX_UNCOMPRESSED_BYTES.', $problems);
+    }
+
+    public function test_the_storage_prefix_cannot_escape_the_key_layout(): void
+    {
+        foreach (['../', '/abs/', 'no-slash', 'Upper/', 'a/../b/'] as $prefix) {
+            $this->assertContains(
+                'SOURCE_STORAGE_PREFIX must be empty or lowercase path segments ending in "/" (e.g. "staging/").',
+                (new ConfigurationValidator)->problems($this->config(['codedna.sources.key_prefix' => $prefix]), 'local'),
+                $prefix,
+            );
+        }
+        foreach (['', 'phpunit/', 'staging/eu-1/'] as $prefix) {
+            $this->assertSame([], (new ConfigurationValidator)->problems($this->config(['codedna.sources.key_prefix' => $prefix]), 'production'), $prefix);
+        }
     }
 }

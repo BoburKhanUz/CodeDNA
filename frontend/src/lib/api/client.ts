@@ -12,6 +12,8 @@ import { parseApiResponse } from "./http";
  *   XSRF-TOKEN cookie (readable by design). If the cookie is missing it is
  *   fetched from /sanctum/csrf-cookie first. A 419 is retried exactly once
  *   after refreshing the cookie. Nothing else is retried, including 429.
+ * - File uploads (`upload`) use XMLHttpRequest only because fetch cannot
+ *   report upload progress; CSRF, cookies and error parsing are the same.
  */
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -28,6 +30,31 @@ export const api = {
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
   delete: <T>(path: string) => request<T>("DELETE", path),
 };
+
+export interface UploadOptions {
+  /** Called with the fraction (0–1) of the request body sent so far. */
+  onProgress?: (fraction: number) => void;
+  /** Extra request headers, e.g. Idempotency-Key. */
+  headers?: Record<string, string>;
+}
+
+/** POSTs multipart form data (a file upload) with the same CSRF and error handling as `request`. */
+export async function upload<T>(path: string, form: FormData, options: UploadOptions = {}): Promise<T> {
+  assertSameOriginPath(path);
+
+  if (readCookie(XSRF_COOKIE) === null) {
+    await refreshCsrfCookie();
+  }
+
+  let response = await sendForm(path, form, options);
+
+  if (response.status === 419) {
+    await refreshCsrfCookie();
+    response = await sendForm(path, form, options);
+  }
+
+  return parseApiResponse<T>(response);
+}
 
 export async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
   assertSameOriginPath(path);
@@ -81,6 +108,58 @@ async function send(method: Method, path: string, body?: unknown): Promise<Respo
   } catch {
     throw new ApiError({ status: null, code: "NETWORK_ERROR" });
   }
+}
+
+function sendForm(path: string, form: FormData, options: UploadOptions): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", path);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+    const xsrfToken = readCookie(XSRF_COOKIE);
+    if (xsrfToken !== null) {
+      xhr.setRequestHeader("X-XSRF-TOKEN", xsrfToken);
+    }
+    for (const [name, value] of Object.entries(options.headers ?? {})) {
+      xhr.setRequestHeader(name, value);
+    }
+    // No Content-Type: the browser sets multipart/form-data with its boundary.
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        options.onProgress?.(Math.min(1, event.loaded / event.total));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status < 200 || xhr.status > 599) {
+        reject(new ApiError({ status: null, code: "NETWORK_ERROR" }));
+        return;
+      }
+      resolve(
+        new Response(xhr.status === 204 ? null : xhr.responseText, {
+          status: xhr.status,
+          headers: parseResponseHeaders(xhr.getAllResponseHeaders()),
+        }),
+      );
+    };
+    const fail = () => reject(new ApiError({ status: null, code: "NETWORK_ERROR" }));
+    xhr.onerror = fail;
+    xhr.onabort = fail;
+    xhr.ontimeout = fail;
+    xhr.send(form);
+  });
+}
+
+function parseResponseHeaders(raw: string): Headers {
+  const headers = new Headers();
+  for (const line of raw.trim().split(/[\r\n]+/)) {
+    const separator = line.indexOf(":");
+    if (separator > 0) {
+      headers.append(line.slice(0, separator).trim(), line.slice(separator + 1).trim());
+    }
+  }
+  return headers;
 }
 
 /** Only same-origin absolute paths ("/api/..."), never full or protocol-relative URLs. */

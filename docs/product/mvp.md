@@ -17,8 +17,8 @@ Register / log in ─► create project ─► upload source (ZIP) ─► start 
 | Area | Scope |
 |---|---|
 | Accounts | Register, log in, log out, current user; basic developer profile |
-| Projects | Create, list, view, rename, delete (deletion removes stored source) |
-| Source input | ZIP upload into a project repository (`provider = upload`) |
+| Projects | Create, list, view, rename, archive (Phase 07). Deletion, which also removes stored source, comes with the purge workflow |
+| Source input | ZIP upload into an `UPLOAD` project, stored as an immutable source snapshot (Phase 07) |
 | Languages | PHP, Python, JavaScript, TypeScript, delivered in that order. A language is listed as supported only once its parser and tests are in. |
 | Analysis | Asynchronous pipeline via queue → internal analyzer; visible status; visible failures with a reason; re-run |
 | Metrics | Deterministic static metrics ([analyzer.md](../architecture/analyzer.md#metrics-v1-outline)) |

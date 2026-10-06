@@ -69,6 +69,22 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('profile-update', static fn (Request $request): Limit => Limit::perMinute($limits['profile_update_per_minute'])
             ->by('profile-update:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
 
+        RateLimiter::for('project-create', static fn (Request $request): Limit => Limit::perMinute($limits['project_create_per_minute'])
+            ->by('project-create:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        RateLimiter::for('project-update', static fn (Request $request): Limit => Limit::perMinute($limits['project_update_per_minute'])
+            ->by('project-update:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        // Uploads are expensive (inspection, hashing, storage): strict.
+        RateLimiter::for('source-upload', static function (Request $request) use ($limits): array {
+            $key = 'source-upload:'.($request->user()?->getAuthIdentifier() ?? $request->ip());
+
+            return [
+                Limit::perMinute($limits['source_upload_per_minute'])->by($key.'|minute'),
+                Limit::perHour($limits['source_upload_per_hour'])->by($key.'|hour'),
+            ];
+        });
+
         RateLimiter::for('password-change', static function (Request $request) use ($limits): array {
             $key = 'password-change:'.($request->user()?->getAuthIdentifier() ?? $request->ip());
 

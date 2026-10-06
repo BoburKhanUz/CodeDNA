@@ -1,7 +1,8 @@
 # Data Flow — Analysis Pipeline
 
-This document describes how one analysis moves through the system. It is the
-reference for Phases 07 (upload), 10 (queue and pipeline) and 11 (scoring).
+This document describes how source arrives and how one analysis moves
+through the system. Source upload is implemented (Phase 07); the analysis
+pipeline (Phase 10) and scoring (Phase 11) are not yet.
 
 Related: [ADR-003](../decisions/ADR-003-storage.md) (storage),
 [ADR-005](../decisions/ADR-005-service-communication.md) (communication),
@@ -23,7 +24,7 @@ The entities are implemented in Phase 05; see [data-model.md](data-model.md).
 ```text
 Browser (UI)     Nginx          Laravel API         Object storage      Redis queue     Laravel worker        Analyzer
    │  upload ZIP    │                │                    │                  │                 │                    │
-   │───────────────►│───────────────►│ validate type/size │                  │                 │                    │
+   │───────────────►│───────────────►│ inspect ZIP, hash  │                  │                 │                    │
    │                │                │──── put object ───►│                  │                 │                    │
    │                │                │ record source snapshot (v1, v2, …)    │                 │                    │
    │  start analysis│                │                    │                  │                 │                    │
@@ -44,6 +45,86 @@ Browser (UI)     Nginx          Laravel API         Object storage      Redis qu
 
 The browser runs the Next.js UI. In the single-origin topology (ADR-006), its
 API calls go through Nginx straight to Laravel, not through the Next.js server.
+
+## Source upload
+
+**Implemented in Phase 07.** `POST /api/v1/projects/{project}/source-snapshots`
+([API reference](../api/README.md#source-snapshots)) runs
+`App\Actions\Snapshots\StoreUploadedSource`:
+
+```text
+auth:sanctum ─► throttle:source-upload ─► owner check (404 for others)
+  ─► project ACTIVE? (409 PROJECT_ARCHIVED)  ─► source_type UPLOAD? (409 INVALID_SOURCE_TYPE)
+  ─► inspect the ZIP (ZipArchiveInspector; nothing extracted, nothing executed)
+  ─► SHA-256 + size of the archive bytes (server-computed)
+  ─► Idempotency-Key seen before? ─► return that snapshot (200, Idempotent-Replayed: true)
+  ─► new snapshot ULID ─► PUT projects/{project}/snapshots/{snapshot}/source.zip (private)
+  ─► RecordSourceSnapshot: lock project row, version = max + 1, insert ─► 201
+         └─ insert failed ─► DELETE that object (best effort; on failure log its key) ─► error
+```
+
+### Archive inspection
+
+The uploaded file is never extracted, executed or interpreted. The
+inspector reads the ZIP structures and streams each entry's compressed bytes
+through zlib only to measure them. It accepts a single-disk ZIP (ZIP64
+included) with stored or deflated, unencrypted entries, and rejects:
+
+| Problem | Code |
+|---|---|
+| Not a ZIP by content (the name and MIME type are ignored), truncated, corrupt, encrypted, unsupported compression, no files, duplicate entries, a path that is both a file and a directory, data before the first entry, CRC or size mismatches | `SOURCE_ARCHIVE_INVALID` |
+| Paths with `..`, absolute paths, drive letters (`C:`), backslashes, `.` or empty segments, control characters, over `SOURCE_MAX_PATH_LENGTH`; symbolic links, devices, FIFOs; overlapping entries; a local header naming a different file than the central directory; an entry that decompresses to more than it declares (zip bomb) | `SOURCE_ARCHIVE_UNSAFE` |
+| Archive over `SOURCE_MAX_ARCHIVE_BYTES` | `SOURCE_ARCHIVE_TOO_LARGE` (413) |
+| Declared or real total over `SOURCE_MAX_UNCOMPRESSED_BYTES` | `SOURCE_UNCOMPRESSED_SIZE_EXCEEDED` |
+| More than `SOURCE_MAX_FILES` files (or twice that many entries of any kind) | `SOURCE_FILE_COUNT_EXCEEDED` |
+| One file over `SOURCE_MAX_SINGLE_FILE_BYTES` | `SOURCE_FILE_TOO_LARGE` |
+
+Declared sizes are checked first, so a huge declared size is rejected
+without decompressing anything. Real sizes are then verified by streaming
+in 8 KiB chunks, which bounds memory however the archive is crafted. The
+strict layout rules (no prepended data, no overlaps, matching local
+headers) mean every ZIP reader, including the future analyzer's, sees the
+same entries. Rejection messages and logs never contain entry names or
+contents; the log records a fixed reason identifier (e.g. `path_traversal`).
+
+The inspector's accepted format is tested against archives produced by
+Python's `zipfile` (seekable and streaming), Info-ZIP `zip -r` and
+`git archive` (`backend/tests/Support/RealWorldZips.php`).
+
+### Storage and cleanup
+
+- The object is written through Laravel's filesystem abstraction (the
+  `sources` disk, S3 API), never with MinIO-specific APIs. The bucket is
+  private; no URL to an object is ever returned to a client.
+- The database transaction cannot roll back an object. Therefore the object
+  key is derived from a snapshot ID generated for this attempt: if recording
+  the snapshot fails, exactly that object is deleted. If the delete fails
+  too, `Orphaned source object could not be deleted.` is logged with the
+  disk, key, project and snapshot IDs (no exception message, no
+  credentials). A reconciliation job for such orphans is future work.
+- A storage outage returns `503 SERVICE_UNAVAILABLE` and creates nothing.
+- If the project is archived while an upload is in flight, the insert is
+  refused under the project lock, the object is deleted and the client gets
+  `409 PROJECT_ARCHIVED`.
+
+### Idempotency
+
+Clients may send `Idempotency-Key` (8–128 of `A–Z a–z 0–9 . _ : -`). Its
+SHA-256 is stored on the snapshot, unique per project. A retry with the same
+key and the same bytes returns the original snapshot; the same key with
+different bytes is `422 IDEMPOTENCY_KEY_REUSED`. Concurrent duplicates are
+resolved by the unique index: the loser deletes its object and returns the
+winner's snapshot. Without a key, every upload creates a new snapshot, even
+for identical bytes (re-uploading is legitimate). The web UI sends one key
+per chosen file.
+
+### Handoff to the analyzer (future, Phase 10)
+
+Nothing is analyzed yet. In Phase 10, an analysis run will reference a
+snapshot, and the worker will hand the analyzer a short-lived pre-signed
+GET URL for its object together with `source_hash` and `size_bytes`
+(ADR-003, ADR-005). The analyzer must re-check size and hash and apply its
+own extraction limits; the upload inspection does not replace them.
 
 ## Run state machine
 
@@ -107,8 +188,13 @@ errors only.
   `attempt`, `status` and `failure_code`.
 - Run timestamps (`queued_at`, `started_at`, `finished_at`) support duration
   and queue-latency metrics.
-- **Never logged:** source code, file contents, secret values, pre-signed
-  URLs, HMAC secrets or signatures, session cookies, or tokens.
+- **Never logged:** source code, file contents, archive entry names, secret
+  values, pre-signed URLs, HMAC secrets or signatures, session cookies, or
+  tokens.
+- Uploads log (Phase 07) `Source snapshot created.` with project, snapshot
+  and user IDs, version, size and file count; `Source upload rejected.` with
+  the error code and a fixed reason identifier; and storage failures with
+  IDs and the exception class only.
 
 ## Data classification
 

@@ -12,7 +12,8 @@ use Illuminate\Database\ConnectionInterface;
 
 /**
  * Records a new immutable source snapshot for a project and assigns its
- * version (1, 2, 3, …). Only references are stored: the archive itself must
+ * version (1, 2, 3, …). Uploads go through StoreUploadedSource, which stores
+ * the archive first and then calls this. Only references are stored: the archive itself must
  * already be in object storage (ADR-003).
  *
  * Runs in a transaction that locks the project row, so concurrent uploads
@@ -36,9 +37,12 @@ final readonly class RecordSourceSnapshot
         int $fileCount,
         ?string $primaryLanguage = null,
         array $metadata = [],
+        ?string $id = null,
+        ?string $idempotencyKeyHash = null,
     ): SourceSnapshot {
         return $this->db->transaction(function () use (
             $project, $sourceType, $storageDisk, $storageKey, $sourceHash, $sizeBytes, $fileCount, $primaryLanguage, $metadata,
+            $id, $idempotencyKeyHash,
         ): SourceSnapshot {
             $locked = Project::query()->whereKey($project->getKey())->lockForUpdate()->firstOrFail();
 
@@ -49,6 +53,11 @@ final readonly class RecordSourceSnapshot
             $nextVersion = (int) SourceSnapshot::query()->where('project_id', $locked->id)->max('version') + 1;
 
             $snapshot = new SourceSnapshot;
+            // A pre-generated ID lets the caller store the object under a key
+            // derived from the snapshot's own identity before recording it.
+            if ($id !== null) {
+                $snapshot->setAttribute('id', $id);
+            }
             $snapshot->forceFill([
                 'project_id' => $locked->id,
                 'version' => $nextVersion,
@@ -60,6 +69,7 @@ final readonly class RecordSourceSnapshot
                 'file_count' => $fileCount,
                 'primary_language' => $primaryLanguage,
                 'metadata' => $metadata === [] ? null : $metadata,
+                'idempotency_key_hash' => $idempotencyKeyHash,
             ]);
             $snapshot->save();
 

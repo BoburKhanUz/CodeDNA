@@ -66,6 +66,24 @@ export function describeApiError(error: unknown): string {
         : "Too many attempts. Please wait a moment and try again.";
     case "PAYLOAD_TOO_LARGE":
       return "The request is too large.";
+    case "PROJECT_ARCHIVED":
+      return "This project is archived. It keeps its history but cannot be changed or receive new source.";
+    case "INVALID_SOURCE_TYPE":
+      return "This project does not accept uploaded source.";
+    case "IDEMPOTENCY_KEY_REUSED":
+      return "This upload conflicts with an earlier one. Choose the file again and retry.";
+    case "SOURCE_ARCHIVE_INVALID":
+      return "The file is not a valid ZIP archive.";
+    case "SOURCE_ARCHIVE_UNSAFE":
+      return "The archive contains an unsafe entry (for example a symbolic link or a path outside the archive) and was rejected.";
+    case "SOURCE_ARCHIVE_TOO_LARGE":
+      return "The archive is larger than the upload limit.";
+    case "SOURCE_UNCOMPRESSED_SIZE_EXCEEDED":
+      return "The archive expands beyond the allowed total size.";
+    case "SOURCE_FILE_COUNT_EXCEEDED":
+      return "The archive contains more files than allowed.";
+    case "SOURCE_FILE_TOO_LARGE":
+      return "The archive contains a file larger than allowed.";
   }
 
   if (error.status !== null && error.status >= 500) {

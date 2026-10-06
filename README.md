@@ -22,18 +22,20 @@ ASSESS ─► ANALYZE ─► IDENTIFY GAPS ─► LEARN ─► PRACTICE ─► R
 | 04 | Next.js frontend foundation | ✅ Done |
 | 05 | Database and domain model | ✅ Done |
 | 06 | Authentication and developer profile | ✅ Done |
-| 07 | Projects and repository management | ⏭ Next |
+| 07 | Projects and source management | ✅ Done |
+| 08 | Python analyzer foundation | ⏭ Next |
 
 **No analysis features exist yet.** The Docker environment runs every
 component: Nginx, Laravel 13, Next.js 16, the FastAPI analyzer, PostgreSQL
 16, Redis 7 and MinIO. You can register, sign in and sign out, edit your
-developer profile and change your password at
+developer profile, change your password, create projects and upload ZIP
+archives of their source (stored as immutable, versioned snapshots in
+MinIO; nothing is executed or analyzed) at
 <http://localhost> (Next.js UI, Laravel Sanctum session cookies; see
 [frontend](docs/architecture/frontend.md) and the [API reference](docs/api/README.md)).
-The PostgreSQL domain model exists (projects, source snapshots, analysis
-runs, immutable DNA snapshots; see [data model](docs/architecture/data-model.md)),
-but no feature uses it yet. The authenticated area is a minimal shell, and the
-analyzer is still a bootstrap. The full plan is in
+Analysis runs and DNA snapshots exist in the
+[data model](docs/architecture/data-model.md), but nothing creates them yet,
+and the analyzer is still a bootstrap. The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance

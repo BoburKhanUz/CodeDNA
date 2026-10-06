@@ -1,9 +1,9 @@
 # Data Model
 
-The CodeDNA domain model in PostgreSQL. **Status: Phase 06.** The tables,
-models, relationships, constraints and factories exist. Only the developer
-profile has an API (Phase 06). Project and snapshot endpoints come in Phase
-07, the analysis pipeline in Phase 10, and scoring in Phase 11.
+The CodeDNA domain model in PostgreSQL. **Status: Phase 07.** The tables,
+models, relationships, constraints and factories exist. Developer profiles
+(Phase 06), projects and source snapshots (Phase 07) have APIs. The analysis
+pipeline comes in Phase 10 and scoring in Phase 11.
 
 Related: [ADR-003](../decisions/ADR-003-storage.md) (storage),
 [ADR-004](../decisions/ADR-004-dna-scoring.md) (versioning, immutability),
@@ -116,9 +116,15 @@ table.
 | `metadata` | jsonb null | object, ≤ 16 KiB |
 | `created_at`, `updated_at` | timestamp | |
 
-No soft deletes. Archiving (`status`) covers "hide but keep". Deletion that
-also removes stored source objects is a deliberate purge workflow (Phase 07
-and account deletion), not an incidental `delete()`.
+No soft deletes. Archiving (`status`) covers "hide but keep". There is no
+delete endpoint: deletion that also removes stored source objects is a
+deliberate purge workflow (a later phase, together with account deletion),
+never an incidental `delete()`.
+
+Through the API (Phase 07), a project's owner is always the authenticated
+user, the status changes only through `POST /projects/{project}/archive`,
+`source_type` is fixed at creation, and an archived project is read-only.
+`metadata` is internal and never returned.
 
 ### source_snapshots
 
@@ -134,13 +140,32 @@ and account deletion), not an incidental `delete()`.
 | `size_bytes` | bigint | ≥ 0 |
 | `file_count` | integer | ≥ 0 |
 | `primary_language` | varchar(64) null | |
-| `metadata` | jsonb null | object, ≤ 16 KiB (e.g. archive format, commit SHA for repository sources) |
+| `metadata` | jsonb null | object, ≤ 16 KiB. Uploads record `{"archive": {"format": "zip", "entries", "directories", "uncompressed_bytes"}}`; repository sources will add the commit SHA |
+| `idempotency_key_hash` | char(64) null | SHA-256 of the upload's `Idempotency-Key` header (never the raw key); unique per project when set (Phase 07) |
 | `created_at` | timestamp | **no `updated_at`** |
 
 `source_hash` is *not* unique: the same content may be uploaded again,
 within one project or by different users. `(project_id, source_hash)` is
 indexed for "already uploaded?" checks within a project. Hashes are never
 looked up across tenants.
+
+For uploads (Phase 07, [data-flow.md](data-flow.md#source-upload)):
+
+- `storage_key` is always `projects/{project_id}/snapshots/{snapshot_id}/source.zip`
+  (optionally under `SOURCE_STORAGE_PREFIX`). It is built from server-generated
+  ULIDs only; no client input or file name is ever part of a key. The
+  snapshot ID is generated before the object is stored, so the key is unique
+  to one upload attempt and cleanup after a failed insert can never touch
+  another snapshot's object.
+- `source_hash` and `size_bytes` are computed by the server over the stored
+  bytes. `file_count` counts regular files (directories and macOS
+  `__MACOSX/` metadata excluded).
+- `primary_language` is a file-extension heuristic (the most common
+  recognized source extension, ignoring `node_modules`, `vendor`, `.git`,
+  `dist` and `build`), not analysis. It is `NULL` when nothing is
+  recognized or two languages tie.
+- The API never returns `storage_disk`, `storage_key`, `metadata` or
+  `idempotency_key_hash`.
 
 ### analysis_runs
 
@@ -210,9 +235,9 @@ the constraints agree.
 ## Lifecycle
 
 ```text
-Project:          ACTIVE ──archive()──► ARCHIVED   (archived projects accept no new snapshots)
+Project:          ACTIVE ──archive()──► ARCHIVED   (irreversible; read-only, no new snapshots)
 
-Source snapshot:  created by RecordSourceSnapshot ──► immutable
+Source snapshot:  StoreUploadedSource: inspect → hash → store object → RecordSourceSnapshot ──► immutable
 
 Analysis run:     QUEUED ──markRunning()──► RUNNING ──┬─ markSucceeded() ──► SUCCEEDED
                      │                                ├─ markFailed()    ──► FAILED
@@ -235,7 +260,9 @@ DNA snapshot:     created (READY or INSUFFICIENT_DATA) from a SUCCEEDED run ─�
   `RUNNING`. A user-initiated re-analysis creates a new run.
 - `RecordSourceSnapshot` (`app/Actions/Snapshots`) assigns the next version
   inside a transaction that locks the project row, so concurrent uploads
-  get distinct, gap-free versions.
+  get distinct, gap-free versions. `ConcurrentUploadTest` proves this with
+  six forked processes uploading to one project at the same moment.
+- `ARCHIVED → ACTIVE` is not offered: archiving is irreversible for now.
 
 ## Immutability
 
@@ -260,7 +287,8 @@ review.
 
 PostgreSQL stores **references, never source code** (ADR-003):
 `storage_disk`, `storage_key`, `source_hash`, `size_bytes`, `file_count` and
-descriptive metadata. Archives live in S3-compatible storage (MinIO locally,
+descriptive metadata. Archive entry names are not stored either (they may
+be sensitive); only counts and sizes are. Archives live in S3-compatible storage (MinIO locally,
 Cloudflare R2 in production).
 
 Guardrails against source code leaking into the database:
@@ -300,6 +328,7 @@ Every index serves a known or planned query:
 | `source_snapshots (project_id, source_hash)` | "has this project already uploaded this content?" |
 | `source_snapshots (storage_disk, storage_key)` unique | one stored object belongs to one snapshot |
 | `source_snapshots (id, project_id)` unique | target of `analysis_runs`' composite FK |
+| `source_snapshots (project_id, idempotency_key_hash)` unique partial, non-null only | idempotent upload retries (Phase 07) |
 | `analysis_runs (project_id, created_at)` | run history of a project |
 | `analysis_runs (source_snapshot_id)` | runs of a snapshot |
 | `analysis_runs (status, updated_at)` partial, `QUEUED`/`RUNNING` only | stale-run sweeper and in-progress lookups (stays small) |

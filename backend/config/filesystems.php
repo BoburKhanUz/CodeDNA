@@ -47,6 +47,23 @@ return [
             'report' => false,
         ],
 
+        // Uploaded source archives (ADR-003): MinIO locally, Cloudflare R2 in
+        // production. Private: objects are never public and no URL is ever
+        // returned to API clients. `throw` makes storage failures exceptions,
+        // so an upload is never reported as stored when it was not.
+        'sources' => [
+            'driver' => 's3',
+            'key' => env('SOURCE_STORAGE_ACCESS_KEY_ID'),
+            'secret' => env('SOURCE_STORAGE_SECRET_ACCESS_KEY'),
+            'region' => env('SOURCE_STORAGE_REGION', 'us-east-1'),
+            'bucket' => env('SOURCE_STORAGE_BUCKET'),
+            'endpoint' => env('SOURCE_STORAGE_ENDPOINT'),
+            'use_path_style_endpoint' => (bool) env('SOURCE_STORAGE_USE_PATH_STYLE', false),
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

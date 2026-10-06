@@ -1,8 +1,9 @@
 # Frontend Architecture (Next.js)
 
-**Status: Phase 06.** It provides sign-in, registration, sign-out, a
-protected application shell, the profile and password settings page, the
-API client and the UI foundation. No project or analysis features exist
+**Status: Phase 07.** It provides sign-in, registration, sign-out, a
+protected application shell, the profile and password settings page,
+projects (list, create, detail, archive), ZIP source upload with snapshot
+history, the API client and the UI foundation. No analysis features exist
 yet.
 
 Related: [ADR-006](../decisions/ADR-006-authentication.md) (authentication),
@@ -35,22 +36,28 @@ frontend/src/
 │   ├── app/layout.tsx                /app: server-side session gate + AppShell
 │   ├── app/page.tsx, app/loading.tsx
 │   ├── app/profile/page.tsx          /app/profile: account, developer profile, password
+│   ├── app/projects/page.tsx         /app/projects: project list
+│   ├── app/projects/new/page.tsx     /app/projects/new: create a project
+│   ├── app/projects/[project]/page.tsx  /app/projects/{id}: details, upload, snapshots, archive
 │   ├── error.tsx, not-found.tsx
 ├── components/
 │   ├── ui/                           shadcn/ui: button, input, label, card, alert, textarea, native-select
 │   ├── auth/                         login/register forms, logout button, AuthProvider, error alert
 │   ├── profile/                      ProfileSettings (loader), ProfileForm, PasswordForm, field + validation
-│   ├── app/app-shell.tsx             sidebar navigation (Home, Profile) + header with the signed-in user
+│   ├── projects/                     ProjectList, ProjectForm, ProjectDetail, UploadSource, StatusBadge
+│   ├── app/app-shell.tsx             sidebar navigation (Home, Projects, Profile) + header with the signed-in user
 │   └── brand/logo.tsx
 ├── lib/
 │   ├── api/types.ts                  TypeScript mirror of the Laravel API contract
 │   ├── api/errors.ts                 ApiError + user-facing messages
 │   ├── api/http.ts                   response/envelope parsing (browser and server)
-│   ├── api/client.ts                 browser client (same-origin, cookies, CSRF)
+│   ├── api/client.ts                 browser client (same-origin, cookies, CSRF); upload() for multipart with progress
 │   ├── auth/client.ts                login(), register(), logout()
 │   ├── auth/session.ts               getSession(): server-side GET /api/v1/me
 │   ├── profile/client.ts             getProfile(), updateProfile(), changePassword()
 │   ├── profile/options.ts            labels for locales and languages; time zone suggestions
+│   ├── projects/client.ts            list/get/create/archive projects, list snapshots, uploadSource()
+│   ├── projects/format.ts            sizes, UTC dates, labels, slugify (plain text only)
 │   ├── config.server.ts              server-only env (BACKEND_INTERNAL_URL, FRONTEND_URL)
 │   └── utils.ts                      shadcn `cn` helper
 └── test/                             test helpers (API response builders, router mock)
@@ -69,6 +76,9 @@ description is introduced, they move to `packages/types` and are generated.
 | `/register` | dynamic | Signed in → `307` to `/app`. Otherwise the registration form. |
 | `/app` | dynamic | Signed out → `307` to `/login`. Otherwise the app shell with the current user. |
 | `/app/profile` | dynamic | Signed out → `307` to `/login` (same layout gate). Account identity, developer profile form, password change. |
+| `/app/projects` | dynamic | Same gate. The developer's projects (paginated), or an empty state. |
+| `/app/projects/new` | dynamic | Same gate. Create-project form; opens the new project. |
+| `/app/projects/[project]` | dynamic | Same gate. Project details, ZIP upload (active upload projects only), snapshot history, archive. Unknown, foreign or malformed IDs show "Project not found". |
 | anything else | — | Not-found page. |
 
 There is no `?next=` return-URL parameter, so there is no open-redirect
@@ -157,6 +167,39 @@ LoginForm ──► lib/auth/client.login() ──► api.post("/api/v1/auth/log
   inputs are cleared.
 - A `401` from any of these calls (session ended) navigates to `/login`.
 
+## Projects and source upload (`/app/projects`)
+
+- **List:** name (link), slug, language, status badge, source type, created
+  date (UTC), with Previous/Next paging from the API's `meta`. Loading,
+  error-with-retry and empty states.
+- **Create:** name, slug (derived from the name until edited), description,
+  source type (Upload, or Repository with an `https://` URL; repositories
+  are recorded only), language, default branch. Client checks mirror the
+  backend rules; server field errors appear under each input. Success opens
+  the project.
+- **Detail:** project facts, then the source card and the snapshot table
+  (version, created, files, size, language, first 12 hex digits of the
+  SHA-256 with the full hash as a tooltip). Archive is a two-step,
+  irreversible action; afterwards the upload form disappears and history
+  stays.
+- **Upload (`UploadSource`):** a `.zip` file input with early checks
+  (extension, non-empty, at most 50 MiB; the server is authoritative). It
+  uses `upload()` from the shared API client, which posts multipart form data
+  with `XMLHttpRequest`, the only browser API that reports upload progress,
+  with the same CSRF handling (cookie bootstrap, one retry on `419`) and
+  error parsing as every other call. A progress bar shows the percentage,
+  then "Checking and storing the archive…". Success says
+  **"Source snapshot vN created."** and nothing about analysis. Each chosen
+  file gets one `Idempotency-Key` (`crypto.randomUUID()`), reused when
+  retrying after a failure, so a retry can never create a second snapshot.
+- **Security:** everything is rendered as text: names, descriptions and
+  URLs from the API are never interpreted as HTML, and archive contents or
+  entry names are never shown (the API does not return them). No storage
+  keys or URLs exist in the UI, and nothing is stored in browser storage.
+  Project IDs are checked to be ULIDs before any URL is built.
+- Dates are shown in UTC. Using the profile's time zone preference is
+  future work.
+
 ## API client (`lib/api`)
 
 - **Same-origin only.** Paths must be absolute paths like `/api/v1/...`.
@@ -243,9 +286,17 @@ The tests cover:
   errors, 401) and the password form (validation, success redirect, wrong
   current password, rate limit)
 - the Profile navigation item and the login page's password-changed notice
+- the upload transport (progress, CSRF header and retry, idempotency
+  header, network errors, same-origin enforcement), the projects client
+  (paths, ULID-only URLs), formatting and slugs
+- the project list (loading, empty, paging, retry, 401), the create form
+  (slug derivation, validation, repository URL, server errors), the project
+  detail (plain-text rendering, archive confirmation, repository and
+  not-found states) and the upload panel (client checks, progress, success
+  text, rejected archives, idempotent retry, new key per file, 401)
 
-Browser end-to-end checks are not yet part of the repository. Phases 04
-and 06 verified the full browser flows with Playwright and Chromium against
+Browser end-to-end checks are not yet part of the repository. Phases 04, 06
+and 07 verified the full browser flows with Playwright and Chromium against
 the Docker stack (see the phase reports). Adding a committed Playwright suite
 is planned for the QA phase. `make verify` covers the HTTP-level flow
 through Nginx.

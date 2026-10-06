@@ -72,7 +72,9 @@ Configuration: `docker/nginx/conf.d/default.conf` and
 | everything else | Next.js (`frontend:3000`) | Includes the hot-reload WebSocket (`/_next/hmr`) |
 
 Other settings: `client_max_body_size 55m` (50 MiB archive limit plus
-multipart overhead; matches PHP's `post_max_size`), `server_tokens off`,
+multipart overhead; matches PHP's `post_max_size`; a larger `/api/` body is
+answered by Nginx with a JSON `413 PAYLOAD_TOO_LARGE` in the API's error
+envelope), `server_tokens off`,
 forwarded headers (`X-Forwarded-For`, `-Proto`, `-Host`), and upstream names
 resolved per request through Docker DNS, so recreating a container never needs
 an Nginx restart.
@@ -136,6 +138,8 @@ credentials reach only `minio` and `minio-init`.
 | `MINIO_ROOT_PASSWORD` | **yes**, generated | minio, minio-init | |
 | `SOURCE_STORAGE_REGION`, `SOURCE_STORAGE_BUCKET` | defaults | backend, minio, minio-init | `us-east-1`, `codedna` locally |
 | `SOURCE_STORAGE_ACCESS_KEY_ID`, `SOURCE_STORAGE_SECRET_ACCESS_KEY` | **yes**, generated | backend, minio-init | Bucket-scoped application user |
+| `SOURCE_STORAGE_PREFIX` | default empty | backend | Optional key prefix inside the bucket (tests use `phpunit/`) |
+| `SOURCE_MAX_ARCHIVE_BYTES`, `SOURCE_MAX_UNCOMPRESSED_BYTES`, `SOURCE_MAX_FILES`, `SOURCE_MAX_SINGLE_FILE_BYTES`, `SOURCE_MAX_PATH_LENGTH` | defaults (50 MiB, 200 MiB, 20000, 25 MiB, 512) | backend | Upload limits ([API reference](../api/README.md#upload-limits)); validated at boot |
 | `ANALYZER_HMAC_SECRET` | generated | — | Used from Phase 08 |
 | `FRONTEND_WATCH_POLLING` | default `false` | frontend | Polling file watcher fallback |
 | `FRONTEND_URL` | default `http://localhost` | frontend (server only) | Origin presented to Sanctum for server-side session checks |
@@ -227,6 +231,12 @@ into the image and the analyzer has no internet access at runtime.
   source archives.
 - **From the host:** the API is at `http://127.0.0.1:9000`, for example with
   the `mc` or `aws` CLI using the application credentials.
+- **Objects (Phase 07):** uploaded archives live at
+  `projects/{project_id}/snapshots/{snapshot_id}/source.zip`. Tests write
+  under `phpunit/<ulid>/…` and delete it again. To inspect locally:
+  `mc ls --recursive app/codedna/projects/`.
+- **Laravel's S3 client** is `league/flysystem-aws-s3-v3` (AWS SDK for PHP),
+  configured as the `sources` disk; only the standard S3 API is used.
 
 ### MinIO image
 
@@ -271,6 +281,15 @@ and prints no secrets:
 6. Storage, using the application credentials: upload; bucket creation is
    denied; a pre-signed GET URL is generated and **downloaded by the
    analyzer**; the unsigned URL is rejected; the object is deleted.
+7. Profile (Phase 06): `GET`/`PATCH /api/v1/profile`, and `419` for
+   cross-site profile and password mutations without the CSRF token.
+8. Projects and uploads through Nginx (Phase 07), with a separate probe
+   account: create a project; upload a real ZIP (`201`, version 1); the
+   object exists in MinIO under the expected key; a cross-site upload
+   without the CSRF token is `419`; a non-ZIP is `422
+   SOURCE_ARCHIVE_INVALID`; a 56 MiB body is `413 PAYLOAD_TOO_LARGE` as
+   JSON from Nginx; archive, then upload is `409 PROJECT_ARCHIVED`. The
+   probe's objects and rows are deleted.
 
 ## Troubleshooting
 
@@ -291,4 +310,5 @@ and prints no secrets:
 ## Not included yet (later phases)
 
 Queue worker and scheduler containers (Phase 10), TLS and production images
-(Phase 25), and the R2 configuration (Phase 07/25).
+(Phase 25), and the R2 bucket and credentials (Phase 25; the application
+side needs only `SOURCE_STORAGE_*`).

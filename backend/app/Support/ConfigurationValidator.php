@@ -32,6 +32,8 @@ final class ConfigurationValidator
             $problems[] = 'The application timezone must be UTC.';
         }
 
+        $problems = [...$problems, ...$this->sourceStorageProblems($config)];
+
         // The test suite swaps in in-memory drivers; every other environment
         // must use the Redis-backed infrastructure (docs/architecture/backend.md).
         if ($environment !== 'testing') {
@@ -58,6 +60,34 @@ final class ConfigurationValidator
             if (array_filter((array) $config->get('sanctum.stateful')) === []) {
                 $problems[] = 'SANCTUM_STATEFUL_DOMAINS must list the production frontend domain.';
             }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function sourceStorageProblems(Repository $config): array
+    {
+        $problems = [];
+        $limits = (array) $config->get('codedna.sources.limits', []);
+
+        foreach (['archive_bytes', 'uncompressed_bytes', 'files', 'single_file_bytes', 'path_length'] as $limit) {
+            if (! is_int($limits[$limit] ?? null) || $limits[$limit] < 1) {
+                $problems[] = "The source upload limit \"{$limit}\" must be a positive integer.";
+            }
+        }
+
+        if (is_int($limits['single_file_bytes'] ?? null) && is_int($limits['uncompressed_bytes'] ?? null)
+            && $limits['single_file_bytes'] > $limits['uncompressed_bytes']) {
+            $problems[] = 'SOURCE_MAX_SINGLE_FILE_BYTES must not exceed SOURCE_MAX_UNCOMPRESSED_BYTES.';
+        }
+
+        // Keys are server-generated; a prefix must not be able to escape the bucket layout.
+        $prefix = $config->get('codedna.sources.key_prefix');
+        if (! is_string($prefix) || ($prefix !== '' && preg_match('#^[a-z0-9][a-z0-9_-]*(/[a-z0-9][a-z0-9_-]*)*/$#', $prefix) !== 1)) {
+            $problems[] = 'SOURCE_STORAGE_PREFIX must be empty or lowercase path segments ending in "/" (e.g. "staging/").';
         }
 
         return $problems;

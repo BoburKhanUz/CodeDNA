@@ -6,12 +6,14 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 06 (authentication and developer profile)
-complete. The local environment runs every component. Users can register,
-sign in and sign out, edit their developer profile and change their
-password. The PostgreSQL domain model (projects, source snapshots, analysis
-runs, DNA snapshots; see [data-model.md](data-model.md)) exists, but no
-product feature uses it yet. Everything below is the target architecture.
+**Current status:** Phase 07 (project and source management) complete. The
+local environment runs every component. Users can register, sign in and
+sign out, edit their developer profile, change their password, create and
+archive projects, and upload ZIP archives that become immutable, versioned
+source snapshots in S3-compatible storage. Nothing is analyzed yet: analysis
+runs and DNA snapshots exist in the domain model
+([data-model.md](data-model.md)) but nothing creates them. Everything below
+is the target architecture.
 
 ## System context
 
@@ -100,8 +102,8 @@ at a time:
 | 04 | Next.js frontend foundation | Done |
 | 05 | Database and domain model | Done |
 | 06 | Authentication and developer profile | Done |
-| 07 | Projects and repository management (ZIP upload) | Next |
-| 08 | Python analyzer foundation (IR frozen first) | — |
+| 07 | Projects and repository management (ZIP upload) | Done |
+| 08 | Python analyzer foundation (IR frozen first) | Next |
 | 09 | AST and static analysis (PHP → Python → JS → TS) | — |
 | 10 | Analysis queue and pipeline | — |
 | 11 | CodeDNA scoring engine | — |

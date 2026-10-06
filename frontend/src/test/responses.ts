@@ -1,4 +1,4 @@
-import type { ApiErrorCode, DeveloperProfile, User, ValidationErrors } from "@/lib/api/types";
+import type { ApiErrorCode, DeveloperProfile, Project, SourceSnapshot, User, ValidationErrors } from "@/lib/api/types";
 
 /** Builders for responses shaped exactly like the Laravel API's. */
 
@@ -51,3 +51,38 @@ export const profile: DeveloperProfile = {
   preferred_language: null,
   updated_at: "2026-10-06T12:00:00Z",
 };
+
+export const project: Project = {
+  id: "01k6p0a1b2c3d4e5f6g7h8j9km",
+  type: "project",
+  name: "Billing Service",
+  slug: "billing-service",
+  description: null,
+  default_branch: "main",
+  source_type: "UPLOAD",
+  repository_url: null,
+  language: "php",
+  status: "ACTIVE",
+  created_at: "2026-10-07T09:30:00Z",
+  updated_at: "2026-10-07T09:30:00Z",
+};
+
+export function snapshot(version: number, overrides: Partial<SourceSnapshot> = {}): SourceSnapshot {
+  return {
+    id: `01k6p0a1b2c3d4e5f6g7h8j9${String(version).padStart(2, "0")}`,
+    type: "source_snapshot",
+    project_id: project.id,
+    version,
+    source_type: "UPLOAD",
+    source_hash: "a".repeat(64),
+    size_bytes: 2048,
+    file_count: 3,
+    primary_language: "php",
+    created_at: "2026-10-07T10:00:00Z",
+    ...overrides,
+  };
+}
+
+export function page<T>(data: T[], meta: Partial<{ current_page: number; per_page: number; total: number; last_page: number }> = {}) {
+  return { data, meta: { current_page: 1, per_page: 25, total: data.length, last_page: 1, ...meta } };
+}

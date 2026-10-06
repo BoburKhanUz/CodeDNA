@@ -4,7 +4,9 @@
 # Run after `make up` (all services healthy). Verifies, without any product
 # feature: service health, Nginx single-origin routing, internal networking
 # and isolation, Laravel <-> PostgreSQL/Redis, and MinIO S3 access including a
-# pre-signed URL download performed by the analyzer.
+# pre-signed URL download performed by the analyzer. Later phases add their
+# end-to-end checks through Nginx (auth, profile, projects and uploads); every
+# probe account and object is removed again.
 #
 # Never prints secrets. Exit code 0 only if every check passes.
 set -uo pipefail
@@ -138,6 +140,56 @@ else
     fail "generate pre-signed GET URL"
 fi
 check "delete object" mc_app "mc rm \"app/\$SOURCE_STORAGE_BUCKET/$probe_key\""
+
+echo "Projects and source upload through Nginx (Phase 07)"
+# A separate probe account; everything it creates (rows and objects) is removed below.
+jar=$(mktemp)
+upload_dir=$(mktemp -d)
+probe_email="verify-src-$$-$RANDOM@example.invalid"
+probe_password="verify-$RANDOM-$RANDOM-pass"
+db() { "${compose[@]}" exec -T postgres sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=1 -tAc \"$1\""; }
+upload_archive() { # upload_archive FILE [extra curl args...] -> prints "<status> <body>"
+    local file=$1; shift
+    local xsrf
+    xsrf=$(awk '$6 == "XSRF-TOKEN" {print $7}' "$jar" | python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.stdin.read().strip()))')
+    curl -s -w ' %{http_code}' -b "$jar" -c "$jar" -H "$origin" -H 'Accept: application/json' \
+        ${xsrf:+-H "X-XSRF-TOKEN: $xsrf"} "$@" -F "archive=@$file;type=application/zip" \
+        "$base/api/v1/projects/$project_id/source-snapshots" | awk '{status=$NF; $NF=""; print status, $0}'
+}
+export -f upload_archive
+curl -s -o /dev/null -c "$jar" -H "$origin" "$base/sanctum/csrf-cookie"
+check "register a probe user" bash -c \
+    "[[ \$(api POST /api/v1/auth/register '{\"name\":\"Verify\",\"email\":\"$probe_email\",\"password\":\"$probe_password\",\"password_confirmation\":\"$probe_password\"}') == 201 ]]"
+check "POST /api/v1/projects -> 201" bash -c \
+    "[[ \$(api POST /api/v1/projects '{\"name\":\"Verify\",\"slug\":\"verify-probe\",\"source_type\":\"UPLOAD\"}') == 201 ]]"
+project_id=$(db "SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'" 2>/dev/null | tr -d '[:space:]')
+export project_id
+python3 -I -c 'import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED) as z:
+    z.writestr("src/main.php", "<?php echo 1;\n")' "$upload_dir/source.zip"
+printf 'not a zip archive\n' > "$upload_dir/fake.zip"
+truncate -s 56M "$upload_dir/huge.zip"
+check "upload ZIP -> 201 source snapshot v1" bash -c \
+    "upload_archive '$upload_dir/source.zip' | grep -q '^201 .*\"version\":1'"
+storage_key=$(db "SELECT storage_key FROM source_snapshots WHERE project_id = '$project_id'" 2>/dev/null | tr -d '[:space:]')
+check "snapshot object exists in MinIO under projects/{project}/snapshots/{snapshot}/source.zip" bash -c \
+    "[[ '$storage_key' == projects/$project_id/snapshots/*/source.zip ]]"
+check "object is readable with the application credentials" mc_app "mc stat \"app/\$SOURCE_STORAGE_BUCKET/$storage_key\""
+check "cross-site upload without X-XSRF-TOKEN -> 419" bash -c \
+    "[[ \$(curl -s -o /dev/null -w '%{http_code}' -b '$jar' -H '$origin' -H 'Sec-Fetch-Site: cross-site' -H 'Accept: application/json' -F 'archive=@$upload_dir/source.zip' '$base/api/v1/projects/$project_id/source-snapshots') == 419 ]]"
+check "non-ZIP upload -> 422 SOURCE_ARCHIVE_INVALID" bash -c \
+    "upload_archive '$upload_dir/fake.zip' | grep -q '^422 .*SOURCE_ARCHIVE_INVALID'"
+check "body above the Nginx limit -> 413 PAYLOAD_TOO_LARGE (JSON envelope)" bash -c \
+    "upload_archive '$upload_dir/huge.zip' | grep -q '^413 .*\"code\":\"PAYLOAD_TOO_LARGE\"'"
+check "POST /api/v1/projects/{project}/archive -> 200" bash -c "[[ \$(api POST /api/v1/projects/$project_id/archive) == 200 ]]"
+check "archived project rejects uploads -> 409 PROJECT_ARCHIVED" bash -c \
+    "upload_archive '$upload_dir/source.zip' | grep -q '^409 .*PROJECT_ARCHIVED'"
+rm -rf "$jar" "$upload_dir"
+if [[ -n "$project_id" ]]; then
+    check "remove probe objects from MinIO" mc_app "mc rm --recursive --force \"app/\$SOURCE_STORAGE_BUCKET/projects/$project_id/\""
+fi
+check "remove probe rows (snapshots, project, profile, user)" db \
+    "BEGIN; DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
 
 echo
 if [[ $failures -eq 0 ]]; then

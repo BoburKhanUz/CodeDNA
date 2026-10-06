@@ -1,6 +1,7 @@
 # ADR-003: Source Code Storage
 
-- **Status:** Accepted (amended 2026-10-05, Phase 02: local storage = MinIO)
+- **Status:** Accepted (amended 2026-10-05, Phase 02: local storage = MinIO;
+  amended 2026-10-07, Phase 07: key layout, tests, deletion and retention)
 - **Date:** 2026-10-05
 - **Related:** [ADR-005](ADR-005-service-communication.md), [Data flow](../architecture/data-flow.md)
 
@@ -22,7 +23,7 @@ local filesystem doesn't work with more than one container.
    |---|---|---|
    | Local development | **MinIO** (Docker service `minio`) | `http://minio:9000`, region `us-east-1` |
    | Production | **Cloudflare R2** | `https://<account-id>.r2.cloudflarestorage.com`, region `auto` |
-   | Automated tests | Laravel's fake storage disk and analyzer-side fixtures | — |
+   | Automated tests | The local MinIO bucket under a per-test prefix (Phase 07), analyzer-side fixtures | — |
 
    Only configuration differs between environments (`SOURCE_STORAGE_*`).
    Application code must not use MinIO-specific APIs such as the admin API
@@ -50,13 +51,32 @@ local filesystem doesn't work with more than one container.
 7. Encryption at rest is provided by the storage provider (R2 encrypts at
    rest by default). Transport uses TLS outside the private network.
 
+## Phase 07 amendments
+
+- **Key layout:** `projects/{project_id}/snapshots/{snapshot_id}/source.zip`
+  instead of `snapshots/{snapshot_ulid}.zip`. Still no user-supplied names;
+  the project prefix makes a project's objects easy to find for a purge.
+- **Original file names are not stored**, not even sanitized: they can be
+  sensitive and nothing needs them.
+- **Tests use the real MinIO bucket** (under a per-test `phpunit/` prefix
+  that is deleted afterwards) instead of a fake disk, so storage integration
+  is actually exercised. Failure paths use a mocked disk.
+- **No project deletion yet.** Projects are archived (`POST
+  /api/v1/projects/{project}/archive`). Deleting a project, and its objects,
+  becomes part of the explicit purge workflow, together with account
+  deletion. The consequence below is therefore deferred.
+- **Retention (open question below):** until that workflow exists,
+  snapshots and their objects are kept indefinitely, archived projects
+  included.
+
 ## Consequences
 
 - Re-analysis is possible as long as a snapshot is retained.
 - Pre-signed URLs keep the analyzer credential-free (least privilege). The
   allow-list stops the analyzer from becoming an SSRF primitive.
-- Deleting a project must delete its snapshots' objects. This is implemented
-  with project deletion (Phase 07).
+- Deleting a project must delete its snapshots' objects. This is
+  implemented with the purge workflow (not in Phase 07; see the amendments
+  above).
 
 ## Alternatives considered
 
@@ -75,7 +95,8 @@ local filesystem doesn't work with more than one container.
   deleted, or delete automatically after N days and keep only derived
   metrics. This affects re-analysis (ADR-004). Proposed default: keep until
   the user deletes the project, with a later per-user option for
-  "analyze and discard". Needs a product decision before Phase 07.
+  "analyze and discard". Still open after Phase 07: objects are currently
+  kept indefinitely (see the amendments above).
 - ~~Local S3 emulator choice~~ **Resolved in Phase 02: MinIO.** Upstream MinIO
   no longer publishes freely pullable container images. The project uses
   Chainguard's maintained build of upstream MinIO, pinned by digest (see

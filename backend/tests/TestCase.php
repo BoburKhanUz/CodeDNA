@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use App\Models\User;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use RuntimeException;
@@ -63,5 +64,22 @@ abstract class TestCase extends BaseTestCase
             'Origin' => 'http://localhost',
             'Accept' => 'application/json',
         ]);
+    }
+
+    /**
+     * A first-party browser request authenticated as $user. Guards are reset
+     * first: the Sanctum request guard caches the user of the previous
+     * request in a test, which would make switching users silently keep the
+     * first one (each real request gets a fresh application). Headers set
+     * for an earlier request (e.g. Idempotency-Key) are dropped too.
+     *
+     * @return $this
+     */
+    protected function asUser(User $user): static
+    {
+        $this->app['auth']->forgetGuards();
+        $this->flushHeaders();
+
+        return $this->actingAs($user, 'web')->fromBrowser();
     }
 }

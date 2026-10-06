@@ -52,5 +52,7 @@
         <server name="SANCTUM_STATEFUL_DOMAINS" value="localhost" force="true"/>
         <server name="CORS_ALLOWED_ORIGINS" value="" force="true"/>
         <server name="SESSION_SECURE_COOKIE" value="false" force="true"/>
+        <!-- Storage tests use the real MinIO bucket under this prefix; each test adds its own unique sub-prefix and deletes it. -->
+        <server name="SOURCE_STORAGE_PREFIX" value="phpunit/" force="true"/>
     </php>
 </phpunit>

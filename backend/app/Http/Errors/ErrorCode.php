@@ -22,6 +22,16 @@ enum ErrorCode: string
     case CsrfTokenMismatch = 'CSRF_TOKEN_MISMATCH';
     case ValidationFailed = 'VALIDATION_FAILED';
     case RateLimited = 'RATE_LIMITED';
+    // Projects and source snapshots (Phase 07).
+    case ProjectArchived = 'PROJECT_ARCHIVED';
+    case InvalidSourceType = 'INVALID_SOURCE_TYPE';
+    case IdempotencyKeyReused = 'IDEMPOTENCY_KEY_REUSED';
+    case SourceArchiveInvalid = 'SOURCE_ARCHIVE_INVALID';
+    case SourceArchiveUnsafe = 'SOURCE_ARCHIVE_UNSAFE';
+    case SourceArchiveTooLarge = 'SOURCE_ARCHIVE_TOO_LARGE';
+    case SourceUncompressedSizeExceeded = 'SOURCE_UNCOMPRESSED_SIZE_EXCEEDED';
+    case SourceFileCountExceeded = 'SOURCE_FILE_COUNT_EXCEEDED';
+    case SourceFileTooLarge = 'SOURCE_FILE_TOO_LARGE';
     case InternalError = 'INTERNAL_ERROR';
     case ServiceUnavailable = 'SERVICE_UNAVAILABLE';
 
@@ -33,9 +43,12 @@ enum ErrorCode: string
             self::Forbidden => 403,
             self::ResourceNotFound => 404,
             self::MethodNotAllowed => 405,
-            self::PayloadTooLarge => 413,
+            self::PayloadTooLarge, self::SourceArchiveTooLarge => 413,
             self::CsrfTokenMismatch => 419,
-            self::ValidationFailed, self::InvalidCredentials => 422,
+            self::ProjectArchived, self::InvalidSourceType => 409,
+            self::ValidationFailed, self::InvalidCredentials, self::IdempotencyKeyReused,
+            self::SourceArchiveInvalid, self::SourceArchiveUnsafe, self::SourceUncompressedSizeExceeded,
+            self::SourceFileCountExceeded, self::SourceFileTooLarge => 422,
             self::RateLimited => 429,
             self::InternalError => 500,
             self::ServiceUnavailable => 503,
@@ -55,6 +68,15 @@ enum ErrorCode: string
             self::CsrfTokenMismatch => 'CSRF token mismatch. Request a new token and retry.',
             self::ValidationFailed => 'The given data was invalid.',
             self::RateLimited => 'Too many requests. Retry later.',
+            self::ProjectArchived => 'This project is archived and cannot be changed.',
+            self::InvalidSourceType => 'This project does not accept uploaded source.',
+            self::IdempotencyKeyReused => 'This Idempotency-Key was already used for a different upload.',
+            self::SourceArchiveInvalid => 'The file is not a valid ZIP archive.',
+            self::SourceArchiveUnsafe => 'The archive contains an unsafe entry.',
+            self::SourceArchiveTooLarge => 'The archive is larger than the upload limit.',
+            self::SourceUncompressedSizeExceeded => 'The archive expands beyond the allowed total size.',
+            self::SourceFileCountExceeded => 'The archive contains more files than allowed.',
+            self::SourceFileTooLarge => 'The archive contains a file larger than allowed.',
             self::InternalError => 'An unexpected error occurred.',
             self::ServiceUnavailable => 'The service is temporarily unavailable.',
         };

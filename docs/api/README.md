@@ -4,7 +4,7 @@ The public product API is served by Laravel under `/api/v1`. The **internal**
 analyzer API is separate and never public; see
 [internal-analyzer-contract.md](internal-analyzer-contract.md).
 
-**Status:** Phase 06. The endpoints below are implemented and tested, and
+**Status:** Phase 07. The endpoints below are implemented and tested, and
 the Next.js frontend consumes them. Planned endpoints are listed at the end
 and **do not exist yet**. The frontend's TypeScript mirror of this contract
 is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
@@ -34,6 +34,18 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `GET` | `/api/v1/me` | authenticated | 200 | Current user |
 | `GET` | `/api/v1/profile` | authenticated | 200 | The caller's developer profile |
 | `PATCH` | `/api/v1/profile` | authenticated | 200 | Update the caller's developer profile |
+| `GET` | `/api/v1/projects` | authenticated | 200 | The caller's projects (paginated) |
+| `POST` | `/api/v1/projects` | authenticated | 201 | Create a project |
+| `GET` | `/api/v1/projects/{project}` | owner | 200 | One project |
+| `PATCH` | `/api/v1/projects/{project}` | owner | 200 | Update descriptive fields |
+| `POST` | `/api/v1/projects/{project}/archive` | owner | 200 | Archive (irreversible, idempotent) |
+| `GET` | `/api/v1/projects/{project}/source-snapshots` | owner | 200 | Snapshot history (paginated, newest first) |
+| `POST` | `/api/v1/projects/{project}/source-snapshots` | owner | 201 / 200 | Upload a ZIP archive as a new snapshot (200 = idempotent replay) |
+| `GET` | `/api/v1/projects/{project}/source-snapshots/{snapshot}` | owner | 200 | One snapshot |
+
+There is no `DELETE` for projects (`405`) and no update, delete or download
+for snapshots. See [Projects](#projects) and
+[Source snapshots](#source-snapshots).
 
 ### `GET /api/v1/health`
 
@@ -195,6 +207,172 @@ workflow, planned for a later phase. Email verification is not enforced yet
 (`email_verified_at` is returned but nothing requires it); see
 [backend.md](../architecture/backend.md#authentication-and-authorization).
 
+## Projects
+
+A project belongs to exactly one user. **Every project route is
+owner-only:** another user's project answers `404 RESOURCE_NOT_FOUND`,
+exactly like a project that does not exist, so IDs reveal nothing.
+Authorization runs before validation. Project IDs in URLs must be ULIDs.
+
+```json
+{
+  "data": {
+    "id": "01k6p0a1b2c3d4e5f6g7h8j9km",
+    "type": "project",
+    "name": "Billing Service",
+    "slug": "billing-service",
+    "description": null,
+    "default_branch": "main",
+    "source_type": "UPLOAD",
+    "repository_url": null,
+    "language": "php",
+    "status": "ACTIVE",
+    "created_at": "2026-10-07T09:30:00Z",
+    "updated_at": "2026-10-07T09:30:00Z"
+  }
+}
+```
+
+The owner ID and internal `metadata` are never returned.
+
+### `GET /api/v1/projects`
+
+The caller's projects, newest first (`created_at` then `id`, both
+descending, so the order is stable). Query: `page`, `per_page` (default 25,
+max 100), optional `status=ACTIVE|ARCHIVED`.
+
+### `POST /api/v1/projects`
+
+| Field | Rules |
+|---|---|
+| `name` | required, string, max 255 |
+| `slug` | required, `^[a-z0-9]+(-[a-z0-9]+)*$`, max 100, unique among the caller's projects (other users may use the same slug). Uppercase input is lowercased |
+| `description` | optional, string, max 2000 |
+| `default_branch` | optional, a git branch name such as `main` or `release/2026.10` (no `..`, `//`, `@{`, trailing `/`, `.` or `.lock`), max 255 |
+| `source_type` | required, `UPLOAD` or `REPOSITORY` |
+| `repository_url` | required for `REPOSITORY`, forbidden for `UPLOAD`; an `https://` URL with a host and no credentials, max 2048 |
+| `language` | optional, one of the [programming languages](#patch-apiv1profile) |
+
+New projects are `ACTIVE`. Fields not listed (`id`, `user_id`, `status`,
+`metadata`, ...) are ignored. `REPOSITORY` projects only record the URL:
+cloning and provider integrations come in a later phase, and they cannot
+receive uploads.
+
+### `PATCH /api/v1/projects/{project}`
+
+Partial update of `name`, `slug`, `description`, `default_branch`,
+`language`, and `repository_url` (repository projects only; required, not
+clearable). Sending `status` or `source_type` is a `422` with an
+explanation; other unknown fields are ignored. Archived projects are
+read-only: `409 PROJECT_ARCHIVED`.
+
+### `POST /api/v1/projects/{project}/archive`
+
+`ACTIVE → ARCHIVED`, returning the project. Archiving an archived project
+returns it unchanged (`200`). It is irreversible for now. An archived project
+keeps its full history but cannot be edited and accepts no new source.
+**There is no delete:** history is protected by `RESTRICT` foreign keys, and
+removing a project, its snapshots and their stored objects needs a deliberate
+purge workflow (a later phase).
+
+## Source snapshots
+
+A source snapshot is an immutable, versioned record of one uploaded archive.
+Uploading **stores** source; it does not analyze it (analysis arrives in
+Phase 10).
+
+```json
+{
+  "data": {
+    "id": "01k6p0b7x2y3z4a5b6c7d8e9fg",
+    "type": "source_snapshot",
+    "project_id": "01k6p0a1b2c3d4e5f6g7h8j9km",
+    "version": 1,
+    "source_type": "UPLOAD",
+    "source_hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+    "size_bytes": 48213,
+    "file_count": 37,
+    "primary_language": "php",
+    "created_at": "2026-10-07T10:00:00Z"
+  }
+}
+```
+
+- `version` counts 1, 2, 3, … per project, assigned under a lock, so
+  concurrent uploads never share or skip a version.
+- `source_hash` (SHA-256) and `size_bytes` are computed by the server over
+  the archive bytes; client-supplied values are ignored.
+- `file_count` counts regular files; directories and macOS `__MACOSX/`
+  metadata are excluded.
+- `primary_language` is the most common recognized source file extension
+  (ignoring `node_modules`, `vendor`, `.git`, `dist`, `build`), or `null`
+  when nothing is recognized or there is a tie. It is a file-name
+  heuristic, not analysis.
+- Storage details (disk, object key, bucket, URLs), archive entry names and
+  contents are **never** returned. There is no download endpoint.
+
+### `POST /api/v1/projects/{project}/source-snapshots`
+
+`multipart/form-data` with one field, `archive`: a ZIP file. Requires a
+browser session and the CSRF token like every other mutation.
+
+| Check (in order) | Failure |
+|---|---|
+| Owner | `404 RESOURCE_NOT_FOUND` |
+| `archive` present and uploaded | `422 VALIDATION_FAILED` (`details.fields.archive`) |
+| Project `ACTIVE` | `409 PROJECT_ARCHIVED` |
+| Project `source_type` is `UPLOAD` | `409 INVALID_SOURCE_TYPE` |
+| A valid, safe ZIP within the [upload limits](#upload-limits) | see [error codes](#error-codes) (`SOURCE_*`) |
+| Storage reachable | `503 SERVICE_UNAVAILABLE` (nothing is created) |
+
+Success is `201` with the snapshot. The archive is judged by its content:
+the file name and MIME type are ignored, and nothing inside it is ever
+extracted or executed (see
+[data-flow.md](../architecture/data-flow.md#archive-inspection) for the full
+list of rejected archives).
+
+#### Idempotency
+
+Send an `Idempotency-Key` header (8–128 characters from `A–Z a–z 0–9 . _ :
+-`; a UUID is ideal) to make retries safe. Keys are scoped to the project.
+
+| Request | Response |
+|---|---|
+| New key | `201`, a new snapshot |
+| Same key, same archive bytes (e.g. a retry after a network failure) | `200` with the **original** snapshot and `Idempotent-Replayed: true` |
+| Same key, different bytes | `422 IDEMPOTENCY_KEY_REUSED` |
+| Malformed key | `400 BAD_REQUEST` |
+| No key | `201`, a new snapshot every time (re-uploading identical source is allowed) |
+
+#### Upload limits
+
+| Limit | Variable | Default |
+|---|---|---|
+| Archive size | `SOURCE_MAX_ARCHIVE_BYTES` | 52,428,800 (50 MiB) |
+| Total uncompressed size | `SOURCE_MAX_UNCOMPRESSED_BYTES` | 209,715,200 (200 MiB) |
+| Files (directories and `__MACOSX/` not counted; all entries are limited to twice this) | `SOURCE_MAX_FILES` | 20,000 |
+| One file, uncompressed | `SOURCE_MAX_SINGLE_FILE_BYTES` | 26,214,400 (25 MiB) |
+| Path length (bytes) | `SOURCE_MAX_PATH_LENGTH` | 512 |
+
+The archive, total-size and file-count defaults match the analyzer's limits
+([internal contract](internal-analyzer-contract.md#7-timeouts-retries-and-limits)),
+so an accepted upload is never too big to analyze. Files above the
+analyzer's 1 MiB per-file limit are accepted here and skipped during
+analysis. The archive limit must stay below PHP's `upload_max_filesize`
+(52M) and Nginx's `client_max_body_size` (55m). A body above the Nginx limit is
+answered by Nginx itself as `413 PAYLOAD_TOO_LARGE` in the standard error
+envelope (with `request_id: null`, because Laravel never saw the request).
+Uploads are also [rate limited](#rate-limiting).
+
+### `GET /api/v1/projects/{project}/source-snapshots`
+
+Newest version first; `page` and `per_page` as for projects.
+
+### `GET /api/v1/projects/{project}/source-snapshots/{snapshot}`
+
+One snapshot. A snapshot of another project, even one the caller owns,
+answers `404`: the URL must name the snapshot's own project.
+
 ## Authentication (browser, Sanctum SPA)
 
 Browsers authenticate with Laravel's **session cookie**. No token is ever
@@ -255,7 +433,7 @@ Credentials are then allowed for those origins only. `*` is never used.
 
 ## Requests
 
-- `Content-Type: application/json`. File uploads (later) use
+- `Content-Type: application/json`. Source uploads use
   `multipart/form-data`.
 - Send `Accept: application/json`. API routes answer with JSON errors even
   without it.
@@ -274,9 +452,15 @@ A single resource is wrapped in `data`:
 { "data": { "id": "…", "type": "user" } }
 ```
 
-`204 No Content` responses have no body. Collections (in later phases) add
-page-based pagination: `?page=2&per_page=25`, with `per_page` at most 100,
-plus `meta` and `links`.
+`204 No Content` responses have no body. Collections are paginated:
+`?page=2&per_page=25` (`per_page` at most 100, default 25; invalid values
+are `422`). The response carries the page in `data` and its position in
+`meta`. No link URLs are returned (they would depend on the server's host
+name); clients build page links from `meta`:
+
+```json
+{ "data": [ { "id": "…", "type": "project" } ], "meta": { "current_page": 2, "per_page": 25, "total": 60, "last_page": 3 } }
+```
 
 ## Errors
 
@@ -295,7 +479,8 @@ Every error, on every API route, uses one envelope:
 
 - `details` is present only when there are details. Today that means
   validation errors, as `details.fields`: field name mapped to a list of
-  messages.
+  messages. Archive rejections never include details (no entry names or
+  contents).
 - `message` is safe to show to users. Exception messages, stack traces,
   file paths and SQL are **never** included, even with `APP_DEBUG=true`.
   They go to the log, together with the `request_id`.
@@ -308,11 +493,20 @@ Every error, on every API route, uses one envelope:
 | 401 | `AUTHENTICATION_REQUIRED` | No valid session (or token) |
 | 403 | `FORBIDDEN` | Authenticated but not allowed (policy denial) |
 | 404 | `RESOURCE_NOT_FOUND` | Unknown route or resource the caller may not see (no existence leaks) |
-| 405 | `METHOD_NOT_ALLOWED` | Wrong HTTP method for the route |
-| 413 | `PAYLOAD_TOO_LARGE` | Body exceeds the limit |
+| 405 | `METHOD_NOT_ALLOWED` | Wrong HTTP method for the route (e.g. `DELETE` on a project) |
+| 409 | `PROJECT_ARCHIVED` | The project is archived: no edits, no uploads |
+| 409 | `INVALID_SOURCE_TYPE` | Upload to a project whose source type is not `UPLOAD` |
+| 413 | `PAYLOAD_TOO_LARGE` | Body exceeds the Nginx/PHP limit |
+| 413 | `SOURCE_ARCHIVE_TOO_LARGE` | Archive over `SOURCE_MAX_ARCHIVE_BYTES` |
 | 419 | `CSRF_TOKEN_MISMATCH` | Missing or stale `X-XSRF-TOKEN` |
 | 422 | `VALIDATION_FAILED` | Input failed validation (`details.fields`) |
 | 422 | `INVALID_CREDENTIALS` | Login with a wrong email/password combination |
+| 422 | `IDEMPOTENCY_KEY_REUSED` | `Idempotency-Key` already used for a different archive |
+| 422 | `SOURCE_ARCHIVE_INVALID` | Not a valid, supported ZIP (wrong format, corrupt, encrypted, no files, ...) |
+| 422 | `SOURCE_ARCHIVE_UNSAFE` | Unsafe entry: path traversal, absolute or drive path, symlink, special file, zip bomb, ... |
+| 422 | `SOURCE_UNCOMPRESSED_SIZE_EXCEEDED` | Expands beyond `SOURCE_MAX_UNCOMPRESSED_BYTES` |
+| 422 | `SOURCE_FILE_COUNT_EXCEEDED` | More files than `SOURCE_MAX_FILES` |
+| 422 | `SOURCE_FILE_TOO_LARGE` | A file over `SOURCE_MAX_SINGLE_FILE_BYTES` |
 | 429 | `RATE_LIMITED` | Rate limit exceeded (`Retry-After` header) |
 | 500 | `INTERNAL_ERROR` | Unexpected failure |
 | 503 | `SERVICE_UNAVAILABLE` | Temporarily unavailable (e.g. maintenance) |
@@ -336,6 +530,9 @@ queued jobs (Laravel Context).
 | `register` | `POST /auth/register` | 10 / minute | IP |
 | `profile-update` | `PATCH /profile` | 30 / minute | user ID |
 | `password-change` | `PATCH /auth/password` | 5 / minute **and** 20 / hour | user ID |
+| `project-create` | `POST /projects` | 10 / minute | user ID |
+| `project-update` | `PATCH /projects/{project}`, `POST /projects/{project}/archive` | 30 / minute | user ID |
+| `source-upload` | `POST /projects/{project}/source-snapshots` | 5 / minute **and** 60 / hour | user ID |
 
 Every attempt counts, successful or not. When a limit is exceeded the
 response is `429 RATE_LIMITED` with `Retry-After`. Throttled routes also
@@ -346,10 +543,7 @@ configured in `config/codedna.php`.
 
 | Method | Path | Phase |
 |---|---|---|
-| `GET`, `POST` | `/api/v1/projects` | 07 |
-| `GET`, `PATCH`, `DELETE` | `/api/v1/projects/{project}` | 07 |
-| `GET`, `POST` | `/api/v1/projects/{project}/snapshots` (ZIP upload) | 07 |
-| `POST` | `/api/v1/projects/{project}/snapshots/{snapshot}/analysis-runs` (start or re-run) | 10 |
+| `POST` | `/api/v1/projects/{project}/source-snapshots/{snapshot}/analysis-runs` (start or re-run) | 10 |
 | `GET` | `/api/v1/analysis-runs/{run}` (status and result) | 10 |
 | `GET` | `/api/v1/dna` | 11/12 |
 | `GET` | `/api/v1/dna/history` | 12 |

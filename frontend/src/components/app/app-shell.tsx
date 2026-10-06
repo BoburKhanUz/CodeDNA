@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, UserRound } from "lucide-react";
+import { FolderGit2, Home, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -11,6 +11,7 @@ import { Logo } from "@/components/brand/logo";
 
 const NAVIGATION = [
   { href: "/app", label: "Home", icon: Home },
+  { href: "/app/projects", label: "Projects", icon: FolderGit2 },
   { href: "/app/profile", label: "Profile", icon: UserRound },
 ] as const;
 
@@ -28,7 +29,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <nav aria-label="Main">
           <ul className="grid gap-1 text-sm">
             {NAVIGATION.map(({ href, label, icon: Icon }) => {
-              const current = pathname === href;
+              // Nested pages (e.g. /app/projects/new) keep their section highlighted.
+              const current = href === "/app" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
               return (
                 <li key={href}>
                   <Link
