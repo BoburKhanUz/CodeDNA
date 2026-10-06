@@ -7,7 +7,7 @@ metrics, fake analysis, or placeholder scores presented as real.
 
 ```text
 Register / log in ─► create project ─► upload source (ZIP) ─► start analysis
-    ─► see status (pending → queued → processing → completed | failed)
+    ─► see status (QUEUED → RUNNING → SUCCEEDED | FAILED)
     ─► view DNA: overall score + dimensions, with evidence and versions
     ─► re-run, or upload a new snapshot and analyze again
 ```

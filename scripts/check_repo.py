@@ -29,6 +29,7 @@ REQUIRED_DOCS = [
     "docs/architecture/data-flow.md",
     "docs/architecture/infrastructure.md",
     "docs/architecture/frontend.md",
+    "docs/architecture/data-model.md",
     "docs/api/README.md",
     "docs/api/internal-analyzer-contract.md",
     "docs/decisions/ADR-001-stack.md",

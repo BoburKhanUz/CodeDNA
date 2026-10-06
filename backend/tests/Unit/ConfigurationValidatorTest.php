@@ -20,6 +20,7 @@ final class ConfigurationValidatorTest extends TestCase
             'app.key' => 'base64:'.base64_encode(str_repeat('k', 32)),
             'app.debug' => false,
             'app.url' => 'https://app.codedna.example',
+            'app.timezone' => 'UTC',
             'database.default' => 'pgsql',
             'session.driver' => 'redis',
             'session.secure' => true,
@@ -47,6 +48,14 @@ final class ConfigurationValidatorTest extends TestCase
 
         $this->assertContains('APP_KEY is not set.', $problems);
         $this->assertContains('DB_CONNECTION must be "pgsql" (CodeDNA requires PostgreSQL).', $problems);
+    }
+
+    public function test_requires_utc_because_timestamps_are_stored_without_a_zone(): void
+    {
+        $this->assertSame(
+            ['The application timezone must be UTC.'],
+            (new ConfigurationValidator)->problems($this->config(['app.timezone' => 'Europe/Berlin']), 'local'),
+        );
     }
 
     public function test_requires_redis_drivers_outside_the_test_suite(): void

@@ -9,14 +9,14 @@ Related: [ADR-003](../decisions/ADR-003-storage.md) (storage),
 
 ## Domain terms
 
+The entities are implemented in Phase 05; see [data-model.md](data-model.md).
+
 | Term | Meaning |
 |---|---|
-| **Project** | A user-owned container for one or more repositories |
-| **Repository** | A source origin inside a project. Provider is `upload` in the MVP; `github`/`gitlab` later. |
-| **Source snapshot** | An immutable archive of a repository at one point in time (object key, SHA-256, size, optional commit SHA) |
-| **Analysis** | A user's request to analyze one source snapshot |
-| **Analysis run** | One execution of the pipeline for an analysis. Re-running an analysis (for example after an analyzer upgrade or a failure) creates a **new run**. Job retries for transient errors happen **within** a run as attempts. |
-| **DNA snapshot** | The immutable scored result of one completed run |
+| **Project** | A user-owned project with one source origin (`UPLOAD`, or `REPOSITORY` with an HTTPS URL) |
+| **Source snapshot** | An immutable reference to an archive in object storage (key, SHA-256, size, per-project version) |
+| **Analysis run** | One execution of the pipeline against one snapshot. Re-analysis (after an analyzer upgrade or a failure) creates a **new run**; earlier runs are kept. Job retries for transient errors happen **within** a run. |
+| **DNA snapshot** | The immutable result of one `SUCCEEDED` run (at most one per run) |
 
 ## End-to-end sequence (MVP)
 
@@ -25,19 +25,19 @@ Browser (UI)     Nginx          Laravel API         Object storage      Redis qu
    │  upload ZIP    │                │                    │                  │                 │                    │
    │───────────────►│───────────────►│ validate type/size │                  │                 │                    │
    │                │                │──── put object ───►│                  │                 │                    │
-   │                │                │ create snapshot (sha256, size)        │                 │                    │
+   │                │                │ record source snapshot (v1, v2, …)    │                 │                    │
    │  start analysis│                │                    │                  │                 │                    │
-   │───────────────►│───────────────►│ create analysis + run (pending)       │                 │                    │
-   │                │                │──────── dispatch RunAnalysisJob ─────►│ run: queued     │                    │
+   │───────────────►│───────────────►│ create analysis run (QUEUED)          │                 │                    │
+   │                │                │──── dispatch RunAnalysisJob (after commit) ────►│       │                    │
    │                │◄── 202 {id} ───│                    │                  │                 │                    │
-   │                │                │                    │                  │── job ─────────►│ run: processing    │
+   │                │                │                    │                  │── job ─────────►│ run: RUNNING       │
    │                │                │                    │◄── presign GET ─────────────────────│                    │
    │                │                │                    │                  │                 │── signed POST ────►│
    │                │                │                    │◄──────────────── fetch archive ──────────────────────────│
    │                │                │                    │                  │                 │                    │ analyze
    │                │                │                    │                  │                 │◄── signed result ──│
    │                │                │                    │                  │                 │ verify, persist    │
-   │                │                │                    │                  │                 │ run: completed     │
+   │                │                │                    │                  │                 │ run: SUCCEEDED     │
    │  poll status   │                │                    │                  │                 │                    │
    │───────────────►│───────────────►│ status / result    │                  │                 │                    │
 ```
@@ -48,42 +48,49 @@ API calls go through Nginx straight to Laravel, not through the Next.js server.
 ## Run state machine
 
 ```text
-             dispatch               worker picks up
- pending ───────────────► queued ───────────────────► processing ──── success ───► completed
-    │                       ▲                             │
-    │                       └──── retryable error ────────┤  (attempt < max)
-    │                                                     │
-    └── dispatch failure ──► failed ◄── non-retryable error / attempts exhausted / stale
+            worker starts the job
+ QUEUED ──────────────────────────► RUNNING ──── verified result ────► SUCCEEDED
+    │                                  │
+    │                                  ├── non-retryable error / attempts exhausted / stale ──► FAILED
+    │                                  └── cancelled ──► CANCELLED
+    ├── dispatch failure / stale ──► FAILED
+    └── cancelled ──► CANCELLED
 ```
+
+Transitions are enforced by `AnalysisRunStatus::canTransitionTo()` and the
+`AnalysisRun` model ([data-model.md](data-model.md#lifecycle)).
 
 | Status | Set when |
 |---|---|
-| `pending` | The run row is created, before the job is dispatched |
-| `queued` | The job is on the queue, either the first time or waiting for a retry backoff |
-| `processing` | A worker has started an attempt (`attempt` is incremented) |
-| `completed` | A verified analyzer result has been persisted, together with its DNA snapshot, in one DB transaction |
-| `failed` | A non-retryable error, attempts exhausted, a dispatch failure, or the stale sweeper |
+| `QUEUED` | The run row is created. The job is dispatched after the transaction commits |
+| `RUNNING` | A worker started processing (`started_at`). Transient-error retries keep the run `RUNNING`; attempts are recorded in `metadata` |
+| `SUCCEEDED` | A verified analyzer result was persisted, together with its DNA snapshot, in one DB transaction |
+| `FAILED` | A non-retryable error, attempts exhausted, a dispatch failure, or the stale sweeper |
+| `CANCELLED` | The run was cancelled before finishing |
 
-- `completed` and `failed` are **terminal and immutable**.
-- An analysis's displayed status is the status of its **latest run**.
+- `SUCCEEDED`, `FAILED` and `CANCELLED` are **terminal and immutable**.
+- A project's displayed analysis status is the status of its **latest run**.
 - Failed runs store a `failure_code` (from the contract's error codes plus
   `ANALYZER_UNREACHABLE`, `ANALYSIS_STALE` and `DISPATCH_FAILED`), a
-  user-safe `failure_message`, `request_id`, `attempts` and `failed_at`.
-- **Recovery:** the user (or later an admin action) creates a new run for the
-  same analysis via `POST /api/v1/analyses/{id}/runs`. Earlier runs are kept.
-- **Stale sweeper:** a scheduled Laravel command marks runs as
-  `failed (ANALYSIS_STALE)` if they have been `processing` for longer than
-  the job timeout plus a grace period. This covers crashed workers.
+  user-safe `failure_message` and `failed_at`. Request IDs and attempt
+  counts go into `metadata`.
+- **Recovery:** a new run for the same snapshot (Phase 10 endpoint).
+  Earlier runs are kept.
+- **Stale sweeper:** a scheduled Laravel command marks runs as `FAILED`
+  (`ANALYSIS_STALE`) if they have been `RUNNING` for longer than the job
+  timeout plus a grace period. This covers crashed workers. It uses the
+  partial index on active runs.
 
 ## Persistence of a result (one transaction)
 
 1. Lock the run row. If it is already terminal, ignore the result and log it
    (idempotency).
-2. Store the versions (`analyzer`, `ir`, `metrics`, `scoring`, `contract`),
-   the source summary, metrics, features, findings (locations only) and
-   `result_hash`.
-3. Insert the immutable DNA snapshot.
-4. Mark the run `completed`.
+2. Mark the run `SUCCEEDED` with its versions (`analyzer`, `ir`, `metrics`,
+   `scoring`, `contract`) and `result_hash`.
+3. Insert the immutable DNA snapshot (allowed only for a `SUCCEEDED` run).
+4. Commit. Where metrics, features and findings (locations only) are
+   persisted is decided in Phase 10: run `metadata` or dedicated tables,
+   added only when needed.
 
 ## Timeouts and retries
 

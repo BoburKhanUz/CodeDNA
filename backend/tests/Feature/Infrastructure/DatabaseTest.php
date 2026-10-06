@@ -21,13 +21,17 @@ final class DatabaseTest extends TestCase
         $this->assertStringStartsWith('16.', (string) DB::scalar('show server_version'));
     }
 
-    public function test_migrations_create_only_the_phase_03_tables(): void
+    public function test_migrations_create_only_the_expected_tables(): void
     {
         $tables = collect(DB::select(
             "select table_name from information_schema.tables where table_schema = 'public' order by table_name"
         ))->pluck('table_name')->all();
 
-        $this->assertSame(['failed_jobs', 'migrations', 'personal_access_tokens', 'users'], $tables);
+        // Framework/auth (Phase 03) + the four domain tables (Phase 05), nothing else.
+        $this->assertSame([
+            'analysis_runs', 'dna_snapshots', 'failed_jobs', 'migrations',
+            'personal_access_tokens', 'projects', 'source_snapshots', 'users',
+        ], $tables);
     }
 
     public function test_transactions_commit(): void

@@ -27,6 +27,11 @@ final class ConfigurationValidator
             $problems[] = 'DB_CONNECTION must be "pgsql" (CodeDNA requires PostgreSQL).';
         }
 
+        // Domain timestamps are stored as UTC without a zone (docs/architecture/data-model.md).
+        if ($config->get('app.timezone') !== 'UTC') {
+            $problems[] = 'The application timezone must be UTC.';
+        }
+
         // The test suite swaps in in-memory drivers; every other environment
         // must use the Redis-backed infrastructure (docs/architecture/backend.md).
         if ($environment !== 'testing') {

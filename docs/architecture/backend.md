@@ -147,10 +147,19 @@ redirect.
 - PostgreSQL 16. The config default is `pgsql` (`DB_CONNECTION`), and boot
   fails if it is anything else.
 - Primary keys are ULIDs (`HasUlids`), never exposed sequences.
-- Phase 03 tables: `users`, `personal_access_tokens`, `failed_jobs`, and
-  `migrations`. Laravel's default `sessions`, `cache`, `jobs`,
-  `job_batches` and `password_reset_tokens` tables are not created, because
-  those features run on Redis or don't exist yet.
+- Framework and auth tables (Phase 03): `users`, `personal_access_tokens`,
+  `failed_jobs`, and `migrations`. Laravel's default `sessions`, `cache`,
+  `jobs`, `job_batches` and `password_reset_tokens` tables are not created,
+  because those features run on Redis or don't exist yet.
+- Domain tables (Phase 05): `projects`, `source_snapshots`,
+  `analysis_runs`, `dna_snapshots`. Schema, states, lifecycle, immutability
+  and indexes are documented in [data-model.md](data-model.md). States are
+  PHP backed enums (`app/Enums`) over VARCHAR columns with CHECK
+  constraints. Composite foreign keys keep a run, its snapshot and its DNA
+  in the same project and user. Historical records refuse updates and
+  deletes (`DomainRuleViolation`).
+- `DatabaseSeeder` is empty on purpose: no demo data. Factories exist for
+  every domain model, for tests only.
 - `Model::shouldBeStrict()` outside production makes lazy loading, unknown
   attributes and silently discarded attributes throw. Destructive DB
   commands are prohibited in production.
@@ -159,8 +168,11 @@ redirect.
 ### Transactions
 
 Use a transaction (`DB::transaction`) when an action writes **more than one
-row that must change together**, for example a project and its first
-repository, or an analysis run plus its DNA snapshot (data-flow.md). Don't
+row that must change together**, for example marking an analysis run
+`SUCCEEDED` together with inserting its DNA snapshot (data-flow.md), or
+when the row must be locked to assign a value safely
+(`RecordSourceSnapshot` locks the project to assign the next snapshot
+version). Don't
 add transactions mechanically: registration performs a single insert and
 uses none. The Redis queue connection has `after_commit = true`, so jobs
 dispatched inside a transaction are pushed only after it commits.
@@ -172,15 +184,10 @@ validation error.
 | Table | Purpose | Phase |
 |---|---|---|
 | `profiles` | Developer profile data (1:1 with users) | 06 |
-| `projects` | User-owned project containers | 07 |
-| `repositories` | Source origins (`provider`: `upload` first) | 07 |
-| `source_snapshots` | Immutable archives: object key, SHA-256, size, commit SHA, origin | 07 |
-| `analyses` | A request to analyze a snapshot | 10 |
-| `analysis_runs` | Executions: status, attempts, versions, request ID, failure info, timestamps | 10 |
-| `analysis_metrics` | Metrics per run (overall and per language; JSONB plus query columns) | 10 |
-| `analysis_features` | Feature vector per run (JSONB) | 10 |
-| `analysis_findings` | Secret and parse findings per run (locations only) | 10 |
-| `dna_snapshots` | Immutable DNA result per completed run | 11 |
+
+Whether metrics, features and findings of a run get dedicated tables, or
+stay in the run's `metadata`, is decided in Phase 10. Provider integrations
+(GitHub/GitLab) add their own tables in Phase 19.
 
 `repository_files` and a materialized `developer_dna` table are not planned
 for the MVP. Developer DNA is derived from `dna_snapshots`

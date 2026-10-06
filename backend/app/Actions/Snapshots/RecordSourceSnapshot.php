@@ -1,0 +1,69 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Actions\Snapshots;
+
+use App\Enums\SourceType;
+use App\Exceptions\DomainRuleViolation;
+use App\Models\Project;
+use App\Models\SourceSnapshot;
+use Illuminate\Database\ConnectionInterface;
+
+/**
+ * Records a new immutable source snapshot for a project and assigns its
+ * version (1, 2, 3, …). Only references are stored: the archive itself must
+ * already be in object storage (ADR-003).
+ *
+ * Runs in a transaction that locks the project row, so concurrent uploads
+ * get distinct, gap-free versions. (project_id, version) is also unique in
+ * the database.
+ */
+final readonly class RecordSourceSnapshot
+{
+    public function __construct(private ConnectionInterface $db) {}
+
+    /**
+     * @param  array<string, mixed>  $metadata  descriptive data only, never file contents
+     */
+    public function handle(
+        Project $project,
+        SourceType $sourceType,
+        string $storageDisk,
+        string $storageKey,
+        string $sourceHash,
+        int $sizeBytes,
+        int $fileCount,
+        ?string $primaryLanguage = null,
+        array $metadata = [],
+    ): SourceSnapshot {
+        return $this->db->transaction(function () use (
+            $project, $sourceType, $storageDisk, $storageKey, $sourceHash, $sizeBytes, $fileCount, $primaryLanguage, $metadata,
+        ): SourceSnapshot {
+            $locked = Project::query()->whereKey($project->getKey())->lockForUpdate()->firstOrFail();
+
+            if (! $locked->isActive()) {
+                throw DomainRuleViolation::because("Project {$locked->id} is archived and accepts no new source snapshots.");
+            }
+
+            $nextVersion = (int) SourceSnapshot::query()->where('project_id', $locked->id)->max('version') + 1;
+
+            $snapshot = new SourceSnapshot;
+            $snapshot->forceFill([
+                'project_id' => $locked->id,
+                'version' => $nextVersion,
+                'source_type' => $sourceType,
+                'storage_disk' => $storageDisk,
+                'storage_key' => $storageKey,
+                'source_hash' => $sourceHash,
+                'size_bytes' => $sizeBytes,
+                'file_count' => $fileCount,
+                'primary_language' => $primaryLanguage,
+                'metadata' => $metadata === [] ? null : $metadata,
+            ]);
+            $snapshot->save();
+
+            return $snapshot;
+        });
+    }
+}

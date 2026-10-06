@@ -20,15 +20,18 @@ ASSESS ─► ANALYZE ─► IDENTIFY GAPS ─► LEARN ─► PRACTICE ─► R
 | 02 | Docker infrastructure | ✅ Done |
 | 03 | Laravel backend foundation | ✅ Done |
 | 04 | Next.js frontend foundation | ✅ Done |
-| 05 | Database and domain model | ⏭ Next |
+| 05 | Database and domain model | ✅ Done |
+| 06 | Authentication and developer profile | ⏭ Next |
 
 **No product features exist yet.** The Docker environment runs every
 component: Nginx, Laravel 13, Next.js 16, the FastAPI analyzer, PostgreSQL
 16, Redis 7 and MinIO. You can register, sign in and sign out at
 <http://localhost> (Next.js UI, Laravel Sanctum session cookies; see
 [frontend](docs/architecture/frontend.md) and the [API reference](docs/api/README.md)).
-The authenticated area is a minimal shell, and the analyzer is still a
-bootstrap. The full plan is in
+The PostgreSQL domain model exists (projects, source snapshots, analysis
+runs, immutable DNA snapshots; see [data model](docs/architecture/data-model.md)),
+but no feature uses it yet. The authenticated area is a minimal shell, and the
+analyzer is still a bootstrap. The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance
@@ -49,7 +52,7 @@ AI only interprets stored results, never produces scores.
 ## Documentation
 
 - Product: [vision](docs/product/vision.md) · [MVP](docs/product/mvp.md)
-- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md)
+- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md)
 - API: [public conventions](docs/api/README.md) · [internal analyzer contract](docs/api/internal-analyzer-contract.md)
 - Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md)
 

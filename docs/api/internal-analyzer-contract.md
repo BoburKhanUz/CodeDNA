@@ -231,7 +231,7 @@ retryable with the code `ANALYZER_UNREACHABLE`.
   deterministic (ADR-004), repeating a request is safe and returns the same
   `result_hash`.
 - Laravel persists results idempotently. Results for a run that is already
-  `completed` or `failed` are ignored and logged.
+  terminal (`SUCCEEDED`, `FAILED` or `CANCELLED`) are ignored and logged.
 
 ## 7. Timeouts, retries and limits
 

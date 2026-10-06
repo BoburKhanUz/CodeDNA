@@ -259,15 +259,14 @@ configured in `config/codedna.php`.
 |---|---|---|
 | `GET`, `POST` | `/api/v1/projects` | 07 |
 | `GET`, `PATCH`, `DELETE` | `/api/v1/projects/{project}` | 07 |
-| `GET`, `POST` | `/api/v1/projects/{project}/repositories` | 07 |
-| `GET` | `/api/v1/repositories/{repository}` | 07 |
-| `POST` | `/api/v1/repositories/{repository}/snapshots` (ZIP upload) | 07 |
-| `POST` | `/api/v1/analyses` | 10 |
-| `GET` | `/api/v1/analyses/{analysis}` | 10 |
-| `GET` | `/api/v1/analyses/{analysis}/status` | 10 |
-| `POST` | `/api/v1/analyses/{analysis}/runs` (re-run) | 10 |
+| `GET`, `POST` | `/api/v1/projects/{project}/snapshots` (ZIP upload) | 07 |
+| `POST` | `/api/v1/projects/{project}/snapshots/{snapshot}/analysis-runs` (start or re-run) | 10 |
+| `GET` | `/api/v1/analysis-runs/{run}` (status and result) | 10 |
 | `GET` | `/api/v1/dna` | 11/12 |
 | `GET` | `/api/v1/dna/history` | 12 |
 
-Analysis `status` values: `pending`, `queued`, `processing`, `completed`,
-`failed` ([data-flow.md](../architecture/data-flow.md)).
+Paths are indicative and are finalized in their phase. They follow the
+domain model in [data-model.md](../architecture/data-model.md): projects
+own snapshots, snapshots have analysis runs, and runs produce DNA snapshots.
+Analysis run `status` values: `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`,
+`CANCELLED` ([data-flow.md](../architecture/data-flow.md)).

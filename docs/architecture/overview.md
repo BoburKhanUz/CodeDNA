@@ -6,11 +6,11 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 04 (Next.js frontend foundation) complete. The
+**Current status:** Phase 05 (database and domain model) complete. The
 local environment runs every component. Users can register, sign in and sign
-out through the Next.js UI (Sanctum SPA sessions), and the authenticated area
-is a minimal shell. No business domain exists yet. Everything below is the
-target architecture.
+out, and the PostgreSQL domain model (projects, source snapshots, analysis
+runs, DNA snapshots; see [data-model.md](data-model.md)) exists, but no
+product feature uses it yet. Everything below is the target architecture.
 
 ## System context
 
@@ -38,7 +38,7 @@ target architecture.
 | Component | Directory | Owns | Docs |
 |---|---|---|---|
 | Frontend | `frontend/` | UI only: dashboard, projects, analyses, DNA views | [frontend.md](frontend.md) |
-| Backend | `backend/` | Auth, domain, persistence, orchestration, authorization, business rules | [backend.md](backend.md) |
+| Backend | `backend/` | Auth, domain, persistence, orchestration, authorization, business rules | [backend.md](backend.md), [data-model.md](data-model.md) |
 | Analyzer | `analyzer/` | Parsing, IR, metrics, features, deterministic DNA scoring | [analyzer.md](analyzer.md) |
 | AI interpretation | (Phase 15) | Explaining stored deterministic results; never producing scores | ADR to be written in Phase 15 |
 | Infrastructure | `docker/`, `docker-compose.yml`, `.github/` | Containers, routing, CI | [infrastructure.md](infrastructure.md) |
@@ -97,8 +97,8 @@ at a time:
 | 02 | Docker infrastructure | Done |
 | 03 | Laravel backend foundation | Done |
 | 04 | Next.js frontend foundation | Done |
-| 05 | Database and domain model | Next |
-| 06 | Authentication and developer profile | — |
+| 05 | Database and domain model | Done |
+| 06 | Authentication and developer profile | Next |
 | 07 | Projects and repository management (ZIP upload) | — |
 | 08 | Python analyzer foundation (IR frozen first) | — |
 | 09 | AST and static analysis (PHP → Python → JS → TS) | — |

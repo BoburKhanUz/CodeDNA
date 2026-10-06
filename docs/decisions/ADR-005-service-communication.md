@@ -51,10 +51,11 @@ analyzer must never be reachable from the public internet.
      "request_id", "details" } }` with stable, documented error codes.
    - **API versioning:** major version in the path (`/internal/v1`), and
      `contract_version` in request and response bodies.
-   - **Status tracking:** run status (`pending → queued → processing →
-     completed | failed`), attempt count, failure code and timestamps are
-     persisted by Laravel. A scheduled sweeper fails runs stuck in
-     `processing` past the job timeout.
+   - **Status tracking:** run status (`QUEUED → RUNNING → SUCCEEDED |
+     FAILED | CANCELLED`; see docs/architecture/data-model.md), failure code
+     and timestamps are persisted by Laravel, and attempts go into the run's
+     metadata. A scheduled sweeper fails runs stuck in `RUNNING` past the
+     job timeout.
 
 ## Consequences
 
