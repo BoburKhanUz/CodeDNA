@@ -14,7 +14,8 @@ analyzer must never be reachable from the public internet.
 ## Decision
 
 1. **Laravel queue workers orchestrate analysis.** A user request creates an
-   analysis run and dispatches a Laravel job (`RunAnalysisJob`) onto Redis.
+   analysis run and dispatches a Laravel job (`RunAnalysisJob`; implemented
+   as `AnalyzeSourceSnapshot` in Phase 10) onto Redis.
    **Only Laravel reads and writes that queue.** Python does not consume
    Laravel queues and does not share Redis queue semantics.
 2. **The worker calls the analyzer over an internal HTTP API**

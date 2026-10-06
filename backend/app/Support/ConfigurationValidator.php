@@ -32,7 +32,7 @@ final class ConfigurationValidator
             $problems[] = 'The application timezone must be UTC.';
         }
 
-        $problems = [...$problems, ...$this->sourceStorageProblems($config)];
+        $problems = [...$problems, ...$this->sourceStorageProblems($config), ...$this->analyzerProblems($config, $environment)];
 
         // The test suite swaps in in-memory drivers; every other environment
         // must use the Redis-backed infrastructure (docs/architecture/backend.md).
@@ -60,6 +60,72 @@ final class ConfigurationValidator
             if (array_filter((array) $config->get('sanctum.stateful')) === []) {
                 $problems[] = 'SANCTUM_STATEFUL_DOMAINS must list the production frontend domain.';
             }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * The analysis pipeline (Phase 10). The timeout chain makes inner limits
+     * fire first (ADR-005): analyzer hard limit < HTTP timeout < job timeout
+     * < queue retry_after, so a job is never killed or handed to a second
+     * worker while the analyzer may still answer.
+     *
+     * @return list<string>
+     */
+    private function analyzerProblems(Repository $config, string $environment): array
+    {
+        $problems = [];
+        $analyzer = (array) $config->get('codedna.analyzer', []);
+        $analysis = (array) $config->get('codedna.analysis', []);
+
+        $url = $analyzer['url'] ?? null;
+        if (! is_string($url) || preg_match('#^https?://[a-z0-9.-]+(:[0-9]{1,5})?$#', $url) !== 1) {
+            $problems[] = 'ANALYZER_URL must be an http(s) origin without a path (e.g. http://analyzer:8000).';
+        }
+
+        if ($environment !== 'testing') {
+            foreach (['hmac_secret' => 'ANALYZER_HMAC_SECRET'] as $key => $variable) {
+                if (! is_string($analyzer[$key] ?? null) || strlen($analyzer[$key]) < 32) {
+                    $problems[] = "{$variable} must be at least 32 characters (64 hex characters recommended).";
+                }
+            }
+        }
+        $previous = $analyzer['hmac_secret_previous'] ?? '';
+        if (is_string($previous) && $previous !== '' && strlen($previous) < 32) {
+            $problems[] = 'ANALYZER_HMAC_SECRET_PREVIOUS must be empty or at least 32 characters.';
+        }
+
+        $chain = [
+            'ANALYZER_HARD_TIMEOUT_SECONDS' => $analyzer['hard_timeout_seconds'] ?? null,
+            'ANALYZER_TIMEOUT_SECONDS' => $analyzer['timeout_seconds'] ?? null,
+            'ANALYSIS_JOB_TIMEOUT_SECONDS' => $analysis['job_timeout_seconds'] ?? null,
+            'ANALYSIS_QUEUE_RETRY_AFTER' => $config->get('queue.connections.analysis.retry_after'),
+        ];
+        foreach ($chain as $variable => $value) {
+            if (! is_int($value) || $value < 1) {
+                $problems[] = "{$variable} must be a positive integer.";
+            }
+        }
+        $values = array_values($chain);
+        $names = array_keys($chain);
+        for ($i = 1; $i < count($values); $i++) {
+            if (is_int($values[$i - 1]) && is_int($values[$i]) && $values[$i - 1] >= $values[$i]) {
+                $problems[] = "{$names[$i - 1]} must be lower than {$names[$i]}.";
+            }
+        }
+
+        $attempts = $analyzer['max_attempts'] ?? null;
+        if (! is_int($attempts) || $attempts < 1 || $attempts > 10) {
+            $problems[] = 'ANALYZER_MAX_ATTEMPTS must be between 1 and 10.';
+        }
+        $ttl = $analyzer['source_url_ttl_seconds'] ?? null;
+        if (! is_int($ttl) || $ttl < 60 || $ttl > 3600) {
+            $problems[] = 'SOURCE_URL_TTL_SECONDS must be between 60 and 3600 (the analyzer accepts at most 3600).';
+        }
+        $connect = $analyzer['connect_timeout_seconds'] ?? null;
+        if (! is_int($connect) || $connect < 1) {
+            $problems[] = 'ANALYZER_CONNECT_TIMEOUT_SECONDS must be a positive integer.';
         }
 
         return $problems;

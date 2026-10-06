@@ -75,6 +75,18 @@ return [
             'after_commit' => true,
         ],
 
+        // Analysis jobs (Phase 10) on their own Redis connection and queue:
+        // retry_after must exceed the job timeout (ANALYSIS_JOB_TIMEOUT_SECONDS,
+        // 330 s), or Redis would hand a still-running job to a second worker.
+        'analysis' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => 'analysis',
+            'retry_after' => (int) env('ANALYSIS_QUEUE_RETRY_AFTER', 360),
+            'block_for' => null,
+            'after_commit' => true,
+        ],
+
         'deferred' => [
             'driver' => 'deferred',
         ],

@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\Profile\ProfileController;
+use App\Http\Controllers\Api\V1\Projects\AnalysisController;
 use App\Http\Controllers\Api\V1\Projects\ArchiveProjectController;
 use App\Http\Controllers\Api\V1\Projects\ProjectController;
 use App\Http\Controllers\Api\V1\Projects\SourceSnapshotController;
@@ -77,4 +78,21 @@ Route::middleware('auth:sanctum')->prefix('projects')->name('projects.')->group(
         ->whereUlid(['project', 'sourceSnapshot'])
         ->scopeBindings()
         ->name('source-snapshots.show');
+
+    // Analysis runs (Phase 10): start (or get the equivalent run), list, inspect, result.
+    Route::get('{project}/analyses', [AnalysisController::class, 'index'])
+        ->whereUlid('project')
+        ->name('analyses.index');
+    Route::post('{project}/analyses', [AnalysisController::class, 'store'])
+        ->whereUlid('project')
+        ->middleware('throttle:analysis-create')
+        ->name('analyses.store');
+    Route::get('{project}/analyses/{analysisRun}', [AnalysisController::class, 'show'])
+        ->whereUlid(['project', 'analysisRun'])
+        ->scopeBindings()
+        ->name('analyses.show');
+    Route::get('{project}/analyses/{analysisRun}/result', [AnalysisController::class, 'result'])
+        ->whereUlid(['project', 'analysisRun'])
+        ->scopeBindings()
+        ->name('analyses.result');
 });

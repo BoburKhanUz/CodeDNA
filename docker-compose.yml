@@ -15,6 +15,73 @@
 
 name: ${COMPOSE_PROJECT_NAME:-codedna}
 
+# Shared by the backend (PHP-FPM), the analysis queue worker and the scheduler.
+x-backend-environment: &backend-environment
+  APP_NAME: ${APP_NAME:-CodeDNA}
+  APP_ENV: ${APP_ENV:-local}
+  APP_KEY: ${APP_KEY:?Set APP_KEY in .env (run `make setup`)}
+  APP_DEBUG: ${APP_DEBUG:-true}
+  APP_URL: ${APP_URL:-http://localhost}
+  APP_VERSION: ${APP_VERSION:-dev}
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: ${LOG_LEVEL:-debug}
+  LOG_STDERR_FORMATTER: ${LOG_STDERR_FORMATTER:-}
+  DB_CONNECTION: pgsql
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_DATABASE: ${DB_DATABASE:-codedna}
+  DB_USERNAME: ${DB_USERNAME:-codedna}
+  DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (run `make setup`)}
+  REDIS_CLIENT: phpredis
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  CACHE_STORE: redis
+  QUEUE_CONNECTION: redis
+  SESSION_DRIVER: ${SESSION_DRIVER:-redis}
+  SESSION_LIFETIME: ${SESSION_LIFETIME:-120}
+  SESSION_DOMAIN: ${SESSION_DOMAIN:-}
+  SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
+  SESSION_SAME_SITE: ${SESSION_SAME_SITE:-lax}
+  # Sanctum SPA authentication and request trust (ADR-006).
+  SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost,localhost:3000}
+  TRUSTED_PROXIES: ${TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+  # No mail provider yet: mail is written to the log.
+  MAIL_MAILER: log
+  # S3-compatible source storage (ADR-003): MinIO locally, Cloudflare R2 in production.
+  SOURCE_STORAGE_ENDPOINT: http://minio:9000
+  SOURCE_STORAGE_REGION: ${SOURCE_STORAGE_REGION:-us-east-1}
+  SOURCE_STORAGE_BUCKET: ${SOURCE_STORAGE_BUCKET:-codedna}
+  SOURCE_STORAGE_USE_PATH_STYLE: "true"
+  SOURCE_STORAGE_ACCESS_KEY_ID: ${SOURCE_STORAGE_ACCESS_KEY_ID:?Set SOURCE_STORAGE_ACCESS_KEY_ID in .env (run `make setup`)}
+  SOURCE_STORAGE_SECRET_ACCESS_KEY: ${SOURCE_STORAGE_SECRET_ACCESS_KEY:?Set SOURCE_STORAGE_SECRET_ACCESS_KEY in .env (run `make setup`)}
+  SOURCE_STORAGE_PREFIX: ${SOURCE_STORAGE_PREFIX:-}
+  # Source archive limits (docs/api/README.md#upload-limits).
+  SOURCE_MAX_ARCHIVE_BYTES: ${SOURCE_MAX_ARCHIVE_BYTES:-52428800}
+  SOURCE_MAX_UNCOMPRESSED_BYTES: ${SOURCE_MAX_UNCOMPRESSED_BYTES:-209715200}
+  SOURCE_MAX_FILES: ${SOURCE_MAX_FILES:-20000}
+  SOURCE_MAX_SINGLE_FILE_BYTES: ${SOURCE_MAX_SINGLE_FILE_BYTES:-26214400}
+  SOURCE_MAX_PATH_LENGTH: ${SOURCE_MAX_PATH_LENGTH:-512}
+  ANALYZER_URL: http://analyzer:8000
+  # Shared with the analyzer to sign internal requests (Phase 10 client).
+  ANALYZER_HMAC_SECRET: ${ANALYZER_HMAC_SECRET:?Set ANALYZER_HMAC_SECRET in .env (run `make setup`)}
+  ANALYZER_HMAC_SECRET_PREVIOUS: ${ANALYZER_HMAC_SECRET_PREVIOUS:-}
+  # Timeout chain (validated at boot): analyzer hard limit < HTTP timeout
+  # < job timeout < analysis queue retry_after.
+  ANALYZER_HARD_TIMEOUT_SECONDS: ${ANALYZER_HARD_TIMEOUT_SECONDS:-240}
+  ANALYZER_CONNECT_TIMEOUT_SECONDS: ${ANALYZER_CONNECT_TIMEOUT_SECONDS:-5}
+  ANALYZER_TIMEOUT_SECONDS: ${ANALYZER_TIMEOUT_SECONDS:-300}
+  ANALYZER_MAX_ATTEMPTS: ${ANALYZER_MAX_ATTEMPTS:-3}
+  ANALYSIS_JOB_TIMEOUT_SECONDS: ${ANALYSIS_JOB_TIMEOUT_SECONDS:-330}
+  ANALYSIS_QUEUE_RETRY_AFTER: ${ANALYSIS_QUEUE_RETRY_AFTER:-360}
+  SOURCE_URL_TTL_SECONDS: ${SOURCE_URL_TTL_SECONDS:-900}
+  ANALYZER_CONTRACTS_PATH: /var/www/contracts/analyzer/v1
+
+x-backend-volumes: &backend-volumes
+  - ./backend:/var/www/backend
+  # Analyzer response JSON Schemas, checked by the analyzer client.
+  - ./packages/api-contracts:/var/www/contracts:ro
+
 services:
   nginx:
     image: nginx:1.28-alpine
@@ -84,57 +151,8 @@ services:
         HOST_UID: ${HOST_UID:-1000}
         HOST_GID: ${HOST_GID:-1000}
     image: codedna-backend:dev
-    environment:
-      APP_NAME: ${APP_NAME:-CodeDNA}
-      APP_ENV: ${APP_ENV:-local}
-      APP_KEY: ${APP_KEY:?Set APP_KEY in .env (run `make setup`)}
-      APP_DEBUG: ${APP_DEBUG:-true}
-      APP_URL: ${APP_URL:-http://localhost}
-      APP_VERSION: ${APP_VERSION:-dev}
-      LOG_CHANNEL: stderr
-      LOG_LEVEL: ${LOG_LEVEL:-debug}
-      LOG_STDERR_FORMATTER: ${LOG_STDERR_FORMATTER:-}
-      DB_CONNECTION: pgsql
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_DATABASE: ${DB_DATABASE:-codedna}
-      DB_USERNAME: ${DB_USERNAME:-codedna}
-      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env (run `make setup`)}
-      REDIS_CLIENT: phpredis
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-      CACHE_STORE: redis
-      QUEUE_CONNECTION: redis
-      SESSION_DRIVER: ${SESSION_DRIVER:-redis}
-      SESSION_LIFETIME: ${SESSION_LIFETIME:-120}
-      SESSION_DOMAIN: ${SESSION_DOMAIN:-}
-      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
-      SESSION_SAME_SITE: ${SESSION_SAME_SITE:-lax}
-      # Sanctum SPA authentication and request trust (ADR-006).
-      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost,localhost:3000}
-      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
-      # No mail provider yet: mail is written to the log.
-      MAIL_MAILER: log
-      # S3-compatible source storage (ADR-003): MinIO locally, Cloudflare R2 in production.
-      SOURCE_STORAGE_ENDPOINT: http://minio:9000
-      SOURCE_STORAGE_REGION: ${SOURCE_STORAGE_REGION:-us-east-1}
-      SOURCE_STORAGE_BUCKET: ${SOURCE_STORAGE_BUCKET:-codedna}
-      SOURCE_STORAGE_USE_PATH_STYLE: "true"
-      SOURCE_STORAGE_ACCESS_KEY_ID: ${SOURCE_STORAGE_ACCESS_KEY_ID:?Set SOURCE_STORAGE_ACCESS_KEY_ID in .env (run `make setup`)}
-      SOURCE_STORAGE_SECRET_ACCESS_KEY: ${SOURCE_STORAGE_SECRET_ACCESS_KEY:?Set SOURCE_STORAGE_SECRET_ACCESS_KEY in .env (run `make setup`)}
-      SOURCE_STORAGE_PREFIX: ${SOURCE_STORAGE_PREFIX:-}
-      # Source archive limits (docs/api/README.md#upload-limits).
-      SOURCE_MAX_ARCHIVE_BYTES: ${SOURCE_MAX_ARCHIVE_BYTES:-52428800}
-      SOURCE_MAX_UNCOMPRESSED_BYTES: ${SOURCE_MAX_UNCOMPRESSED_BYTES:-209715200}
-      SOURCE_MAX_FILES: ${SOURCE_MAX_FILES:-20000}
-      SOURCE_MAX_SINGLE_FILE_BYTES: ${SOURCE_MAX_SINGLE_FILE_BYTES:-26214400}
-      SOURCE_MAX_PATH_LENGTH: ${SOURCE_MAX_PATH_LENGTH:-512}
-      ANALYZER_URL: http://analyzer:8000
-      # Shared with the analyzer to sign internal requests (Phase 10 client).
-      ANALYZER_HMAC_SECRET: ${ANALYZER_HMAC_SECRET:?Set ANALYZER_HMAC_SECRET in .env (run `make setup`)}
-    volumes:
-      - ./backend:/var/www/backend
+    environment: *backend-environment
+    volumes: *backend-volumes
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,6 +171,48 @@ services:
       # First start runs `composer install`.
       start_period: 300s
       start_interval: 5s
+
+  # Queue worker for analysis jobs (Phase 10): same image, code and
+  # environment as the backend. `queue:listen` reloads the bind-mounted code
+  # for every job (development); production runs `queue:work` with the same
+  # options. Worker timeout = ANALYSIS_JOB_TIMEOUT_SECONDS.
+  queue:
+    image: codedna-backend:dev
+    environment: *backend-environment
+    volumes: *backend-volumes
+    networks:
+      - codedna
+      - codedna-internal
+    command:
+      - php
+      - artisan
+      - queue:listen
+      - analysis
+      - --queue=analysis
+      - --timeout=${ANALYSIS_JOB_TIMEOUT_SECONDS:-330}
+      - --sleep=3
+      - --tries=0
+    healthcheck:
+      disable: true
+    depends_on:
+      backend:
+        condition: service_healthy
+      analyzer:
+        condition: service_healthy
+
+  # Laravel scheduler: runs analysis:fail-stale every five minutes.
+  scheduler:
+    image: codedna-backend:dev
+    environment: *backend-environment
+    volumes: *backend-volumes
+    networks:
+      - codedna
+    command: ["php", "artisan", "schedule:work"]
+    healthcheck:
+      disable: true
+    depends_on:
+      backend:
+        condition: service_healthy
 
   analyzer:
     build:

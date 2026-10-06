@@ -3,7 +3,8 @@
 The CodeDNA domain model in PostgreSQL. **Status: Phase 07.** The tables,
 models, relationships, constraints and factories exist. Developer profiles
 (Phase 06), projects and source snapshots (Phase 07) have APIs. The analysis
-pipeline comes in Phase 10 and scoring in Phase 11.
+pipeline (Phase 10) creates analysis runs and stores their verified results;
+scoring comes in Phase 11.
 
 Related: [ADR-003](../decisions/ADR-003-storage.md) (storage),
 [ADR-004](../decisions/ADR-004-dna-scoring.md) (versioning, immutability),
@@ -14,6 +15,7 @@ Related: [ADR-003](../decisions/ADR-003-storage.md) (storage),
 
 ```text
 users ──1:n──► projects ──1:n──► source_snapshots ──1:n──► analysis_runs ──1:0..1──► dna_snapshots
+                                                               └──1:0..1──► analysis_results (Phase 10)
   │               │                                            ▲                        │  │
   │               └────────────────1:n─────────────────────────┘                        │  │
   │               └────────────────1:n──────────────────────────────────────────────────┘  │
@@ -26,7 +28,8 @@ users ──1:n──► projects ──1:n──► source_snapshots ──1:n�
 | `developer_profiles` | The developer's product profile, exactly one per user (Phase 06) | yes (editable fields) |
 | `projects` | A developer's project and its source origin | yes (descriptive fields, ACTIVE → ARCHIVED) |
 | `source_snapshots` | Immutable reference to the exact source analyzed | **never** |
-| `analysis_runs` | One pipeline execution against one snapshot | only until a terminal state |
+| `analysis_runs` | One pipeline execution against one snapshot, for one result type | only until a terminal state |
+| `analysis_results` | The verified analyzer result of one successful run (Phase 10) | **never** |
 | `dna_snapshots` | Immutable DNA result of one successful run | **never** |
 
 There is deliberately no separate `repositories` or `analyses` table. A
@@ -174,8 +177,9 @@ For uploads (Phase 07, [data-flow.md](data-flow.md#source-upload)):
 | `id` | ulid PK | |
 | `project_id` | ulid FK → projects | `RESTRICT` |
 | `source_snapshot_id` | ulid | composite FK `(source_snapshot_id, project_id)` → `source_snapshots(id, project_id)`: the snapshot must belong to the same project |
+| `result_type` | varchar(32) | `foundation` (default) \| `static_analysis` (Phase 10): the analyzer result type the run asks for; never changes |
 | `status` | varchar(32) | `QUEUED` (default) \| `RUNNING` \| `SUCCEEDED` \| `FAILED` \| `CANCELLED` |
-| `analyzer_version`, `ir_version`, `metrics_version`, `scoring_version`, `contract_version` | varchar(32) null | all required once `SUCCEEDED` |
+| `analyzer_version`, `ir_version`, `metrics_version`, `scoring_version`, `contract_version` | varchar(32) null | once `SUCCEEDED`: `analyzer`, `ir` and `contract` required, `metrics` required for `static_analysis`; `scoring` stays `NULL` until Phase 11 (relaxed in Phase 10, which made foundation results persistable) |
 | `idempotency_key` | varchar(64) null | the analyzer's `Idempotency-Key` (set to the run ID in Phase 10); unique when present |
 | `started_at` | timestamp null | set on `RUNNING` |
 | `completed_at` | timestamp null | set exactly when the run reaches a terminal state |
@@ -186,8 +190,32 @@ For uploads (Phase 07, [data-flow.md](data-flow.md#source-upload)):
 | `metadata` | jsonb null | object, ≤ 16 KiB (e.g. attempts, request IDs) |
 | `created_at`, `updated_at` | timestamp | |
 
-A snapshot may have many runs, for example after an analyzer upgrade. Nothing
-enforces one run per snapshot.
+A snapshot may have many runs (several result types, re-runs after
+failures). At most one run per (snapshot, result type) can be `QUEUED` or
+`RUNNING` (partial unique index, Phase 10); `StartAnalysis` also returns an
+existing `SUCCEEDED` run instead of creating another
+([idempotency policy](data-flow.md#idempotency-policy)). `metadata` holds the
+start request's ID, the requesting user, the attempts (number, request ID,
+start time, error code) and the current job lease.
+
+### analysis_results
+
+One row per `SUCCEEDED` run (Phase 10), written in the same transaction
+that marks the run `SUCCEEDED` (`PersistAnalysisResult`).
+
+| Column | Type | Notes |
+|---|---|---|
+| `analysis_run_id` | ulid PK, FK → analysis_runs | `RESTRICT`; one result per run |
+| `result_type` | varchar(32) | `foundation` \| `static_analysis`; equals the run's |
+| `result_hash` | char(64) | equals the run's; the SHA-256 of the result's canonical JSON |
+| `contract_version`, `analyzer_version`, `ir_version` | varchar(32) | from the result |
+| `metrics_version` | varchar(32) null | required for `static_analysis` |
+| `result` | jsonb | the verified analyzer response body as received (object); re-verifiable against `result_hash`; no source text |
+| `size_bytes` | bigint | size of the response body |
+| `created_at` | timestamp | no `updated_at`: immutable |
+
+The analyzer's output evolves with its IR and metrics versions, so the
+result is kept as one JSONB document rather than normalized into tables.
 
 ### dna_snapshots
 
@@ -267,11 +295,11 @@ DNA snapshot:     created (READY or INSUFFICIENT_DATA) from a SUCCEEDED run ─�
 ## Immutability
 
 Historical records (`source_snapshots`, terminal `analysis_runs`,
-`dna_snapshots`) are append-only. This is an architectural invariant.
+`analysis_results`, `dna_snapshots`) are append-only. This is an architectural invariant.
 
 | Layer | Mechanism |
 |---|---|
-| Application | Eloquent `updating`/`deleting` hooks throw `DomainRuleViolation` (snapshots: always; runs: updates once terminal, deletes always) |
+| Application | Eloquent `updating`/`deleting` hooks throw `DomainRuleViolation` (snapshots and analysis results: always; runs: updates once terminal, deletes always). An analysis result can only be created for a `SUCCEEDED` run with the same `result_hash` and result type |
 | Mass assignment | Snapshots and runs have no fillable attributes. They are written only by domain operations (`RecordSourceSnapshot`, run transition methods) and factories. Strict mode makes a guarded attribute throw instead of being silently dropped |
 | Schema | No `updated_at` on snapshot tables; `RESTRICT` foreign keys, so deleting a user, project, snapshot or run with history fails instead of cascading |
 | API | No update or delete endpoints exist for these records (none planned) |
@@ -334,6 +362,8 @@ Every index serves a known or planned query:
 | `analysis_runs (status, updated_at)` partial, `QUEUED`/`RUNNING` only | stale-run sweeper and in-progress lookups (stays small) |
 | `analysis_runs (idempotency_key)` unique partial, non-null only | analyzer request identity |
 | `analysis_runs (id, project_id)` unique | target of `dna_snapshots`' composite FK |
+| `analysis_runs (source_snapshot_id, result_type)` unique partial, `QUEUED`/`RUNNING` only | at most one active run per logical analysis (Phase 10) |
+| `analysis_results (analysis_run_id)` primary key | the result of a run |
 | `dna_snapshots (analysis_run_id)` unique | one DNA per run; DNA of a run |
 | `dna_snapshots (user_id, created_at)` | a developer's DNA history |
 | `dna_snapshots (project_id, created_at)` | a project's DNA history |

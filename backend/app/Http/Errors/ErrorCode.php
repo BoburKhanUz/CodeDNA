@@ -32,6 +32,8 @@ enum ErrorCode: string
     case SourceUncompressedSizeExceeded = 'SOURCE_UNCOMPRESSED_SIZE_EXCEEDED';
     case SourceFileCountExceeded = 'SOURCE_FILE_COUNT_EXCEEDED';
     case SourceFileTooLarge = 'SOURCE_FILE_TOO_LARGE';
+    // Analysis runs (Phase 10).
+    case AnalysisNotCompleted = 'ANALYSIS_NOT_COMPLETED';
     case InternalError = 'INTERNAL_ERROR';
     case ServiceUnavailable = 'SERVICE_UNAVAILABLE';
 
@@ -45,7 +47,7 @@ enum ErrorCode: string
             self::MethodNotAllowed => 405,
             self::PayloadTooLarge, self::SourceArchiveTooLarge => 413,
             self::CsrfTokenMismatch => 419,
-            self::ProjectArchived, self::InvalidSourceType => 409,
+            self::ProjectArchived, self::InvalidSourceType, self::AnalysisNotCompleted => 409,
             self::ValidationFailed, self::InvalidCredentials, self::IdempotencyKeyReused,
             self::SourceArchiveInvalid, self::SourceArchiveUnsafe, self::SourceUncompressedSizeExceeded,
             self::SourceFileCountExceeded, self::SourceFileTooLarge => 422,
@@ -77,6 +79,7 @@ enum ErrorCode: string
             self::SourceUncompressedSizeExceeded => 'The archive expands beyond the allowed total size.',
             self::SourceFileCountExceeded => 'The archive contains more files than allowed.',
             self::SourceFileTooLarge => 'The archive contains a file larger than allowed.',
+            self::AnalysisNotCompleted => 'This analysis has no result: it has not succeeded.',
             self::InternalError => 'An unexpected error occurred.',
             self::ServiceUnavailable => 'The service is temporarily unavailable.',
         };

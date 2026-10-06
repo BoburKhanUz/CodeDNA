@@ -1,8 +1,9 @@
 # Data Flow — Analysis Pipeline
 
 This document describes how source arrives and how one analysis moves
-through the system. Source upload is implemented (Phase 07); the analysis
-pipeline (Phase 10) and scoring (Phase 11) are not yet.
+through the system. Source upload (Phase 07) and the analysis pipeline
+(Phase 10: queue, analyzer client, verification, persistence) are
+implemented; scoring (Phase 11) is not yet.
 
 Related: [ADR-003](../decisions/ADR-003-storage.md) (storage),
 [ADR-005](../decisions/ADR-005-service-communication.md) (communication),
@@ -16,8 +17,9 @@ The entities are implemented in Phase 05; see [data-model.md](data-model.md).
 |---|---|
 | **Project** | A user-owned project with one source origin (`UPLOAD`, or `REPOSITORY` with an HTTPS URL) |
 | **Source snapshot** | An immutable reference to an archive in object storage (key, SHA-256, size, per-project version) |
-| **Analysis run** | One execution of the pipeline against one snapshot. Re-analysis (after an analyzer upgrade or a failure) creates a **new run**; earlier runs are kept. Job retries for transient errors happen **within** a run. |
-| **DNA snapshot** | The immutable result of one `SUCCEEDED` run (at most one per run) |
+| **Analysis run** | One execution of the pipeline against one snapshot for one result type (`foundation` or `static_analysis`). Re-analysis after a failure creates a **new run**; earlier runs are kept. Job retries for transient errors happen **within** a run. |
+| **Analysis result** | The verified analyzer response of one `SUCCEEDED` run (at most one per run, immutable) |
+| **DNA snapshot** | The immutable score of one `SUCCEEDED` run (at most one per run; Phase 11, not created yet) |
 
 ## End-to-end sequence (MVP)
 
@@ -29,7 +31,7 @@ Browser (UI)     Nginx          Laravel API         Object storage      Redis qu
    │                │                │ record source snapshot (v1, v2, …)    │                 │                    │
    │  start analysis│                │                    │                  │                 │                    │
    │───────────────►│───────────────►│ create analysis run (QUEUED)          │                 │                    │
-   │                │                │──── dispatch RunAnalysisJob (after commit) ────►│       │                    │
+   │                │                │── dispatch AnalyzeSourceSnapshot (after commit) ►│       │                    │
    │                │◄── 202 {id} ───│                    │                  │                 │                    │
    │                │                │                    │                  │── job ─────────►│ run: RUNNING       │
    │                │                │                    │◄── presign GET ─────────────────────│                    │
@@ -128,73 +130,254 @@ them), discovers files and returns a versioned **foundation result**, or,
 when asked for `static_analysis`, also parses them and returns a
 **static-analysis result** with IR 1.1, metrics and findings
 ([analyzer.md](analyzer.md), [contract](../api/internal-analyzer-contract.md)).
-`make verify` exercises this path from the backend container. What is
-missing is the Laravel side: the analysis run, the queued job and the client
-come in Phase 10, and nothing a static-analysis result contains is persisted
-yet.
+The Laravel side (Phase 10) is the analysis pipeline below: the run, the
+queued job, the client that signs requests and verifies results, and
+persistence. `make verify` exercises it end to end through the public API,
+the `queue` worker and the analyzer.
+
+## Analysis pipeline (Phase 10)
+
+```text
+Project ─► Source snapshot ─► POST …/analyses ─► AnalysisRun (QUEUED) ─► Redis "analysis" queue
+   ─► AnalyzeSourceSnapshot job (claim: RUNNING) ─► AnalyzerClient
+        fresh pre-signed URL ─► signed POST /internal/v1/analyze ─► analyzer (foundation | static_analysis)
+   ◄─ verify: signature ─► JSON ─► schema ─► run ID / request ID / result type / contract ─► result_hash
+   ─► persist (one transaction): run SUCCEEDED + analysis_results row   |   or FAILED with a safe code
+   ─► GET …/analyses/{run}, GET …/analyses/{run}/result
+```
+
+| Piece | Where |
+|---|---|
+| API | `AnalysisController` (`/api/v1/projects/{project}/analyses`), [API reference](../api/README.md#analyses) |
+| Start (idempotency policy) | `App\Actions\Analysis\StartAnalysis` |
+| Job | `App\Jobs\AnalyzeSourceSnapshot` on queue connection and queue `analysis` |
+| Analyzer client | `App\Services\Analyzer\AnalyzerClient` (+ `HmacSigner`, `CanonicalJson`, `JsonSchemaValidator`, `AnalyzerErrorMap`) |
+| Persistence | `App\Actions\Analysis\PersistAnalysisResult`, table `analysis_results` |
+| Stale runs | `php artisan analysis:fail-stale`, scheduled every five minutes |
+
+Laravel owns the lifecycle, authorization, queueing, retries and
+persistence; the analyzer owns download, archive safety, discovery, parsing,
+metrics and findings (ADR-005). Phase 10 creates **no DNA snapshot**: neither
+result type is a score (Phase 11).
+
+### Result types
+
+A run asks the analyzer for exactly one result type, chosen when it is
+started and never changed: `foundation` (default; inventory, IR 1.0) or
+`static_analysis` (opt-in; parsing, IR 1.1, metrics, findings). These are
+the analyzer's own result types ([contract §4](../api/internal-analyzer-contract.md#result-types));
+the run sends it as `options.result_type`, and a result of the other type is
+rejected.
+
+### Idempotency policy
+
+A **logical analysis** is a (project, source snapshot, result type) triple;
+the project determines the user. `POST …/analyses` resolves to it:
+
+| Existing runs for the same snapshot and result type | Response |
+|---|---|
+| one `QUEUED` or `RUNNING` | `200`, that run (`Idempotent-Replayed: true`); no new job |
+| one `SUCCEEDED` (and none active) | `200`, that run: a successful result is never recomputed silently |
+| none, or only `FAILED` / `CANCELLED` | `202`, a **new** `QUEUED` run and one job; the failed runs stay as history |
+
+So a retry after a failure is explicit (the client asks again and gets a new
+run, with its own ID), and a successful run is never re-executed. Different
+result types, and different snapshots, are independent analyses.
+
+Concurrency is handled in the database: `StartAnalysis` decides inside a
+transaction that locks the project row (concurrent starts serialize), and a
+partial unique index allows at most one `QUEUED`/`RUNNING` run per
+(snapshot, result type) as a backstop. `AnalysisConcurrencyTest` runs ten
+forked processes against PostgreSQL at the same instant: one run, created
+once, returned to all ten.
+
+### Queue job
+
+`AnalyzeSourceSnapshot` carries the run ID and a random claim token, nothing
+else (no URL, key, hash or secret; asserted on the real Redis payload). Each
+execution:
+
+1. **Claims** the run in a transaction holding its row lock. `QUEUED` becomes
+   `RUNNING`. A `RUNNING` run is resumed only by the job holding its
+   **lease** (same claim token: a released retry, or a redelivery after a
+   crash), or by any job once the lease has expired (job timeout + 30 s,
+   extended by the backoff while a retry waits). Terminal runs and runs
+   leased by another live job are left alone, so duplicate jobs and
+   duplicate workers do nothing.
+2. Records the attempt (number, a **new request ID**, start time) in
+   `metadata.attempts`. The attempt count is bounded by
+   `ANALYZER_MAX_ATTEMPTS` across releases, redeliveries and duplicate jobs.
+3. Calls the analyzer (`AnalyzerClient`) with a **fresh pre-signed URL**.
+4. Persists the verified result, or handles the failure (below).
+
+If the worker kills the job (timeout), `failed()` marks the run `FAILED`
+(`ANALYZER_TIMEOUT`). A result that arrives for a run that ended meanwhile
+(stale sweeper) is discarded.
+
+### Result verification
+
+Nothing from the analyzer is trusted until every check passes; any failure
+marks the run `FAILED` and **nothing is stored**:
+
+1. HTTP: no redirects are followed; unsigned responses are never results.
+2. Response HMAC signature over status, path, request ID and the exact body,
+   with a fresh timestamp (±300 s), compared in constant time (current and,
+   during rotation, previous secret).
+3. The body is a JSON object.
+4. It validates against the published JSON Schema of the requested result
+   type (`packages/api-contracts/analyzer/v1`, mounted read-only at
+   `/var/www/contracts`), so a result of the other type fails.
+5. `analysis_run_id`, `request_id` and `result_type` equal the request's;
+   `contract_version` has major 1; analyzer and IR versions are present.
+6. `result_hash` equals the SHA-256 of the canonical JSON recomputed in
+   Laravel (`CanonicalJson`: byte-identical to the analyzer's Python
+   canonicalization, tested on real results and 3,000 float values).
+
+### Persistence of a result
+
+`PersistAnalysisResult`, in one transaction:
+
+1. Lock the run row. If it is no longer `RUNNING`, store nothing (internal
+   contract §6: results for a terminal run are ignored).
+2. Mark it `SUCCEEDED` with `result_hash` and the versions (`analyzer`, `ir`,
+   `contract`, and `metrics` for static analysis; `scoring` stays `NULL`).
+3. Insert the `analysis_results` row: the **verified response body as
+   received** (JSONB, so it can be re-verified against `result_hash` at any
+   time), its result type, hash, versions and size.
+
+Successful runs and their results are immutable. A new snapshot, or a new
+request after a failure, creates a new run; nothing overwrites history.
 
 ## Run state machine
 
 ```text
-            worker starts the job
- QUEUED ──────────────────────────► RUNNING ──── verified result ────► SUCCEEDED
-    │                                  │
-    │                                  ├── non-retryable error / attempts exhausted / stale ──► FAILED
-    │                                  └── cancelled ──► CANCELLED
+               worker claims the job
+ QUEUED ──────────────────────────────► RUNNING ──── verified result ────► SUCCEEDED
+    │                                     │  ▲
+    │                                     │  └── retryable failure: release with backoff (stays RUNNING)
+    │                                     ├── non-retryable failure / attempts exhausted / worker timeout / stale ──► FAILED
+    │                                     └── cancelled ──► CANCELLED
     ├── dispatch failure / stale ──► FAILED
     └── cancelled ──► CANCELLED
 ```
 
 Transitions are enforced by `AnalysisRunStatus::canTransitionTo()` and the
-`AnalysisRun` model ([data-model.md](data-model.md#lifecycle)).
+`AnalysisRun` model ([data-model.md](data-model.md#lifecycle)); terminal
+states never change (`SUCCEEDED → RUNNING`, `SUCCEEDED → FAILED` and
+`FAILED → QUEUED` are refused). There is no `FAILED → QUEUED`: a retry after
+failure is a new run.
 
 | Status | Set when |
 |---|---|
 | `QUEUED` | The run row is created. The job is dispatched after the transaction commits |
-| `RUNNING` | A worker started processing (`started_at`). Transient-error retries keep the run `RUNNING`; attempts are recorded in `metadata` |
-| `SUCCEEDED` | A verified analyzer result was persisted, together with its DNA snapshot, in one DB transaction |
-| `FAILED` | A non-retryable error, attempts exhausted, a dispatch failure, or the stale sweeper |
-| `CANCELLED` | The run was cancelled before finishing |
+| `RUNNING` | A worker claimed it (`started_at`). Transient-error retries keep the run `RUNNING`; attempts are recorded in `metadata.attempts` |
+| `SUCCEEDED` | A verified analyzer result was persisted with it, in one transaction |
+| `FAILED` | A non-retryable error, attempts exhausted, the job was killed, a dispatch failure, or the stale sweeper |
+| `CANCELLED` | The run was cancelled before finishing (no API yet) |
 
-- `SUCCEEDED`, `FAILED` and `CANCELLED` are **terminal and immutable**.
-- A project's displayed analysis status is the status of its **latest run**.
-- Failed runs store a `failure_code` (from the contract's error codes plus
-  `ANALYZER_UNREACHABLE`, `ANALYSIS_STALE` and `DISPATCH_FAILED`), a
-  user-safe `failure_message` and `failed_at`. Request IDs and attempt
-  counts go into `metadata`.
-- **Recovery:** a new run for the same snapshot (Phase 10 endpoint).
-  Earlier runs are kept.
-- **Stale sweeper:** a scheduled Laravel command marks runs as `FAILED`
-  (`ANALYSIS_STALE`) if they have been `RUNNING` for longer than the job
-  timeout plus a grace period. This covers crashed workers. It uses the
-  partial index on active runs.
+### Failure model
 
-## Persistence of a result (one transaction)
+`failure_code` is machine-readable; the API shows it with a fixed message
+(`AnalysisFailure::message()`), never analyzer output, exception text,
+URLs or stack traces.
 
-1. Lock the run row. If it is already terminal, ignore the result and log it
-   (idempotency).
-2. Mark the run `SUCCEEDED` with its versions (`analyzer`, `ir`, `metrics`,
-   `scoring`, `contract`) and `result_hash`.
-3. Insert the immutable DNA snapshot (allowed only for a `SUCCEEDED` run).
-4. Commit. Where metrics, features and findings (locations only) are
-   persisted is decided in Phase 10: run `metadata` or dedicated tables,
-   added only when needed.
+| Code | Meaning |
+|---|---|
+| `ANALYZER_UNAVAILABLE` | Connection failed, analyzer busy, unsigned 429/502/503/504, analyzer `INTERNAL_ERROR`/`RUN_IN_PROGRESS`, or attempts exhausted |
+| `ANALYZER_TIMEOUT` | Laravel's HTTP timeout, or the worker killed the job |
+| `ANALYZER_AUTH_FAILED` | The analyzer rejected the request signature, or its response signature did not verify |
+| `ANALYZER_INVALID_RESPONSE` | Unsigned non-error response, malformed JSON, a malformed error envelope, or an unknown error code |
+| `ANALYZER_RESULT_INVALID` | Schema violation, or run ID / request ID / result type / contract major mismatch |
+| `ANALYZER_RESULT_HASH_MISMATCH` | `result_hash` does not match the recomputed canonical hash |
+| `SOURCE_UNAVAILABLE` | The pre-signed URL could not be made, or the analyzer could not fetch or was not allowed to fetch the object |
+| `SOURCE_URL_EXPIRED` | The URL expired on every attempt |
+| `DISPATCH_FAILED` | The job could not be queued |
+| `ANALYSIS_STALE` | Stuck in `QUEUED` or `RUNNING` (stale sweeper) |
+| `ANALYSIS_FAILED` | A request Laravel built wrongly (`INVALID_REQUEST`, `RUN_CONFLICT`, …) or an unexpected error |
+| `SOURCE_TOO_LARGE`, `TOO_MANY_FILES`, `INVALID_ARCHIVE`, `NO_SUPPORTED_FILES`, `SOURCE_CHECKSUM_MISMATCH`, `ANALYSIS_TIMEOUT` | The analyzer's verdict on the source, passed through |
 
-## Timeouts and retries
+### Retry matrix
 
-These are defined in the [contract](../api/internal-analyzer-contract.md#7-timeouts-retries-and-limits).
-In summary: analyzer 240 s < HTTP 300 s < job 330 s < `retry_after` 360 s,
-with at most 3 attempts and backoff of 30 s and then 120 s, for retryable
-errors only.
+Bounded: `ANALYZER_MAX_ATTEMPTS` = 3 attempts per run (first try included),
+backoff 30 s then 120 s; an analyzer `Retry-After` is honoured if longer
+(capped at 600 s); an expired source URL is retried after 1 s with a fresh
+URL. The decision is Laravel's table (`AnalyzerErrorMap`, `AnalyzerClient`),
+not the analyzer's `retryable` flag, so a misbehaving analyzer cannot force
+retries.
+
+| Failure | Retry? | Run failure code |
+|---|---|---|
+| Connection refused / DNS / reset | yes | `ANALYZER_UNAVAILABLE` |
+| Laravel HTTP timeout (300 s) | yes | `ANALYZER_TIMEOUT` |
+| Unsigned 429, 502, 503, 504 (proxy, overload) | yes | `ANALYZER_UNAVAILABLE` |
+| `503 ANALYZER_BUSY`, `500 INTERNAL_ERROR`, `409 RUN_IN_PROGRESS` | yes | `ANALYZER_UNAVAILABLE` |
+| `502 SOURCE_FETCH_FAILED` | yes | `SOURCE_UNAVAILABLE` |
+| `422 SOURCE_URL_EXPIRED` | yes, with a fresh URL | `SOURCE_URL_EXPIRED` |
+| Response signature invalid, missing or stale | **no** | `ANALYZER_AUTH_FAILED` |
+| `401` (our signature rejected), `STALE_TIMESTAMP`, `REPLAY_DETECTED` | no | `ANALYZER_AUTH_FAILED` |
+| Malformed JSON, unsigned 200/500, unknown code | no | `ANALYZER_INVALID_RESPONSE` |
+| Schema violation, wrong run ID / request ID / result type | no | `ANALYZER_RESULT_INVALID` |
+| `result_hash` mismatch | no | `ANALYZER_RESULT_HASH_MISMATCH` |
+| `400`, `404`, `405`, `422 INVALID_REQUEST`, `409 RUN_CONFLICT` | no | `ANALYSIS_FAILED` |
+| `422 SOURCE_HOST_NOT_ALLOWED` | no | `SOURCE_UNAVAILABLE` |
+| `413`/`422` source verdicts (`INVALID_ARCHIVE`, …) | no | passed through |
+| `504 ANALYSIS_TIMEOUT` (analyzer's own hard limit; deterministic input) | no | `ANALYSIS_TIMEOUT` |
+
+A parse error inside a successful static-analysis result is part of the
+result (a `PARSE_ERROR` file), not a failure.
+
+### Timeout hierarchy
+
+Inner limits always fire first (ADR-005), validated at boot by
+`ConfigurationValidator`:
+
+| Limit | Default | Variable |
+|---|---|---|
+| Analyzer hard limit per request | 240 s | `ANALYZER_HARD_TIMEOUT_SECONDS` |
+| Laravel HTTP timeout (connect 5 s) | 300 s | `ANALYZER_TIMEOUT_SECONDS`, `ANALYZER_CONNECT_TIMEOUT_SECONDS` |
+| Job timeout (worker kills the attempt) | 330 s | `ANALYSIS_JOB_TIMEOUT_SECONDS` |
+| `retry_after` of the `analysis` queue connection | 360 s | `ANALYSIS_QUEUE_RETRY_AFTER` |
+| Lease of a claimed run | job timeout + 30 s (+ backoff while waiting) | — |
+| Stale `RUNNING` run | 1500 s without an update | `ANALYSIS_STALE_AFTER_SECONDS` |
+| Stale `QUEUED` run | 24 h | `ANALYSIS_QUEUED_STALE_AFTER_SECONDS` |
+| Pre-signed source URL | 900 s, a new one per attempt | `SOURCE_URL_TTL_SECONDS` |
+
+The `analysis` connection has its own `retry_after` because the default
+Redis connection's 90 s would let Redis hand a still-running analysis to a
+second worker.
+
+### Queue workers
+
+| Item | Value |
+|---|---|
+| Connection / queue | `analysis` / `analysis` (Redis; separate from `default`) |
+| Development | Compose service `queue`: `php artisan queue:listen analysis --queue=analysis --timeout=330 --sleep=3 --tries=0` (reloads code per job) |
+| Production | `php artisan queue:work analysis --queue=analysis --timeout=330 --sleep=3 --tries=0`, several processes sized to the analyzer's `ANALYZER_MAX_CONCURRENCY` |
+| Attempts | The job's own bound (`$tries` = `ANALYZER_MAX_ATTEMPTS`; the run's attempt count is authoritative) |
+| Scheduler | Compose service `scheduler`: `php artisan schedule:work` (runs `analysis:fail-stale` every five minutes) |
+
+### Stale runs
+
+`analysis:fail-stale` marks runs `FAILED` with `ANALYSIS_STALE` when they
+have been `RUNNING` without an update for 25 minutes (longer than three
+attempts with their backoff) or `QUEUED` for 24 hours (a lost job). This
+frees the logical analysis for a new run.
 
 ## Observability
 
-- An `X-Request-ID` is generated per public request. Each worker attempt has
-  its own request ID, which is sent to the analyzer and stored on the run.
-- Structured JSON logs carry `request_id`, `analysis_id`, `analysis_run_id`,
-  `attempt`, `status` and `failure_code`.
-- Run timestamps (`queued_at`, `started_at`, `finished_at`) support duration
-  and queue-latency metrics.
+- An `X-Request-ID` is generated per public request and stored in the new
+  run's `metadata.request_id`. Each worker attempt has its own request ID,
+  which is sent to the analyzer, checked in its response and stored in
+  `metadata.attempts`. The run ID is the durable identity (the analyzer's
+  `analysis_run_id` and `Idempotency-Key`).
+- Lifecycle log events: `analysis.queued`, `analysis.started`,
+  `analysis.retrying`, `analysis.completed`, `analysis.failed`,
+  `analysis.result_ignored`, `analysis.duplicate_job_skipped`, with
+  `analysis_run_id`, `project_id`, `source_snapshot_id`, `result_type`,
+  `attempt`, `request_id`, `duration_ms`, `status`, `error_code`,
+  `http_status`, `analyzer_code` and `result_hash` (IDs and codes only).
+- Run timestamps (`created_at`, `started_at`, `completed_at`) support
+  duration and queue-latency metrics.
 - **Never logged:** source code, file contents, archive entry names, secret
   values, pre-signed URLs, HMAC secrets or signatures, session cookies, or
   tokens.

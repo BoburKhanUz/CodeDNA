@@ -44,7 +44,9 @@ traffic is to MinIO, for pre-signed downloads
 | `nginx` | `nginx:1.28-alpine` | Single-origin router | `127.0.0.1:80` | codedna | `GET /nginx-health` |
 | `frontend` | `docker/node/Dockerfile` → `codedna-frontend:dev` | Next.js 16 dev server ([frontend.md](frontend.md)) | — | codedna | HTTP `GET /` on :3000 |
 | `backend` | `docker/php/Dockerfile` → `codedna-backend:dev` | Laravel 13 API on PHP-FPM 8.4 ([backend.md](backend.md)) | — | codedna, codedna-internal | Laravel `/up` over FastCGI (`codedna-healthcheck`) |
-| `analyzer` | `docker/python/Dockerfile` → `codedna-analyzer:dev` | FastAPI analyzer foundation (Phase 08): `GET /internal/v1/health`, HMAC-authenticated `POST /internal/v1/analyze` | — | codedna-internal | `GET /internal/v1/health` |
+| `queue` | `codedna-backend:dev` (same image, environment and bind mounts as `backend`) | Analysis queue worker (Phase 10): `php artisan queue:listen analysis --queue=analysis --timeout=330` | — | codedna, codedna-internal | none (process) |
+| `scheduler` | `codedna-backend:dev` | Laravel scheduler (Phase 10): `php artisan schedule:work` (`analysis:fail-stale` every five minutes) | — | codedna | none (process) |
+| `analyzer` | `docker/python/Dockerfile` → `codedna-analyzer:dev` | FastAPI analyzer (Phases 08–09): `GET /internal/v1/health`, HMAC-authenticated `POST /internal/v1/analyze` | — | codedna-internal | `GET /internal/v1/health` |
 | `postgres` | `postgres:16-alpine` | Primary database | `127.0.0.1:5432` | codedna | `pg_isready` |
 | `redis` | `redis:7.4-alpine` | Cache, queues, sessions | `127.0.0.1:6379` | codedna | `redis-cli ping` |
 | `minio` | `cgr.dev/chainguard/minio` (digest-pinned) | Local S3-compatible storage | `127.0.0.1:9000` (API), `127.0.0.1:9001` (console) | codedna, codedna-internal | `GET /minio/health/live` |
@@ -98,10 +100,12 @@ the analyzer, and the analyzer cannot reach the internet.
 | `codedna_minio_data` | `minio:/data` | Object storage |
 | `codedna_frontend_node_modules` | `frontend:/app/node_modules` | Linux-native npm packages, kept apart from the host |
 
-Source code is bind-mounted: `./backend` → `/var/www/backend`,
-`./frontend` → `/app`, `./analyzer` → `/app` (read-only), and
-`./packages/api-contracts` → `/contracts` (read-only, for the analyzer's
-contract tests).
+Source code is bind-mounted: `./backend` → `/var/www/backend` (also in
+`queue` and `scheduler`), `./frontend` → `/app`, `./analyzer` → `/app`
+(read-only), and `./packages/api-contracts` → `/contracts` in the analyzer
+(read-only, for its contract tests) and → `/var/www/contracts` in the
+backend, `queue` and `scheduler` (read-only: the analyzer client validates
+responses against these JSON Schemas, Phase 10).
 `backend/vendor/` is created on the host by the backend container and is
 git-ignored.
 
@@ -314,6 +318,16 @@ and prints no secrets:
    inventory, checks the retry, bad-signature, stale-timestamp,
    replay, run-conflict and metadata-URL cases, and deletes the object.
    Finally the analyzer's workspace must be empty.
+10. Analysis pipeline (Phase 10), within the Phase 07 probe flow: the
+    `queue` and `scheduler` services run; `POST …/analyses` starts a
+    foundation run (`202 QUEUED`) and a separate static-analysis run; both
+    are polled through the public API until the `queue` worker, the
+    analyzer and Laravel's verification have made them `SUCCEEDED`; a
+    repeated request returns the existing run (`200`); the result endpoint
+    returns the verified IR 1.1 result without source text, URLs or MinIO
+    hostnames; an invalid result type is `422`; no analysis job is left in
+    Redis; an archived project cannot start analyses (`409`). Runs and
+    results are deleted with the probe.
 
 ## Troubleshooting
 
@@ -334,6 +348,6 @@ and prints no secrets:
 ## Not included yet (later phases)
 
 Analyzer replay protection shared across instances (when the analyzer is
-scaled out), queue worker and scheduler containers (Phase 10), TLS and production images
+scaled out), TLS and production images
 (Phase 25), and the R2 bucket and credentials (Phase 25; the application
 side needs only `SOURCE_STORAGE_*`).

@@ -50,6 +50,47 @@ return [
     ],
 
     // Request rate limits (see docs/api/README.md#rate-limiting).
+    /*
+    | Internal analyzer (docs/api/internal-analyzer-contract.md) and the
+    | analysis pipeline (docs/architecture/data-flow.md). The URL comes only
+    | from configuration, never from a request. Timeouts must keep
+    | hard_timeout < http timeout < job timeout < queue retry_after
+    | (validated at boot by App\Support\ConfigurationValidator).
+    */
+    'analyzer' => [
+        'url' => rtrim((string) env('ANALYZER_URL', 'http://analyzer:8000'), '/'),
+        'hmac_secret' => (string) env('ANALYZER_HMAC_SECRET', ''),
+        // Accepted for response verification during secret rotation only.
+        'hmac_secret_previous' => (string) env('ANALYZER_HMAC_SECRET_PREVIOUS', ''),
+        // Largest |now - X-CodeDNA-Timestamp| accepted on analyzer responses.
+        'max_skew_seconds' => 300,
+        'connect_timeout_seconds' => (int) env('ANALYZER_CONNECT_TIMEOUT_SECONDS', 5),
+        'timeout_seconds' => (int) env('ANALYZER_TIMEOUT_SECONDS', 300),
+        // The analyzer's own hard limit per request (same variable as the analyzer).
+        'hard_timeout_seconds' => (int) env('ANALYZER_HARD_TIMEOUT_SECONDS', 240),
+        // Attempts per run (first try included) for retryable failures, and the
+        // delay before each retry; an analyzer Retry-After is honoured if longer.
+        'max_attempts' => (int) env('ANALYZER_MAX_ATTEMPTS', 3),
+        'backoff_seconds' => [30, 120],
+        // Lifetime of the pre-signed source URL generated for each attempt.
+        'source_url_ttl_seconds' => (int) env('SOURCE_URL_TTL_SECONDS', 900),
+        // JSON Schemas of the analyzer responses (packages/api-contracts/analyzer/v1).
+        'contracts_path' => (string) env('ANALYZER_CONTRACTS_PATH', '/var/www/contracts/analyzer/v1'),
+    ],
+
+    'analysis' => [
+        // Dedicated queue connection and queue (config/queue.php "analysis").
+        'queue_connection' => 'analysis',
+        'queue' => 'analysis',
+        // Worker-side limit for one job attempt; must exceed the HTTP timeout.
+        'job_timeout_seconds' => (int) env('ANALYSIS_JOB_TIMEOUT_SECONDS', 330),
+        // A RUNNING run untouched for this long is failed by analysis:fail-stale
+        // (all attempts with their backoff, plus a grace period).
+        'stale_after_seconds' => (int) env('ANALYSIS_STALE_AFTER_SECONDS', 1500),
+        // A QUEUED run never picked up for this long is failed as stale too.
+        'queued_stale_after_seconds' => (int) env('ANALYSIS_QUEUED_STALE_AFTER_SECONDS', 86400),
+    ],
+
     'rate_limits' => [
         // Every /api/v1 route, per authenticated user or per IP.
         'api_per_minute' => 120,
@@ -70,6 +111,7 @@ return [
         // POST /api/v1/projects/{project}/source-snapshots, per user.
         'source_upload_per_minute' => 5,
         'source_upload_per_hour' => 60,
+        'analysis_create_per_minute' => 10,
     ],
 
 ];

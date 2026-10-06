@@ -38,10 +38,14 @@ The internal analyzer (Phases 08–09) can securely fetch, extract and
 inventory a snapshot, parse ten languages with Tree-sitter (nothing is
 executed) and, on request, return a versioned static-analysis result (IR 1.1,
 deterministic metrics and structural findings; see
-[metrics-v1.md](docs/architecture/metrics-v1.md)), but nothing calls it from
-the product yet and it computes no scores; analysis runs and DNA
-snapshots exist in the [data model](docs/architecture/data-model.md) but
-nothing creates them yet. The full plan is in
+[metrics-v1.md](docs/architecture/metrics-v1.md)). Since Phase 10 the API
+can start an analysis of a snapshot (`foundation` or `static_analysis`): a
+Redis queue worker calls the analyzer, verifies the signed result and its
+hash, and stores it as an analysis run's result
+([data-flow.md](docs/architecture/data-flow.md#analysis-pipeline-phase-10)).
+There is no analysis UI yet and nothing computes scores; DNA snapshots exist
+in the [data model](docs/architecture/data-model.md) but nothing creates
+them yet. The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance

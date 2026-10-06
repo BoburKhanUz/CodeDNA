@@ -6,20 +6,21 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 09 (AST and static analysis) complete. The
+**Current status:** Phase 10 (analysis queue and pipeline) complete. The
 local environment runs every component. Users can register, sign in and
 sign out, edit their developer profile, change their password, create and
 archive projects, and upload ZIP archives that become immutable, versioned
 source snapshots in S3-compatible storage. The internal analyzer can
 authenticate a signed request, download a snapshot from an allow-listed
 pre-signed URL, extract it safely, discover files and languages, and return
-return the Phase 08 foundation result or, on request, parse ten languages
+the Phase 08 foundation result or, on request, parse ten languages
 with Tree-sitter into IR 1.1 and return a versioned, hashed static-analysis
 result with deterministic metrics and structural
-findings ([metrics-v1.md](metrics-v1.md)), but it computes no scores yet and
-the product does not call it: analysis runs and DNA snapshots exist
-in the domain model ([data-model.md](data-model.md)) but nothing creates
-them. Everything below is the target architecture.
+findings ([metrics-v1.md](metrics-v1.md)). The API starts analyses of
+snapshots; a Redis queue worker calls the analyzer, verifies and stores the
+result as an analysis run's result ([data-flow.md](data-flow.md#analysis-pipeline-phase-10)).
+Nothing computes scores yet, and DNA snapshots exist in the domain model
+([data-model.md](data-model.md)) but nothing creates them. Everything below is the target architecture.
 
 ## System context
 
@@ -111,7 +112,7 @@ at a time:
 | 07 | Projects and repository management (ZIP upload) | Done |
 | 08 | Python analyzer foundation (IR frozen first) | Done |
 | 09 | AST and static analysis (PHP → Python → JS → TS) | Done (all ten languages) |
-| 10 | Analysis queue and pipeline | Next |
-| 11 | CodeDNA scoring engine | — |
+| 10 | Analysis queue and pipeline | Done |
+| 11 | CodeDNA scoring engine | Next |
 | 12 | DNA dashboard (**MVP complete**) | — |
 | 13–25 | Competencies, skill gaps, AI, challenges, learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |

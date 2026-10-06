@@ -32,6 +32,13 @@ final class ConfigurationValidatorTest extends TestCase
                 'archive_bytes' => 52428800, 'uncompressed_bytes' => 209715200, 'files' => 20000,
                 'single_file_bytes' => 26214400, 'path_length' => 512,
             ],
+            'codedna.analyzer' => [
+                'url' => 'http://analyzer:8000', 'hmac_secret' => str_repeat('s', 64), 'hmac_secret_previous' => '',
+                'hard_timeout_seconds' => 240, 'timeout_seconds' => 300, 'connect_timeout_seconds' => 5,
+                'max_attempts' => 3, 'source_url_ttl_seconds' => 900,
+            ],
+            'codedna.analysis' => ['job_timeout_seconds' => 330],
+            'queue.connections.analysis.retry_after' => 360,
         ], $overrides) as $key => $value) {
             $config->set($key, $value);
         }
@@ -127,5 +134,32 @@ final class ConfigurationValidatorTest extends TestCase
         foreach (['', 'phpunit/', 'staging/eu-1/'] as $prefix) {
             $this->assertSame([], (new ConfigurationValidator)->problems($this->config(['codedna.sources.key_prefix' => $prefix]), 'production'), $prefix);
         }
+    }
+
+    public function test_the_analyzer_timeout_chain_must_let_inner_limits_fire_first(): void
+    {
+        $analyzer = $this->config()->get('codedna.analyzer');
+        $problems = (new ConfigurationValidator)->problems(
+            $this->config(['codedna.analyzer' => ['timeout_seconds' => 240] + $analyzer, 'queue.connections.analysis.retry_after' => 90]),
+            'local',
+        );
+
+        $this->assertContains('ANALYZER_HARD_TIMEOUT_SECONDS must be lower than ANALYZER_TIMEOUT_SECONDS.', $problems);
+        $this->assertContains('ANALYSIS_JOB_TIMEOUT_SECONDS must be lower than ANALYSIS_QUEUE_RETRY_AFTER.', $problems);
+    }
+
+    public function test_the_analyzer_needs_a_secret_an_internal_url_and_bounded_settings(): void
+    {
+        $analyzer = $this->config()->get('codedna.analyzer');
+        $problems = (new ConfigurationValidator)->problems($this->config(['codedna.analyzer' => [
+            'url' => 'http://analyzer:8000/evil?x=1', 'hmac_secret' => 'short', 'hmac_secret_previous' => 'short',
+            'max_attempts' => 0, 'source_url_ttl_seconds' => 7200,
+        ] + $analyzer]), 'production');
+
+        $this->assertContains('ANALYZER_URL must be an http(s) origin without a path (e.g. http://analyzer:8000).', $problems);
+        $this->assertContains('ANALYZER_HMAC_SECRET must be at least 32 characters (64 hex characters recommended).', $problems);
+        $this->assertContains('ANALYZER_HMAC_SECRET_PREVIOUS must be empty or at least 32 characters.', $problems);
+        $this->assertContains('ANALYZER_MAX_ATTEMPTS must be between 1 and 10.', $problems);
+        $this->assertContains('SOURCE_URL_TTL_SECONDS must be between 60 and 3600 (the analyzer accepts at most 3600).', $problems);
     }
 }

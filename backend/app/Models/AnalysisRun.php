@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Casts\JsonObject;
+use App\Enums\AnalysisResultType;
 use App\Enums\AnalysisRunStatus;
 use App\Exceptions\DomainRuleViolation;
 use App\Support\AnalysisVersions;
@@ -29,6 +30,7 @@ use Illuminate\Support\Carbon;
  * @property string $id
  * @property string $project_id
  * @property string $source_snapshot_id
+ * @property AnalysisResultType $result_type
  * @property AnalysisRunStatus $status
  * @property string|null $analyzer_version
  * @property string|null $ir_version
@@ -57,6 +59,7 @@ class AnalysisRun extends Model
     /** @var array<string, mixed> */
     protected $attributes = [
         'status' => 'QUEUED',
+        'result_type' => 'foundation',
     ];
 
     protected static function booted(): void
@@ -83,6 +86,7 @@ class AnalysisRun extends Model
     {
         return [
             'status' => AnalysisRunStatus::class,
+            'result_type' => AnalysisResultType::class,
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
             'failed_at' => 'datetime',
@@ -104,6 +108,16 @@ class AnalysisRun extends Model
     public function sourceSnapshot(): BelongsTo
     {
         return $this->belongsTo(SourceSnapshot::class);
+    }
+
+    /**
+     * The verified analyzer result (SUCCEEDED runs of Phase 10 and later).
+     *
+     * @return HasOne<AnalysisResult, $this>
+     */
+    public function result(): HasOne
+    {
+        return $this->hasOne(AnalysisResult::class);
     }
 
     /**

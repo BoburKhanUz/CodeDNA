@@ -22,9 +22,11 @@ snapshots, competencies, learning data, organizations, teams and billing.
 It also owns authorization, rate limiting and every business rule.
 
 The backend receives `ANALYZER_HMAC_SECRET` (shared with the analyzer) and
-`ANALYZER_URL`; the analyzer client that uses them, the analysis run
-lifecycle and the queue job come in Phase 10. No application code calls the
-analyzer yet.
+`ANALYZER_URL`. Since Phase 10 it orchestrates analyses: `AnalysisController`
+and `StartAnalysis` create runs, the `AnalyzeSourceSnapshot` job (queue
+`analysis`) calls the analyzer through `App\Services\Analyzer\AnalyzerClient`,
+which signs requests and verifies responses, and `PersistAnalysisResult`
+stores verified results ([data-flow.md](data-flow.md#analysis-pipeline-phase-10)).
 
 **Laravel never parses, executes or analyzes source code.** It validates the
 *archive structure* of uploads (without extracting them), stores them, and
@@ -68,6 +70,9 @@ backend/
 │   ├── Actions/Profile/           ResolveDeveloperProfile, UpdateDeveloperProfile
 │   ├── Actions/Projects/          CreateProject, UpdateProject, ArchiveProject
 │   ├── Actions/Snapshots/         StoreUploadedSource (upload workflow), RecordSourceSnapshot (versioning)
+│   ├── Actions/Analysis/          StartAnalysis (idempotent start), PersistAnalysisResult
+│   ├── Console/Commands/          FailStaleAnalyses (analysis:fail-stale)
+│   ├── Jobs/                      AnalyzeSourceSnapshot (queue "analysis")
 │   ├── Casts/JsonObject.php       JSONB object cast ({} for empty, lists rejected)
 │   ├── Enums/                     domain states, SupportedLocale, ProgrammingLanguage
 │   ├── Exceptions/                ApiException (client-facing, carries an ErrorCode),
@@ -75,27 +80,29 @@ backend/
 │   ├── Http/
 │   │   ├── Controllers/Api/V1/    HealthController, MeController, Auth/{Register,Login,Logout,Password}Controller,
 │   │   │                          Profile/ProfileController,
-│   │   │                          Projects/{Project,ArchiveProject,SourceSnapshot}Controller
+│   │   │                          Projects/{Project,ArchiveProject,SourceSnapshot,Analysis}Controller
 │   │   ├── Errors/                ErrorCode (vocabulary), ApiExceptionRenderer
 │   │   ├── Middleware/            AssignRequestId, RequireSession
 │   │   ├── Requests/              Auth/{Register,Login,ChangePassword}Request,
 │   │   │                          Profile/UpdateDeveloperProfileRequest, PaginatedRequest,
 │   │   │                          Projects/{Store,Update,List}ProjectRequest, ProjectRules,
-│   │   │                          Projects/{StoreSourceSnapshot,ListSourceSnapshots}Request
+│   │   │                          Projects/{StoreSourceSnapshot,ListSourceSnapshots}Request,
+│   │   │                          Analysis/{StoreAnalysis,ListAnalyses}Request
 │   │   └── Resources/             UserResource, DeveloperProfileResource, ProjectResource,
-│   │                              SourceSnapshotResource, PaginatedCollection
-│   ├── Models/                    User, DeveloperProfile, Project, SourceSnapshot, AnalysisRun, DnaSnapshot
+│   │                              SourceSnapshotResource, AnalysisRunResource, PaginatedCollection
+│   ├── Models/                    User, DeveloperProfile, Project, SourceSnapshot, AnalysisRun, AnalysisResult, DnaSnapshot
 │   ├── Policies/                  UserPolicy, DeveloperProfilePolicy, ProjectPolicy (owner-only, 404 otherwise)
 │   ├── Rules/HttpsUrl.php         https:// URL, host required, no embedded credentials
 │   ├── Providers/AppServiceProvider.php   config validation, rate limiters, password rules, strict models
 │   ├── Services/SystemHealth.php          database/Redis readiness checks
+│   ├── Services/Analyzer/         AnalyzerClient, HmacSigner, CanonicalJson, JsonSchemaValidator, AnalyzerErrorMap
 │   ├── Support/ConfigurationValidator.php
 │   └── Support/Sources/           ZipArchiveInspector, SourceArchiveLimits, ArchiveSummary, LanguageGuesser
 ├── bootstrap/app.php              routing (api prefix), middleware, exception rendering
-├── config/codedna.php             CodeDNA settings (service, version, proxies, source storage and limits, rate limits)
+├── config/codedna.php             CodeDNA settings (service, version, proxies, source storage and limits, analyzer, analysis, rate limits)
 ├── config/filesystems.php         `sources` disk (S3 API: MinIO locally, R2 in production)
 ├── routes/api.php                 mounts /api/v1 → routes/api_v1.php
-└── tests/{Unit,Feature/{Auth,Api,Domain,Infrastructure,Profile,Projects},Support}
+└── tests/{Unit,Feature/{Analysis,Auth,Api,Domain,Infrastructure,Profile,Projects},Support,Fixtures}
 ```
 
 ### Conventions
@@ -227,9 +234,10 @@ validation error.
 
 ### Planned tables (later phases)
 
-Whether metrics, features and findings of a run get dedicated tables, or
-stay in the run's `metadata`, is decided in Phase 10. Provider integrations
-(GitHub/GitLab) add their own tables in Phase 19.
+Phase 10 stores each verified analyzer result as one JSONB document
+(`analysis_results`); metrics and findings get dedicated tables only when a
+query needs them. Provider integrations (GitHub/GitLab) add their own tables
+in Phase 19.
 
 `repository_files` and a materialized `developer_dna` table are not planned
 for the MVP. Developer DNA is derived from `dna_snapshots`
@@ -261,19 +269,20 @@ for the MVP. Developer DNA is derived from `dna_snapshots`
 |---|---|---|
 | Cache | `redis` store | `cache` connection, DB 1 |
 | Sessions | `redis` | `default` connection, DB 0 (`codedna-database-` prefix) |
-| Queues | `redis` connection, queue `default` | `default` connection, DB 0 |
+| Queues | `redis` connection, queue `default`; `analysis` connection, queue `analysis` (Phase 10, `retry_after` 360 s) | `default` connection, DB 0 |
 | Rate limiter | default cache store | DB 1 |
 | Tests | — | DBs 14 and 15, prefix `codedna-test-` |
 
 Outside the test suite, boot fails unless sessions, cache and queues use
 Redis (`ConfigurationValidator`).
 
-**Queue foundation.** The Redis queue and the `failed_jobs` table exist,
-and a test proves a job is pushed to Redis, executed by `queue:work` and
-removed. No application jobs and no worker container exist yet. The worker
-service, the dedicated `analysis` queue and `RunAnalysisJob` (tries 3,
-timeout 330 s, backoff 30 s/120 s, `retry_after` 360 s) come in Phase 10
-(ADR-005).
+**Queues.** The Redis queue and the `failed_jobs` table exist since
+Phase 03. Phase 10 adds the dedicated `analysis` connection and queue (its
+own `retry_after` of 360 s, above the 330 s job timeout), the
+`AnalyzeSourceSnapshot` job (3 attempts, backoff 30 s/120 s), the `queue`
+worker service and the `scheduler` service (`analysis:fail-stale` every five
+minutes). See [data-flow.md](data-flow.md#queue-workers) for worker commands
+and the timeout chain, which `ConfigurationValidator` checks at boot.
 
 ## Configuration and logging
 

@@ -85,6 +85,9 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        RateLimiter::for('analysis-create', static fn (Request $request): Limit => Limit::perMinute($limits['analysis_create_per_minute'])
+            ->by('analysis-create:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
         RateLimiter::for('password-change', static function (Request $request) use ($limits): array {
             $key = 'password-change:'.($request->user()?->getAuthIdentifier() ?? $request->ip());
 

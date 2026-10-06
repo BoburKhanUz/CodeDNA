@@ -42,10 +42,14 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `GET` | `/api/v1/projects/{project}/source-snapshots` | owner | 200 | Snapshot history (paginated, newest first) |
 | `POST` | `/api/v1/projects/{project}/source-snapshots` | owner | 201 / 200 | Upload a ZIP archive as a new snapshot (200 = idempotent replay) |
 | `GET` | `/api/v1/projects/{project}/source-snapshots/{snapshot}` | owner | 200 | One snapshot |
+| `GET` | `/api/v1/projects/{project}/analyses` | owner | 200 | Analysis runs (paginated, newest first) |
+| `POST` | `/api/v1/projects/{project}/analyses` | owner | 202 / 200 | Start an analysis of a snapshot (200 = the existing equivalent run) |
+| `GET` | `/api/v1/projects/{project}/analyses/{run}` | owner | 200 | One analysis run: status, failure, result metadata |
+| `GET` | `/api/v1/projects/{project}/analyses/{run}/result` | owner | 200 | The verified analyzer result of a `SUCCEEDED` run |
 
 There is no `DELETE` for projects (`405`) and no update, delete or download
-for snapshots. See [Projects](#projects) and
-[Source snapshots](#source-snapshots).
+for snapshots. See [Projects](#projects),
+[Source snapshots](#source-snapshots) and [Analyses](#analyses).
 
 ### `GET /api/v1/health`
 
@@ -278,8 +282,8 @@ purge workflow (a later phase).
 ## Source snapshots
 
 A source snapshot is an immutable, versioned record of one uploaded archive.
-Uploading **stores** source; it does not analyze it (analysis arrives in
-Phase 10).
+Uploading **stores** source; it does not analyze it. Analyses are started
+separately ([Analyses](#analyses)).
 
 ```json
 {
@@ -372,6 +376,93 @@ Newest version first; `page` and `per_page` as for projects.
 
 One snapshot. A snapshot of another project, even one the caller owns,
 answers `404`: the URL must name the snapshot's own project.
+
+## Analyses
+
+An analysis run is one execution of the analysis pipeline (Phase 10) against
+one source snapshot of the project, for one **result type**: `foundation`
+(the default; the file inventory) or `static_analysis` (parsing, IR 1.1,
+static metrics and structural findings). Runs are processed asynchronously
+by a queue worker that calls the internal analyzer; clients poll the run.
+Neither result type is a score, and no DNA snapshot is created. The
+pipeline is described in [data-flow.md](../architecture/data-flow.md#analysis-pipeline-phase-10).
+
+```json
+{
+  "data": {
+    "id": "01jbx7t3k4q9z8v6m2n5p1r0sa",
+    "type": "analysis_run",
+    "project_id": "01jbx7r2…",
+    "source_snapshot_id": "01jbx7s9…",
+    "result_type": "static_analysis",
+    "status": "SUCCEEDED",
+    "created_at": "2026-10-08T12:00:00Z",
+    "started_at": "2026-10-08T12:00:01Z",
+    "completed_at": "2026-10-08T12:00:04Z",
+    "failure": null,
+    "result": {
+      "result_hash": "<64 hex>",
+      "versions": { "contract": "1.0", "analyzer": "0.2.0", "ir": "1.1", "metrics": "1.0" }
+    }
+  }
+}
+```
+
+| Field | Notes |
+|---|---|
+| `status` | `QUEUED` → `RUNNING` → `SUCCEEDED` \| `FAILED` (or `CANCELLED`). Terminal states never change. There is no progress percentage |
+| `result_type` | `foundation` \| `static_analysis`; fixed when the run is created |
+| `failure` | `null`, or for `FAILED` runs `{ "code", "message" }`: a stable code ([failure model](../architecture/data-flow.md#failure-model)) and a fixed, user-safe message |
+| `result` | `null` until `SUCCEEDED`; then the result's hash and versions (`metrics` is `null` for foundation results) |
+
+Runs never expose analyzer URLs, request signatures, pre-signed source
+URLs, storage keys, attempt metadata or raw analyzer errors.
+
+### `POST /api/v1/projects/{project}/analyses`
+
+```json
+{ "source_snapshot_id": "01jbx7s9…", "result_type": "static_analysis" }
+```
+
+- `source_snapshot_id` (required): a snapshot of **this** project. Any other
+  value, including another user's snapshot, is `422 VALIDATION_FAILED` on
+  `source_snapshot_id`. Clients cannot supply URLs, storage keys or analyzer
+  options; unknown fields are ignored.
+- `result_type` (optional, default `foundation`): `foundation` or
+  `static_analysis`; anything else is `422 VALIDATION_FAILED`.
+- **Idempotent per logical analysis** (project, snapshot, result type):
+  - if an equivalent run is `QUEUED`, `RUNNING` or `SUCCEEDED`, it is
+    returned with `200` and `Idempotent-Replayed: true` (no new run, no new
+    work; a successful result is never recomputed);
+  - otherwise (none yet, or only `FAILED`/`CANCELLED` runs) a new `QUEUED`
+    run is created and returned with `202`. This is how a failed analysis is
+    retried; the failed run stays in the history.
+  - Concurrent identical requests resolve to the same run.
+- `404 RESOURCE_NOT_FOUND` for another user's project; `409 PROJECT_ARCHIVED`
+  for an archived project.
+
+### `GET /api/v1/projects/{project}/analyses`
+
+The project's runs, newest first, paginated like other collections
+(`?page`, `?per_page`).
+
+### `GET /api/v1/projects/{project}/analyses/{run}`
+
+One run. A run of another project answers `404`. Poll this endpoint until
+the status is terminal.
+
+### `GET /api/v1/projects/{project}/analyses/{run}/result`
+
+The verified analyzer result of a `SUCCEEDED` run, as stored:
+
+```json
+{ "data": { "analysis_run_id": "…", "type": "analysis_result", "result_type": "static_analysis",
+            "result_hash": "<64 hex>", "result": { "result_type": "static_analysis", "ir": { … }, "metrics": { … }, "findings": { … } } } }
+```
+
+`result` is the analyzer's result document ([internal contract](internal-analyzer-contract.md#4-post-internalv1analyze)):
+structure, counts, metrics and findings, never source text. A run that has
+not succeeded answers `409 ANALYSIS_NOT_COMPLETED`.
 
 ## Authentication (browser, Sanctum SPA)
 
@@ -496,6 +587,7 @@ Every error, on every API route, uses one envelope:
 | 405 | `METHOD_NOT_ALLOWED` | Wrong HTTP method for the route (e.g. `DELETE` on a project) |
 | 409 | `PROJECT_ARCHIVED` | The project is archived: no edits, no uploads |
 | 409 | `INVALID_SOURCE_TYPE` | Upload to a project whose source type is not `UPLOAD` |
+| 409 | `ANALYSIS_NOT_COMPLETED` | The analysis run has no result (it has not succeeded) |
 | 413 | `PAYLOAD_TOO_LARGE` | Body exceeds the Nginx/PHP limit |
 | 413 | `SOURCE_ARCHIVE_TOO_LARGE` | Archive over `SOURCE_MAX_ARCHIVE_BYTES` |
 | 419 | `CSRF_TOKEN_MISMATCH` | Missing or stale `X-XSRF-TOKEN` |
@@ -533,6 +625,7 @@ queued jobs (Laravel Context).
 | `project-create` | `POST /projects` | 10 / minute | user ID |
 | `project-update` | `PATCH /projects/{project}`, `POST /projects/{project}/archive` | 30 / minute | user ID |
 | `source-upload` | `POST /projects/{project}/source-snapshots` | 5 / minute **and** 60 / hour | user ID |
+| `analysis-create` | `POST /projects/{project}/analyses` | 10 / minute | user ID |
 
 Every attempt counts, successful or not. When a limit is exceeded the
 response is `429 RATE_LIMITED` with `Retry-After`. Throttled routes also
@@ -543,13 +636,10 @@ configured in `config/codedna.php`.
 
 | Method | Path | Phase |
 |---|---|---|
-| `POST` | `/api/v1/projects/{project}/source-snapshots/{snapshot}/analysis-runs` (start or re-run) | 10 |
-| `GET` | `/api/v1/analysis-runs/{run}` (status and result) | 10 |
 | `GET` | `/api/v1/dna` | 11/12 |
 | `GET` | `/api/v1/dna/history` | 12 |
 
 Paths are indicative and are finalized in their phase. They follow the
 domain model in [data-model.md](../architecture/data-model.md): projects
 own snapshots, snapshots have analysis runs, and runs produce DNA snapshots.
-Analysis run `status` values: `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`,
-`CANCELLED` ([data-flow.md](../architecture/data-flow.md)).
+Analysis endpoints exist since Phase 10 ([Analyses](#analyses)).

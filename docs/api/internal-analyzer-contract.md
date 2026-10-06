@@ -4,7 +4,8 @@
   listed in [§ 9](#9-amendments) (Phase 08, and the additive Phase 09
   `static_analysis` result type, which a request opts into; the Phase 08
   `foundation` result stays the default, unchanged). Implemented by the analyzer (`analyzer/app`);
-  the Laravel client arrives in Phase 10.
+  the Laravel client is `backend/app/Services/Analyzer/AnalyzerClient`
+  (Phase 10).
 - **Audience:** Laravel backend (client) and the Python analyzer (server)
 - **Decision record:** [ADR-005](../decisions/ADR-005-service-communication.md)
 
@@ -25,7 +26,8 @@ Machine-readable JSON Schemas for these payloads are published in
 [`packages/api-contracts/analyzer/v1/`](../../packages/api-contracts/README.md):
 the request, the foundation result (including the IR 1.0 file record) and the
 error envelope. The analyzer validates real requests and responses against
-them in its tests; the Laravel client will do the same in Phase 10.
+them in its tests, and the Laravel client validates every response it accepts
+against them at run time (Phase 10).
 
 ## 2. Endpoints
 
@@ -110,8 +112,9 @@ v1\n<timestamp>\n<HTTP status code>\n<request path>\n<X-Request-ID>\n<hex SHA-25
 ```
 
 Laravel verifies the response signature before trusting a result. A response
-that fails verification is treated as a transport failure, which is
-retryable.
+that fails verification fails the run without a retry (Phase 10 amendment,
+§9): an unauthenticated result is treated as a security failure, not a
+transport failure.
 
 ## 4. `POST /internal/v1/analyze`
 
@@ -439,9 +442,11 @@ secrets, file contents, internal hostnames or stack traces.
 | 504 | `ANALYSIS_TIMEOUT` | false | Hard time limit exceeded. Deterministic input means a retry would time out again. |
 | 500 | `INTERNAL_ERROR` | true | Unexpected failure (bug); details are only in the analyzer logs |
 
-Transport failures, such as a connection refused, a Laravel-side timeout or
-a response signature that fails verification, are treated by Laravel as
-retryable with the code `ANALYZER_UNREACHABLE`.
+Transport failures, such as a connection refused or a Laravel-side timeout,
+are retried by Laravel (`ANALYZER_UNAVAILABLE`, `ANALYZER_TIMEOUT`). A
+response whose signature fails verification is **not** retried
+(`ANALYZER_AUTH_FAILED`; amended in Phase 10, §9). Laravel's complete retry
+matrix is in [data-flow.md](../architecture/data-flow.md#retry-matrix).
 
 `details` only ever holds fixed identifiers and numbers (`reason`,
 `fields`, `limit_bytes`, `limit_files`, `status`), never submitted values,
@@ -535,3 +540,16 @@ Freezing the draft for implementation changed or clarified:
 | Health `limits` also lists the parser limits (its `versions` are unchanged) | Laravel can check how an analyzer instance bounds parsing |
 | `findings` is a flat, sorted, capped list of structural findings (`parse_errors` from the draft became the `parse/syntax-error` rule) | One shape for every rule; secret findings are a later phase |
 | No new error codes | Per-file problems are statuses, not errors; the run-level codes of Phase 08 still apply |
+
+### Phase 10 (Laravel client; contract stays `1.0`)
+
+No analyzer behaviour changed. The Laravel side was implemented with these
+clarifications:
+
+| Change | Why |
+|---|---|
+| A response that fails signature verification (or is unsigned, or stale beyond ±300 s) is **not retried**; the run fails with `ANALYZER_AUTH_FAILED` (previously: "transport failure, retryable") | An unauthenticated response is a security failure; retrying it hides tampering or misconfiguration |
+| Laravel's failure codes are `ANALYZER_UNAVAILABLE`, `ANALYZER_TIMEOUT`, `ANALYZER_AUTH_FAILED`, `ANALYZER_INVALID_RESPONSE`, `ANALYZER_RESULT_INVALID`, `ANALYZER_RESULT_HASH_MISMATCH`, `SOURCE_UNAVAILABLE`, `SOURCE_URL_EXPIRED`, `DISPATCH_FAILED`, `ANALYSIS_STALE`, `ANALYSIS_FAILED`, plus the analyzer's source verdicts passed through (replaces the draft's `ANALYZER_UNREACHABLE`) | One stable, documented vocabulary on `analysis_runs.failure_code` ([failure model](../architecture/data-flow.md#failure-model)) |
+| Retry decisions follow Laravel's own table, not the envelope's `retryable` flag; they agree for every documented code | A misbehaving analyzer cannot force retries |
+| Laravel also checks `request_id`, `analysis_run_id`, `result_type` and the contract major of a result, validates it against the published schema of the requested result type, and recomputes `result_hash` before storing anything | Integrity: only a verified result for exactly this request is persisted |
+| Each attempt uses a new `X-Request-ID` and a new pre-signed URL; `Idempotency-Key` stays the run ID | Replay protection and expired-URL recovery without changing the run's identity |

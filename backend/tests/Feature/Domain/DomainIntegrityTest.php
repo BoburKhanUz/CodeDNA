@@ -102,7 +102,8 @@ final class DomainIntegrityTest extends TestCase
         $snapshot = SourceSnapshot::factory()->create();
         foreach ([
             AnalysisRun::factory()->for($snapshot)->create(),
-            AnalysisRun::factory()->for($snapshot)->running()->create(),
+            // At most one active run per (snapshot, result type) since Phase 10.
+            AnalysisRun::factory()->for($snapshot)->running()->create(['result_type' => 'static_analysis']),
             AnalysisRun::factory()->for($snapshot)->succeeded()->create(),
             AnalysisRun::factory()->for($snapshot)->failed()->create(),
             AnalysisRun::factory()->for($snapshot)->cancelled()->create(),
@@ -153,7 +154,8 @@ final class DomainIntegrityTest extends TestCase
     {
         $project = Project::factory()->create();
         SourceSnapshot::factory()->count(3)->for($project)->create()
-            ->each(fn (SourceSnapshot $snapshot) => AnalysisRun::factory()->count(2)->for($snapshot)->create());
+            ->each(fn (SourceSnapshot $snapshot) => AnalysisRun::factory()->count(2)->for($snapshot)
+                ->sequence(['result_type' => 'foundation'], ['result_type' => 'static_analysis'])->create());
 
         // Strict mode (outside production) turns lazy loading into an exception.
         $this->expectException(LazyLoadingViolationException::class);
@@ -165,7 +167,8 @@ final class DomainIntegrityTest extends TestCase
     {
         $project = Project::factory()->create();
         SourceSnapshot::factory()->count(3)->for($project)->create()
-            ->each(fn (SourceSnapshot $snapshot) => AnalysisRun::factory()->count(2)->for($snapshot)->create());
+            ->each(fn (SourceSnapshot $snapshot) => AnalysisRun::factory()->count(2)->for($snapshot)
+                ->sequence(['result_type' => 'foundation'], ['result_type' => 'static_analysis'])->create());
 
         DB::enableQueryLog();
         $loaded = Project::query()->with('sourceSnapshots.analysisRuns')->findOrFail($project->id);

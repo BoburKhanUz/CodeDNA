@@ -157,6 +157,25 @@ upload_archive() { # upload_archive FILE [extra curl args...] -> prints "<status
         "$base/api/v1/projects/$project_id/source-snapshots" | awk '{status=$NF; $NF=""; print status, $0}'
 }
 export -f upload_archive
+api_json() { # api_json METHOD PATH [JSON] -> prints "<status> <body>"
+    local method=$1 path=$2 body=${3:-}
+    local xsrf
+    xsrf=$(awk '$6 == "XSRF-TOKEN" {print $7}' "$jar" | python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.stdin.read().strip()))')
+    curl -s -w ' %{http_code}' -b "$jar" -c "$jar" -X "$method" -H "$origin" \
+        -H 'Accept: application/json' -H 'Content-Type: application/json' \
+        ${xsrf:+-H "X-XSRF-TOKEN: $xsrf"} ${body:+-d "$body"} "$base$path" | awk '{status=$NF; $NF=""; print status, $0}'
+}
+json_field() { python3 -c 'import json, sys; d = json.loads(sys.stdin.read().split(" ", 1)[1]); print(eval("d" + sys.argv[1]))' "$1"; }
+wait_for_run() { # wait_for_run RUN_ID STATUS: polls the public API until the run reaches STATUS (60 s)
+    for _ in $(seq 1 60); do
+        status=$(api_json GET "/api/v1/projects/$project_id/analyses/$1" | json_field '["data"]["status"]' 2>/dev/null)
+        [[ "$status" == "$2" ]] && return 0
+        [[ "$status" == "FAILED" || "$status" == "CANCELLED" ]] && return 1
+        sleep 1
+    done
+    return 1
+}
+export -f api_json json_field wait_for_run
 curl -s -o /dev/null -c "$jar" -H "$origin" "$base/sanctum/csrf-cookie"
 check "register a probe user" bash -c \
     "[[ \$(api POST /api/v1/auth/register '{\"name\":\"Verify\",\"email\":\"$probe_email\",\"password\":\"$probe_password\",\"password_confirmation\":\"$probe_password\"}') == 201 ]]"
@@ -175,6 +194,31 @@ storage_key=$(db "SELECT storage_key FROM source_snapshots WHERE project_id = '$
 check "snapshot object exists in MinIO under projects/{project}/snapshots/{snapshot}/source.zip" bash -c \
     "[[ '$storage_key' == projects/$project_id/snapshots/*/source.zip ]]"
 check "object is readable with the application credentials" mc_app "mc stat \"app/\$SOURCE_STORAGE_BUCKET/$storage_key\""
+# Phase 10: analysis through the public API, the analysis queue (queue service)
+# and the analyzer; the run is polled until the worker finished it.
+snapshot_id=$(db "SELECT id FROM source_snapshots WHERE project_id = '$project_id'" 2>/dev/null | tr -d '[:space:]')
+export snapshot_id
+check "queue worker and scheduler are running" bash -c \
+    "[[ \$(${compose[*]} ps --format '{{.State}}' queue) == running && \$(${compose[*]} ps --format '{{.State}}' scheduler) == running ]]"
+foundation_start=$(api_json POST "/api/v1/projects/$project_id/analyses" "{\"source_snapshot_id\":\"$snapshot_id\"}")
+foundation_run=$(json_field '["data"]["id"]' <<< "$foundation_start" 2>/dev/null)
+export foundation_run
+check "POST analyses (default result type) -> 202 QUEUED foundation run" bash -c \
+    "[[ '$foundation_start' == 202* && '$foundation_start' == *'\"result_type\":\"foundation\"'* && '$foundation_start' == *'\"status\":\"QUEUED\"'* ]]"
+check "foundation run reaches SUCCEEDED (queue worker -> analyzer -> verified result)" wait_for_run "$foundation_run" SUCCEEDED
+static_start=$(api_json POST "/api/v1/projects/$project_id/analyses" "{\"source_snapshot_id\":\"$snapshot_id\",\"result_type\":\"static_analysis\"}")
+static_run=$(json_field '["data"]["id"]' <<< "$static_start" 2>/dev/null)
+export static_run
+check "POST analyses (static_analysis) -> 202, a separate run" bash -c "[[ '$static_start' == 202* && '$static_run' != '$foundation_run' ]]"
+check "static_analysis run reaches SUCCEEDED" wait_for_run "$static_run" SUCCEEDED
+check "repeating a request returns the existing run (200, same ID)" bash -c \
+    "out=\$(api_json POST /api/v1/projects/$project_id/analyses '{\"source_snapshot_id\":\"$snapshot_id\"}'); [[ \$out == 200* && \$out == *'$foundation_run'* ]]"
+check "GET result -> verified IR 1.1 static analysis with metrics, no source or URLs" bash -c \
+    "out=\$(api_json GET /api/v1/projects/$project_id/analyses/$static_run/result); [[ \$out == 200* && \$(json_field '[\"data\"][\"result\"][\"ir\"][\"version\"]' <<< \"\$out\") == 1.1 && \$(json_field '[\"data\"][\"result\"][\"parsing\"][\"files\"][\"PARSED\"]' <<< \"\$out\") == 1 && \$out != *echo* && \$out != *X-Amz* && \$out != *minio* ]]"
+check "invalid result_type -> 422 VALIDATION_FAILED" bash -c \
+    "api_json POST /api/v1/projects/$project_id/analyses '{\"source_snapshot_id\":\"$snapshot_id\",\"result_type\":\"full\"}' | grep -q '^422 .*VALIDATION_FAILED'"
+check "no analysis jobs left in Redis" bash -c \
+    "[[ \$(${compose[*]} exec -T redis redis-cli --raw LLEN codedna-database-queues:analysis) == 0 && \$(${compose[*]} exec -T redis redis-cli --raw ZCARD codedna-database-queues:analysis:reserved) == 0 ]]"
 check "cross-site upload without X-XSRF-TOKEN -> 419" bash -c \
     "[[ \$(curl -s -o /dev/null -w '%{http_code}' -b '$jar' -H '$origin' -H 'Sec-Fetch-Site: cross-site' -H 'Accept: application/json' -F 'archive=@$upload_dir/source.zip' '$base/api/v1/projects/$project_id/source-snapshots') == 419 ]]"
 check "non-ZIP upload -> 422 SOURCE_ARCHIVE_INVALID" bash -c \
@@ -184,12 +228,14 @@ check "body above the Nginx limit -> 413 PAYLOAD_TOO_LARGE (JSON envelope)" bash
 check "POST /api/v1/projects/{project}/archive -> 200" bash -c "[[ \$(api POST /api/v1/projects/$project_id/archive) == 200 ]]"
 check "archived project rejects uploads -> 409 PROJECT_ARCHIVED" bash -c \
     "upload_archive '$upload_dir/source.zip' | grep -q '^409 .*PROJECT_ARCHIVED'"
+check "archived project cannot start analyses -> 409 PROJECT_ARCHIVED" bash -c \
+    "api_json POST /api/v1/projects/$project_id/analyses '{\"source_snapshot_id\":\"$snapshot_id\",\"result_type\":\"static_analysis\"}' | grep -q '^409 .*PROJECT_ARCHIVED'"
 rm -rf "$jar" "$upload_dir"
 if [[ -n "$project_id" ]]; then
     check "remove probe objects from MinIO" mc_app "mc rm --recursive --force \"app/\$SOURCE_STORAGE_BUCKET/projects/$project_id/\""
 fi
-check "remove probe rows (snapshots, project, profile, user)" db \
-    "BEGIN; DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
+check "remove probe rows (results, runs, snapshots, project, profile, user)" db \
+    "BEGIN; DELETE FROM analysis_results WHERE analysis_run_id IN (SELECT r.id FROM analysis_runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM analysis_runs WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
 
 echo "Analyzer service (Phases 08-09)"
 check "analyzer publishes no host port" bash -c \
