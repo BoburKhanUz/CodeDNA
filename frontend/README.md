@@ -1,32 +1,41 @@
 # frontend/ — Next.js UI
 
-**Status: Phase 02 bootstrap.** This is a minimal Next.js 16 app (App
-Router, TypeScript, Tailwind CSS, ESLint; created with `create-next-app`)
-with a single placeholder page that proves the container is served through
-Nginx. It has **no product UI** and no data. **Phase 04** will add the
-frontend foundation: shadcn/ui, the API client, tests, and the route
-structure.
+**Status: Phase 04 foundation.** Next.js 16.3 (App Router), React 19.2,
+TypeScript, Tailwind CSS v4 and shadcn/ui, served through Nginx at
+<http://localhost>.
 
-What runs today (via Docker, see
-[infrastructure.md](../docs/architecture/infrastructure.md)):
+What exists:
 
-- `next dev` (Next.js 16.3, React 19.2, Node 22 LTS) behind Nginx at
-  `http://localhost`, with hot reload over WebSocket.
-- `node_modules` lives in a Docker volume, not on the host.
+- `/` public landing page; `/login`, `/register` (redirect to `/app` when
+  signed in)
+- `/app`: minimal authenticated shell (current user, sign out). Signed-out
+  visitors get a `307` to `/login`.
+- Laravel Sanctum SPA authentication: HttpOnly session cookie plus the
+  `XSRF-TOKEN` → `X-XSRF-TOKEN` CSRF flow. No tokens in browser storage.
+- A small same-origin API client (`src/lib/api`) that understands the
+  Laravel `{"data"}` / `{"error"}` envelopes
 
-Responsibilities: user interface only. It talks exclusively to the public
-Laravel API (`/api/v1`) and never to the analyzer, database or storage.
-Authentication uses Sanctum SPA session cookies. Tokens are never stored in
-`localStorage` or `sessionStorage`.
-
-Planned routes: `/login`, `/register`, `/dashboard`, `/projects`,
-`/repositories`, `/analyses`, `/dna`, `/profile`, `/settings`.
+There are **no product features yet** (no projects, analyses or DNA views).
 
 ```bash
-make shell-frontend        # bash in the container
-npm run lint               # inside the container
+make up              # runs `next dev` in Docker (hot reload via Nginx)
+make test            # includes Vitest (npm test) for the frontend
+make lint-frontend   # ESLint + TypeScript type check
+make shell-frontend  # bash in the container (npm run …)
 ```
 
-- Architecture overview: [docs/architecture/overview.md](../docs/architecture/overview.md)
-- Authentication: [ADR-006](../docs/decisions/ADR-006-authentication.md)
-- API conventions: [docs/api/README.md](../docs/api/README.md)
+| npm script | Purpose |
+|---|---|
+| `dev` | Next.js dev server (the container's default command) |
+| `build` / `start` | Production build and server |
+| `lint` | ESLint |
+| `typecheck` | `next typegen && tsc --noEmit` |
+| `test` / `test:watch` | Vitest |
+
+`node_modules` lives in a Docker volume. After changing dependencies, the
+container's entrypoint re-installs on the next start (`package-lock.json` is
+compared to a stamp).
+
+- Architecture, auth flow and API client: [docs/architecture/frontend.md](../docs/architecture/frontend.md)
+- API contract: [docs/api/README.md](../docs/api/README.md); TypeScript mirror in `src/lib/api/types.ts`
+- Authentication decision: [ADR-006](../docs/decisions/ADR-006-authentication.md)

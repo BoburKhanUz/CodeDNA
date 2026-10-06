@@ -45,6 +45,13 @@ check "GET /api/* -> Laravel (JSON 404)" bash -c \
 check "GET /internal/v1/health -> 404 from Nginx (analyzer not exposed)" bash -c \
     "[[ \$(curl -s -o /dev/null -w '%{http_code}' '$base/internal/v1/health') == 404 ]] && ! curl -s '$base/internal/v1/health' | grep -q '\"status\"'"
 
+echo "Frontend through Nginx (Phase 04)"
+check "GET /login and /register -> 200" bash -c \
+    "[[ \$(curl -s -o /dev/null -w '%{http_code}' '$base/login') == 200 && \$(curl -s -o /dev/null -w '%{http_code}' '$base/register') == 200 ]]"
+check "anonymous GET /app -> 307 to /login" bash -c \
+    "[[ \$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' '$base/app') == '307 '*'/login' ]]"
+check "frontend sends no X-Powered-By header" bash -c "! curl -sI '$base/login' | grep -qi '^x-powered-by'"
+
 echo "Backend API through Nginx (Phase 03)"
 check "GET /api/v1/health -> 200, database and redis ok" bash -c \
     "curl -fsS '$base/api/v1/health' | grep -q '\"checks\":{\"database\":\"ok\",\"redis\":\"ok\"}'"
@@ -72,8 +79,12 @@ check "GET /sanctum/csrf-cookie -> 204 + XSRF-TOKEN cookie" bash -c \
 check "session cookie is HttpOnly" grep -qE '^#HttpOnly_.*codedna-session' "$jar"
 check "POST without X-XSRF-TOKEN -> 419 (CSRF enforced)" bash -c \
     "[[ \$(curl -s -o /dev/null -w '%{http_code}' -b '$jar' -X POST -H '$origin' -H 'Accept: application/json' '$base/api/v1/auth/logout') == 419 ]]"
+check "cross-site POST (Sec-Fetch-Site: cross-site) without X-XSRF-TOKEN -> 419" bash -c \
+    "[[ \$(curl -s -o /dev/null -w '%{http_code}' -b '$jar' -X POST -H '$origin' -H 'Sec-Fetch-Site: cross-site' -H 'Accept: application/json' '$base/api/v1/auth/logout') == 419 ]]"
 check "POST /api/v1/auth/register -> 201" bash -c "[[ \$(api POST /api/v1/auth/register '$register_body') == 201 ]]"
 check "GET /api/v1/me with session -> 200" bash -c "[[ \$(api GET /api/v1/me) == 200 ]]"
+check "GET /app with session -> 200, rendered for the user (Next.js server-side session check)" bash -c \
+    "curl -fsS -b '$jar' '$base/app' | grep -q '$probe_email'"
 check "POST /api/v1/auth/logout -> 204" bash -c "[[ \$(api POST /api/v1/auth/logout) == 204 ]]"
 check "GET /api/v1/me after logout -> 401" bash -c "[[ \$(api GET /api/v1/me) == 401 ]]"
 check "POST /api/v1/auth/login -> 200" bash -c \

@@ -49,6 +49,11 @@ services:
     image: codedna-frontend:dev
     environment:
       NEXT_TELEMETRY_DISABLED: "1"
+      # Server-side only (never sent to the browser): how the Next.js server
+      # reaches the API to check the session, and the public origin it
+      # presents to Sanctum (lib/config.server.ts).
+      BACKEND_INTERNAL_URL: http://nginx
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       # Set to "true" if file changes are not picked up (some Docker Desktop setups).
       WATCHPACK_POLLING: ${FRONTEND_WATCH_POLLING:-false}
     volumes:

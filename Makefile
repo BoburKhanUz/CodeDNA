@@ -76,10 +76,16 @@ test: ## Run all test suites inside the running containers
 	$(COMPOSE) exec -T analyzer pytest
 	./scripts/ensure-test-database.sh
 	$(COMPOSE) exec -T backend vendor/bin/phpunit
+	$(COMPOSE) exec -T frontend npm test
 
 .PHONY: lint-backend
 lint-backend: ## Check backend code style (Laravel Pint) in the running container
 	$(COMPOSE) exec -T backend vendor/bin/pint --test
+
+.PHONY: lint-frontend
+lint-frontend: ## Lint (ESLint) and type-check (tsc) the frontend in the running container
+	$(COMPOSE) exec -T frontend npm run lint
+	$(COMPOSE) exec -T frontend npm run typecheck
 
 .PHONY: verify
 verify: ## Runtime smoke test of the running environment (routing, networking, storage)

@@ -19,13 +19,16 @@ ASSESS ─► ANALYZE ─► IDENTIFY GAPS ─► LEARN ─► PRACTICE ─► R
 | 01 | Monorepo foundation | ✅ Done |
 | 02 | Docker infrastructure | ✅ Done |
 | 03 | Laravel backend foundation | ✅ Done |
-| 04 | Next.js frontend foundation | ⏭ Next |
+| 04 | Next.js frontend foundation | ✅ Done |
+| 05 | Database and domain model | ⏭ Next |
 
 **No product features exist yet.** The Docker environment runs every
 component: Nginx, Laravel 13, Next.js 16, the FastAPI analyzer, PostgreSQL
-16, Redis 7 and MinIO. The Laravel API provides registration, login, logout,
-`/api/v1/me` and `/api/v1/health` (see [API reference](docs/api/README.md)).
-The frontend and analyzer are still minimal bootstraps. The full plan is in
+16, Redis 7 and MinIO. You can register, sign in and sign out at
+<http://localhost> (Next.js UI, Laravel Sanctum session cookies; see
+[frontend](docs/architecture/frontend.md) and the [API reference](docs/api/README.md)).
+The authenticated area is a minimal shell, and the analyzer is still a
+bootstrap. The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance
@@ -46,7 +49,7 @@ AI only interprets stored results, never produces scores.
 ## Documentation
 
 - Product: [vision](docs/product/vision.md) · [MVP](docs/product/mvp.md)
-- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md)
+- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md)
 - API: [public conventions](docs/api/README.md) · [internal analyzer contract](docs/api/internal-analyzer-contract.md)
 - Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md)
 
@@ -55,7 +58,7 @@ AI only interprets stored results, never produces scores.
 ```text
 codedna/
 ├── backend/            Laravel 13 API (bootstrap; foundation in Phase 03)
-├── frontend/           Next.js 16 UI (bootstrap; foundation in Phase 04)
+├── frontend/           Next.js 16 UI (auth foundation)
 ├── analyzer/           Python analysis engine (health endpoint; Phase 08+)
 ├── docker/             Dockerfiles, Nginx and MinIO configuration
 ├── docs/               Product, architecture, API, ADRs
@@ -82,7 +85,7 @@ Open <http://localhost>.
 
 | URL | Service |
 |---|---|
-| <http://localhost> | Next.js (through Nginx) |
+| <http://localhost> | Next.js: landing page, `/login`, `/register`, `/app` |
 | <http://localhost/api/v1/health> | API readiness (database, Redis) |
 | <http://localhost/up> | Laravel liveness route (through Nginx) |
 | <http://localhost:9001> | MinIO console (credentials in `.env`) |
@@ -95,8 +98,9 @@ marked `[required]` first. Compose refuses to start without them.
 ```bash
 make ps / make logs / make logs s=backend
 make shell-backend | shell-frontend | shell-analyzer
-make test      # analyzer pytest + backend PHPUnit (dedicated test DB)
-make lint-backend  # Laravel Pint style check
+make test      # analyzer pytest + backend PHPUnit (dedicated test DB) + frontend Vitest
+make lint-backend   # Laravel Pint style check
+make lint-frontend  # ESLint + TypeScript type check
 make verify    # runtime smoke test: routing, networking, isolation, S3
 make down      # stop (data volumes are kept)
 make check     # static checks run in CI

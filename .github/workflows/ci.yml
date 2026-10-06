@@ -127,8 +127,11 @@ jobs:
       - name: Runtime smoke test
         run: make verify
 
-      - name: Test suites (analyzer pytest, backend PHPUnit)
+      - name: Test suites (analyzer pytest, backend PHPUnit, frontend Vitest)
         run: make test
+
+      - name: Frontend lint and type check
+        run: make lint-frontend
 
       - name: Backend code style (Laravel Pint)
         run: make lint-backend

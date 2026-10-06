@@ -38,7 +38,7 @@ framework.
 | Component | Tests | Lint / format / static analysis |
 |---|---|---|
 | Backend | PHPUnit 12 (Pest planned — see Phase 03 note) | Laravel Pint (Larastan planned) |
-| Frontend | Vitest + Testing Library, Playwright (E2E) | ESLint, Prettier, `tsc --noEmit` |
+| Frontend | Vitest + Testing Library (Phase 04); Playwright E2E planned | ESLint, `tsc --noEmit` |
 | Analyzer | pytest (unit, golden/regression fixtures) | Ruff (lint + format), mypy (strict) |
 | Repository | — | markdownlint, yamllint, actionlint, gitleaks |
 

@@ -6,11 +6,11 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 03 (Laravel backend foundation) complete. The
-local environment runs every component. The backend provides
-authentication (Sanctum SPA sessions), the versioned API skeleton,
-standard errors and health checks. No business domain exists yet. Everything
-below is the target architecture.
+**Current status:** Phase 04 (Next.js frontend foundation) complete. The
+local environment runs every component. Users can register, sign in and sign
+out through the Next.js UI (Sanctum SPA sessions), and the authenticated area
+is a minimal shell. No business domain exists yet. Everything below is the
+target architecture.
 
 ## System context
 
@@ -37,7 +37,7 @@ below is the target architecture.
 
 | Component | Directory | Owns | Docs |
 |---|---|---|---|
-| Frontend | `frontend/` | UI only: dashboard, projects, analyses, DNA views | (Phase 04) |
+| Frontend | `frontend/` | UI only: dashboard, projects, analyses, DNA views | [frontend.md](frontend.md) |
 | Backend | `backend/` | Auth, domain, persistence, orchestration, authorization, business rules | [backend.md](backend.md) |
 | Analyzer | `analyzer/` | Parsing, IR, metrics, features, deterministic DNA scoring | [analyzer.md](analyzer.md) |
 | AI interpretation | (Phase 15) | Explaining stored deterministic results; never producing scores | ADR to be written in Phase 15 |
@@ -96,8 +96,8 @@ at a time:
 | 01 | Monorepo foundation | Done |
 | 02 | Docker infrastructure | Done |
 | 03 | Laravel backend foundation | Done |
-| 04 | Next.js frontend foundation | Next |
-| 05 | Database and domain model | — |
+| 04 | Next.js frontend foundation | Done |
+| 05 | Database and domain model | Next |
 | 06 | Authentication and developer profile | — |
 | 07 | Projects and repository management (ZIP upload) | — |
 | 08 | Python analyzer foundation (IR frozen first) | — |

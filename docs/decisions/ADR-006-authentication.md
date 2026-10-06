@@ -1,6 +1,6 @@
 # ADR-006: Authentication — Laravel Sanctum (SPA Cookies, Tokens Later)
 
-- **Status:** Accepted (implemented in Phase 03; see docs/api/README.md#authentication-browser-sanctum-spa)
+- **Status:** Accepted (backend implemented in Phase 03, frontend in Phase 04; see docs/api/README.md#authentication-browser-sanctum-spa and docs/architecture/frontend.md)
 - **Date:** 2026-10-05
 - **Related:** [API conventions](../api/README.md), [Backend architecture](../architecture/backend.md)
 
@@ -35,6 +35,16 @@ Authentication tokens must never be readable by JavaScript or stored in
 3. Laravel validates it. `SameSite=Lax` gives a second layer of defense.
 4. All API requests also send `Accept: application/json` and
    `X-Requested-With: XMLHttpRequest`.
+
+### Implementation note: Laravel 13 origin check (Phase 04)
+
+Laravel 13's CSRF middleware (`PreventRequestForgery`) also accepts a
+state-changing request whose `Sec-Fetch-Site` header is `same-origin`.
+Browsers set that header themselves, and scripts cannot forge it. Cross-site
+requests carry `Sec-Fetch-Site: cross-site` and still need a valid token
+(`419` otherwise; checked by `make verify`). The frontend still always sends
+`X-XSRF-TOKEN`, which keeps older browsers without `Sec-Fetch-Site` and
+non-browser clients protected by the token check.
 
 ### 3. Domain topology
 

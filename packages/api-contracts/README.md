@@ -6,7 +6,7 @@ Planned layout:
 
 ```text
 api-contracts/
-├── public/v1/openapi.yaml          # public /api/v1 (Phase 03 onward, grows per endpoint)
+├── public/v1/openapi.yaml          # public /api/v1, when introduced (docs/api/README.md is the contract until then)
 └── analyzer/v1/                    # internal analyzer contract (Phase 08)
     ├── analyze-request.schema.json
     ├── analyze-response.schema.json

@@ -4,8 +4,10 @@ The public product API is served by Laravel under `/api/v1`. The **internal**
 analyzer API is separate and never public; see
 [internal-analyzer-contract.md](internal-analyzer-contract.md).
 
-**Status:** Phase 03. The endpoints below are implemented and tested. Planned
-endpoints are listed at the end and **do not exist yet**.
+**Status:** Phase 03/04. The endpoints below are implemented and tested, and
+the Next.js frontend consumes them. Planned endpoints are listed at the end
+and **do not exist yet**. The frontend's TypeScript mirror of this contract
+is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 
 ## Versioning
 
@@ -144,7 +146,9 @@ unless `SESSION_DOMAIN` is set.
 ### CSRF
 
 Every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) from a
-browser must send `X-XSRF-TOKEN`. Otherwise the response is `419
+browser must send `X-XSRF-TOKEN`. Laravel 13 additionally accepts requests
+that the browser itself marks `Sec-Fetch-Site: same-origin`. Cross-site
+requests always need the token (see ADR-006). Otherwise the response is `419
 CSRF_TOKEN_MISMATCH`, and the client should call `/sanctum/csrf-cookie` and
 retry. CSRF protection is never disabled. `make verify` checks enforcement
 through Nginx, because Laravel skips it inside PHPUnit.

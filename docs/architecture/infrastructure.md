@@ -42,7 +42,7 @@ traffic is to MinIO, for pre-signed downloads
 | Service | Image / build | Purpose | Host port | Networks | Healthcheck |
 |---|---|---|---|---|---|
 | `nginx` | `nginx:1.28-alpine` | Single-origin router | `127.0.0.1:80` | codedna | `GET /nginx-health` |
-| `frontend` | `docker/node/Dockerfile` → `codedna-frontend:dev` | Next.js 16 dev server (bootstrap page only) | — | codedna | HTTP `GET /` on :3000 |
+| `frontend` | `docker/node/Dockerfile` → `codedna-frontend:dev` | Next.js 16 dev server ([frontend.md](frontend.md)) | — | codedna | HTTP `GET /` on :3000 |
 | `backend` | `docker/php/Dockerfile` → `codedna-backend:dev` | Laravel 13 API on PHP-FPM 8.4 ([backend.md](backend.md)) | — | codedna, codedna-internal | Laravel `/up` over FastCGI (`codedna-healthcheck`) |
 | `analyzer` | `docker/python/Dockerfile` → `codedna-analyzer:dev` | FastAPI; only `GET /internal/v1/health` | — | codedna-internal | `GET /internal/v1/health` |
 | `postgres` | `postgres:16-alpine` | Primary database | `127.0.0.1:5432` | codedna | `pg_isready` |
@@ -138,10 +138,11 @@ credentials reach only `minio` and `minio-init`.
 | `SOURCE_STORAGE_ACCESS_KEY_ID`, `SOURCE_STORAGE_SECRET_ACCESS_KEY` | **yes**, generated | backend, minio-init | Bucket-scoped application user |
 | `ANALYZER_HMAC_SECRET` | generated | — | Used from Phase 08 |
 | `FRONTEND_WATCH_POLLING` | default `false` | frontend | Polling file watcher fallback |
+| `FRONTEND_URL` | default `http://localhost` | frontend (server only) | Origin presented to Sanctum for server-side session checks |
 
 Fixed in `docker-compose.yml` (not configurable in `.env`, because they are
 properties of the Docker network): `DB_HOST=postgres`, `REDIS_HOST=redis`,
-`SOURCE_STORAGE_ENDPOINT=http://minio:9000`,
+`SOURCE_STORAGE_ENDPOINT=http://minio:9000`, `BACKEND_INTERNAL_URL=http://nginx` (frontend → API),
 `ANALYZER_URL=http://analyzer:8000`, `MAIL_MAILER=log`, plus the
 `pgsql`/`phpredis`/`redis` driver selections. The backend refuses to boot
 with an invalid configuration (see [backend.md](backend.md#configuration-and-logging)).
@@ -168,8 +169,9 @@ make logs            # follow all logs;  make logs s=backend  for one service
 make shell-backend   # bash in the Laravel container (artisan, composer)
 make shell-frontend  # bash in the Next.js container (npm)
 make shell-analyzer  # bash in the analyzer container
-make test            # analyzer pytest + backend PHPUnit (dedicated codedna_test DB)
+make test            # analyzer pytest + backend PHPUnit (codedna_test DB) + frontend Vitest
 make lint-backend    # Laravel Pint style check
+make lint-frontend   # ESLint + TypeScript type check
 make verify          # runtime smoke test (see below)
 make down            # stop and remove containers; volumes are kept
 make build           # rebuild images after Dockerfile or requirements changes
@@ -257,12 +259,16 @@ and prints no secrets:
 3. Networking: backend → analyzer and MinIO; Laravel → PostgreSQL
    (`artisan db:show`) and Redis (cache round-trip); Nginx and the frontend
    **cannot** reach the analyzer; the analyzer **cannot** reach the internet.
-4. Backend API through Nginx: `/api/v1/health` reports database and Redis
+4. Frontend through Nginx: `/login` and `/register` return `200`, anonymous
+   `/app` returns `307` to `/login`, no `X-Powered-By` header is sent, and
+   `/app` renders for the probe user's session (the Next.js server checks
+   the session with Laravel).
+5. Backend API through Nginx: `/api/v1/health` reports database and Redis
    `ok`. Then a real browser-style Sanctum flow: CSRF cookie, `419` without
-   `X-XSRF-TOKEN`, register, `/me` with the session, logout, `/me` → `401`,
+   `X-XSRF-TOKEN` (also with `Sec-Fetch-Site: cross-site`), register, `/me` with the session, logout, `/me` → `401`,
    login. It also checks that the session cookie is HttpOnly. The probe user
    is deleted afterwards.
-5. Storage, using the application credentials: upload; bucket creation is
+6. Storage, using the application credentials: upload; bucket creation is
    denied; a pre-signed GET URL is generated and **downloaded by the
    analyzer**; the unsigned URL is rejected; the object is deleted.
 

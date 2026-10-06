@@ -4,8 +4,8 @@
 
 | Package | Purpose | Created in |
 |---|---|---|
-| [`api-contracts/`](api-contracts/README.md) | Machine-readable API contracts | Phase 03 (public OpenAPI), Phase 08 (analyzer JSON Schemas) |
-| [`types/`](types/README.md) | Shared TypeScript types generated from the contracts | Phase 04 |
+| [`api-contracts/`](api-contracts/README.md) | Machine-readable API contracts | Analyzer JSON Schemas in Phase 08; public OpenAPI when introduced (until then `docs/api/README.md` is the contract) |
+| [`types/`](types/README.md) | Shared TypeScript types generated from the contracts | When a second TS consumer or an OpenAPI description exists |
 
 Contracts are the source of truth for both sides of every interface; the
 human-readable specifications live in [docs/api/](../docs/api/README.md).
