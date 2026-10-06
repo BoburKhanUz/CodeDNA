@@ -1,7 +1,7 @@
 /**
  * TypeScript mirror of the Laravel API contract (docs/api/README.md).
  *
- * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot}Resource.php,
+ * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary}Resource.php,
  * backend/app/Http/Resources/PaginatedCollection.php,
  * backend/app/Enums/{SupportedLocale,ProgrammingLanguage}.php and
  * backend/app/Http/Errors/{ErrorCode,ApiExceptionRenderer}.php. When those
@@ -223,3 +223,158 @@ export type SourceSnapshotResponse = DataEnvelope<SourceSnapshot>;
  * Used only for an early client-side check; the server is authoritative.
  */
 export const MAX_ARCHIVE_BYTES = 50 * 1024 * 1024;
+
+/** Analysis result types (Phase 10). Only `static_analysis` results are scored. */
+export type AnalysisResultType = "foundation" | "static_analysis";
+
+export const ANALYSIS_RUN_STATUSES = ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"] as const;
+export type AnalysisRunStatus = (typeof ANALYSIS_RUN_STATUSES)[number];
+
+/** `AnalysisRunResource` — GET /api/v1/projects/{project}/analyses (read here; started through the API). */
+export interface AnalysisRun {
+  id: string;
+  type: "analysis_run";
+  project_id: string;
+  source_snapshot_id: string;
+  result_type: AnalysisResultType;
+  status: AnalysisRunStatus;
+  created_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  failure: { code: string; message: string } | null;
+  result: {
+    result_hash: string;
+    versions: { contract: string | null; analyzer: string | null; ir: string | null; metrics: string | null };
+  } | null;
+}
+
+/*
+ * CodeDNA (Phase 11 scoring, Phase 12 read API; docs/architecture/dna-scoring-v1.md).
+ * Every score, weight, contribution and data-quality value is the backend's
+ * decimal string with exactly 4 places on a 0–1 scale ("0.8050"); the
+ * frontend formats these strings and never computes them.
+ */
+
+/** A 0–1 decimal with 4 places, as computed by the scoring engine, e.g. "0.8050". */
+export type DecimalString = string;
+
+/** READY: an overall score exists. INSUFFICIENT_DATA: too little evidence for one (not a score of 0). */
+export type DnaSnapshotStatus = "READY" | "INSUFFICIENT_DATA";
+
+/** SCORED: part of the overall score. UNAVAILABLE: no score; its weight was redistributed. */
+export type DnaDimensionStatus = "SCORED" | "UNAVAILABLE";
+
+/** Availability of one component's evidence; never conflated with each other or with 0. */
+export const DNA_EVIDENCE_STATUSES = ["AVAILABLE", "INSUFFICIENT_EVIDENCE", "UNSUPPORTED", "MISSING"] as const;
+export type DnaEvidenceStatus = (typeof DNA_EVIDENCE_STATUSES)[number];
+
+/** `DnaSnapshotSummaryResource` — GET /api/v1/projects/{project}/dna (newest first). */
+export interface DnaSnapshotSummary {
+  id: string;
+  type: "dna_snapshot";
+  project_id: string;
+  analysis_run_id: string;
+  source_snapshot_id: string;
+  source_snapshot_version: number | null;
+  status: DnaSnapshotStatus;
+  /** null unless READY. */
+  overall_score: DecimalString | null;
+  /** Objective input coverage; not a confidence or probability. null only on pre-1.0.0 records. */
+  data_quality: DecimalString | null;
+  scoring_version: string;
+  metrics_version: string | null;
+  created_at: string | null;
+}
+
+/** One measured input of a component: a metric path of the analysis result and its count. */
+export interface DnaMetricEvidence {
+  metric: string;
+  /** Raw integer count; null when the analysis did not provide it. */
+  value: number | null;
+}
+
+export interface DnaComponent {
+  key: string;
+  description: string | null;
+  /** true: value is a share of the denominator (e.g. 3 of 42 functions); null for unknown scoring versions. */
+  share: boolean | null;
+  status: DnaEvidenceStatus;
+  required: boolean | null;
+  weight: DecimalString | null;
+  /** numerator / denominator, 4 places; null unless AVAILABLE. */
+  value: DecimalString | null;
+  /** null unless AVAILABLE. */
+  score: DecimalString | null;
+  /** Thresholds: score 1 at or below `best`, 0 at or above `worst`. */
+  best: DecimalString | null;
+  worst: DecimalString | null;
+  minimum_denominator: number | null;
+  numerator: DnaMetricEvidence[];
+  denominator: DnaMetricEvidence[];
+}
+
+export interface DnaDimension {
+  /** Stable identifier, e.g. "COMPLEXITY". */
+  dimension: string;
+  name: string;
+  description: string | null;
+  status: DnaDimensionStatus;
+  /** Evidence status of the first failing required component; null when SCORED. */
+  unavailable_reason: Exclude<DnaEvidenceStatus, "AVAILABLE"> | null;
+  score: DecimalString | null;
+  /** Weight in the scoring specification. */
+  weight: DecimalString | null;
+  /** Weight after renormalization over scored dimensions; null unless part of the overall score. */
+  effective_weight: DecimalString | null;
+  /** score × effective_weight, as computed by the engine; null unless part of the overall score. */
+  contribution: DecimalString | null;
+  data_quality: DecimalString | null;
+  components: DnaComponent[];
+}
+
+export interface DnaAggregation {
+  method: string | null;
+  minimum_scored_dimensions: number | null;
+  scored_dimensions: string[];
+  unavailable_dimensions: string[];
+  scored_weight: DecimalString | null;
+  renormalized: boolean | null;
+}
+
+export interface DnaDataQualityBreakdown {
+  parse_coverage: { value: DecimalString | null; weight: DecimalString | null; files_parsed: number | null; files_analyzable: number | null };
+  evidence_volume: { value: DecimalString | null; weight: DecimalString | null; functions: number | null; target: number | null };
+  metric_availability: {
+    value: DecimalString | null;
+    weight: DecimalString | null;
+    available_components: number | null;
+    components: number | null;
+  };
+}
+
+/** `DnaSnapshotResource` — GET /api/v1/projects/{project}/dna/{snapshot}. Immutable. */
+export interface DnaSnapshot {
+  id: string;
+  type: "dna_snapshot";
+  project_id: string;
+  analysis_run_id: string;
+  source_snapshot_id: string;
+  status: DnaSnapshotStatus;
+  overall_score: DecimalString | null;
+  data_quality: DecimalString | null;
+  scoring_version: string;
+  specification_fingerprint: string | null;
+  versions: { scoring: string; metrics: string | null; analyzer: string | null; ir: string | null; contract: string | null };
+  result_hash: string;
+  created_at: string | null;
+  source_snapshot: { id: string; version: number; file_count: number; primary_language: string | null; created_at: string | null } | null;
+  analysis_run: { id: string; result_type: AnalysisResultType; status: AnalysisRunStatus; completed_at: string | null } | null;
+  /** In the scoring specification's order. */
+  dimensions: DnaDimension[];
+  aggregation: DnaAggregation | null;
+  /** Number of components per evidence status. */
+  availability: Record<DnaEvidenceStatus, number> | null;
+  data_quality_breakdown: DnaDataQualityBreakdown | null;
+}
+
+export type DnaSnapshotResponse = DataEnvelope<DnaSnapshot>;

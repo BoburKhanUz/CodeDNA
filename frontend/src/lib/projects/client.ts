@@ -1,5 +1,6 @@
 import { api, upload } from "@/lib/api/client";
 import type {
+  AnalysisRun,
   CreateProjectRequest,
   Paginated,
   Project,
@@ -62,4 +63,9 @@ export async function uploadSource(
     headers: options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : undefined,
   });
   return response.data;
+}
+
+/** Analysis runs, newest first (read-only here: runs are started through the API). */
+export function listAnalyses(projectId: string, page = 1, perPage = 25): Promise<Paginated<AnalysisRun>> {
+  return api.get<Paginated<AnalysisRun>>(projectPath(projectId, `/analyses?page=${page}&per_page=${perPage}`));
 }

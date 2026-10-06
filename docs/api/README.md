@@ -46,10 +46,13 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `POST` | `/api/v1/projects/{project}/analyses` | owner | 202 / 200 | Start an analysis of a snapshot (200 = the existing equivalent run) |
 | `GET` | `/api/v1/projects/{project}/analyses/{run}` | owner | 200 | One analysis run: status, failure, result metadata |
 | `GET` | `/api/v1/projects/{project}/analyses/{run}/result` | owner | 200 | The verified analyzer result of a `SUCCEEDED` run |
+| `GET` | `/api/v1/projects/{project}/dna` | owner | 200 | DNA snapshots (paginated, newest first) |
+| `GET` | `/api/v1/projects/{project}/dna/{snapshot}` | owner | 200 | One DNA snapshot with dimensions and evidence |
 
 There is no `DELETE` for projects (`405`) and no update, delete or download
-for snapshots. See [Projects](#projects),
-[Source snapshots](#source-snapshots) and [Analyses](#analyses).
+for snapshots. DNA snapshots are read-only (no write method on `/dna`).
+See [Projects](#projects), [Source snapshots](#source-snapshots),
+[Analyses](#analyses) and [DNA](#dna).
 
 ### `GET /api/v1/health`
 
@@ -464,6 +467,96 @@ The verified analyzer result of a `SUCCEEDED` run, as stored:
 structure, counts, metrics and findings, never source text. A run that has
 not succeeded answers `409 ANALYSIS_NOT_COMPLETED`.
 
+## DNA
+
+Read-only access to the immutable DNA snapshots that the scoring engine
+creates from successful static analyses (Phase 11,
+[dna-scoring-v1.md](../architecture/dna-scoring-v1.md)). Snapshots are never
+created, changed or deleted through the API: every other method on these
+paths answers `405`. Owner-only like every project resource: another user's
+project, a missing project, a missing snapshot and a snapshot of another
+project all answer `404 RESOURCE_NOT_FOUND`. Archived projects stay
+readable.
+
+> The CodeDNA Dashboard visualizes deterministic results produced by the CodeDNA scoring engine. It does not infer developer seniority, intelligence, personality, or professional level.
+
+**Numbers.** Scores, weights, contributions and data quality are the stored
+**decimal strings with exactly 4 places on a 0–1 scale** (`"0.8050"`), the
+engine's own representation (ADR-004: no floating point). They are passed
+through unchanged, never rounded or rescaled; `"0.8123"` stays `"0.8123"`.
+Clients may display them on a 0–100 scale (`81.23`) but must not compute
+them. Raw evidence counts are JSON integers.
+
+**Missing is never zero.** `null` means "no value": `overall_score` is
+`null` unless `status` is `READY`; a dimension's `score`, `effective_weight`
+and `contribution` are `null` when it is `UNAVAILABLE`; a component's
+`value` and `score` are `null` unless it is `AVAILABLE`; an evidence count is
+`null` when the analysis did not provide it.
+
+| Field | Values |
+|---|---|
+| `status` | `READY` (an overall score exists) · `INSUFFICIENT_DATA` (too little evidence for one; **not** a score of 0) |
+| dimension `status` | `SCORED` · `UNAVAILABLE` (excluded; its weight is redistributed over the scored dimensions) |
+| dimension `unavailable_reason`, component `status` | `AVAILABLE` · `INSUFFICIENT_EVIDENCE` (below the minimum, e.g. fewer than 5 functions) · `UNSUPPORTED` (the analyzer cannot measure it for these languages) · `MISSING` (absent from the result) |
+| `data_quality` | 0–1: how much measurable input there was (parse coverage, evidence volume, measurement availability). **Not** a confidence or probability |
+
+### `GET /api/v1/projects/{project}/dna`
+
+Newest first (`created_at`, then `id`, descending), paginated like other
+collections (`?page`, `?per_page` ≤ 100). Summaries only; the list does not
+read dimensions or evidence.
+
+```json
+{ "data": [ { "id": "…", "type": "dna_snapshot", "project_id": "…", "analysis_run_id": "…",
+              "source_snapshot_id": "…", "source_snapshot_version": 3, "status": "READY",
+              "overall_score": "0.8050", "data_quality": "0.9000", "scoring_version": "1.0.0",
+              "metrics_version": "1.0", "created_at": "2026-10-12T08:00:00Z" } ],
+  "meta": { "current_page": 1, "per_page": 25, "total": 1, "last_page": 1 } }
+```
+
+There is no `updated_at`: snapshots never change.
+
+### `GET /api/v1/projects/{project}/dna/{snapshot}`
+
+The complete snapshot, read from storage (nothing is recomputed):
+
+```json
+{ "data": {
+  "id": "…", "type": "dna_snapshot", "project_id": "…", "analysis_run_id": "…", "source_snapshot_id": "…",
+  "status": "READY", "overall_score": "0.8050", "data_quality": "0.9000",
+  "scoring_version": "1.0.0", "specification_fingerprint": "<64 hex>",
+  "versions": { "scoring": "1.0.0", "metrics": "1.0", "analyzer": "0.2.0", "ir": "1.1", "contract": "1.0" },
+  "result_hash": "<64 hex>", "created_at": "…",
+  "source_snapshot": { "id": "…", "version": 3, "file_count": 12, "primary_language": "php", "created_at": "…" },
+  "analysis_run": { "id": "…", "result_type": "static_analysis", "status": "SUCCEEDED", "completed_at": "…" },
+  "dimensions": [
+    { "dimension": "COMPLEXITY", "name": "Complexity", "description": "…", "status": "SCORED", "unavailable_reason": null,
+      "score": "0.8125", "weight": "0.4000", "effective_weight": "0.4000", "contribution": "0.3250", "data_quality": "0.9000",
+      "components": [
+        { "key": "mean_cyclomatic_complexity", "description": "…", "share": false, "status": "AVAILABLE", "required": true,
+          "weight": "0.5000", "value": "4.0000", "score": "0.7500", "best": "2.0000", "worst": "10.0000", "minimum_denominator": 5,
+          "numerator": [ { "metric": "metrics.overall.complexity_total", "value": 160 } ],
+          "denominator": [ { "metric": "metrics.overall.functions_total", "value": 40 } ] } ] } ],
+  "aggregation": { "method": "weighted_mean_of_scored_dimensions", "minimum_scored_dimensions": 2,
+                   "scored_dimensions": ["COMPLEXITY", "STRUCTURE", "CODE_HYGIENE"], "unavailable_dimensions": [],
+                   "scored_weight": "1.0000", "renormalized": false },
+  "availability": { "AVAILABLE": 7, "INSUFFICIENT_EVIDENCE": 0, "UNSUPPORTED": 0, "MISSING": 0 },
+  "data_quality_breakdown": {
+    "parse_coverage": { "value": "0.9000", "weight": "0.5000", "files_parsed": 9, "files_analyzable": 10 },
+    "evidence_volume": { "value": "0.8000", "weight": "0.2500", "functions": 40, "target": 50 },
+    "metric_availability": { "value": "1.0000", "weight": "0.2500", "available_components": 7, "components": 7 } } } }
+```
+
+- `dimensions` and `components` are lists in the scoring specification's
+  order (storage does not keep key order). `description` and `share` come
+  from the snapshot's own scoring version; they are `null` for a version
+  this API does not know, and `data_quality_breakdown` is then `null`.
+- `numerator`/`denominator` reference metric paths of the stored analysis
+  result with their counts; the result itself is not repeated (it is
+  available from `.../analyses/{run}/result`).
+- Never included: source contents, storage keys or URLs, the owner's user
+  ID, analyzer internals.
+
 ## Authentication (browser, Sanctum SPA)
 
 Browsers authenticate with Laravel's **session cookie**. No token is ever
@@ -634,12 +727,8 @@ configured in `config/codedna.php`.
 
 ## Planned endpoints (not implemented)
 
-| Method | Path | Phase |
-|---|---|---|
-| `GET` | `/api/v1/dna` | 11/12 |
-| `GET` | `/api/v1/dna/history` | 12 |
-
-Paths are indicative and are finalized in their phase. They follow the
-domain model in [data-model.md](../architecture/data-model.md): projects
-own snapshots, snapshots have analysis runs, and runs produce DNA snapshots.
-Analysis endpoints exist since Phase 10 ([Analyses](#analyses)).
+A developer-wide DNA across projects (ADR-004's aggregation) is not
+implemented; DNA is served per project ([DNA](#dna), Phase 12). Future paths
+follow the domain model in [data-model.md](../architecture/data-model.md):
+projects own snapshots, snapshots have analysis runs, and runs produce DNA
+snapshots.

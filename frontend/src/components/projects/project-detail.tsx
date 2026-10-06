@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiErrorAlert } from "@/components/auth/api-error-alert";
+import { DnaSummaryCard } from "@/components/dna/dna-summary-card";
 import { StatusBadge } from "@/components/projects/status-badge";
 import { UploadSource } from "@/components/projects/upload-source";
 import { Button } from "@/components/ui/button";
@@ -135,6 +136,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           </dl>
         </CardContent>
       </Card>
+
+      <DnaSummaryCard projectId={project.id} />
 
       <Card>
         <CardHeader>

@@ -78,7 +78,9 @@ description is introduced, they move to `packages/types` and are generated.
 | `/app/profile` | dynamic | Signed out → `307` to `/login` (same layout gate). Account identity, developer profile form, password change. |
 | `/app/projects` | dynamic | Same gate. The developer's projects (paginated), or an empty state. |
 | `/app/projects/new` | dynamic | Same gate. Create-project form; opens the new project. |
-| `/app/projects/[project]` | dynamic | Same gate. Project details, ZIP upload (active upload projects only), snapshot history, archive. Unknown, foreign or malformed IDs show "Project not found". |
+| `/app/projects/[project]` | dynamic | Same gate. Project details, CodeDNA card, ZIP upload (active upload projects only), snapshot history, archive. Unknown, foreign or malformed IDs show "Project not found". |
+| `/app/projects/[project]/dna` | dynamic | Same gate. CodeDNA dashboard of the newest assessment, or an empty state. |
+| `/app/projects/[project]/dna/[snapshot]` | dynamic | Same gate. One assessment from the history. Unknown or foreign IDs show "Assessment not found" / "Project not found". |
 | anything else | — | Not-found page. |
 
 There is no `?next=` return-URL parameter, so there is no open-redirect
@@ -199,6 +201,48 @@ LoginForm ──► lib/auth/client.login() ──► api.post("/api/v1/auth/log
   Project IDs are checked to be ULIDs before any URL is built.
 - Dates are shown in UTC. Using the profile's time zone preference is
   future work.
+
+## CodeDNA dashboard (`/app/projects/[project]/dna`)
+
+> The CodeDNA Dashboard visualizes deterministic results produced by the CodeDNA scoring engine. It does not infer developer seniority, intelligence, personality, or professional level.
+
+Presentation only (Phase 12). Data comes from the read-only
+[DNA API](../api/README.md#dna) (`lib/dna/client.ts`); types are in
+`lib/api/types.ts` (`DnaSnapshot`, `DnaDimension`, `DnaComponent`, …).
+
+- **No client-side scoring.** `lib/dna/format.ts` only reformats the API's
+  decimal strings, digit by digit: `"0.8050"` → `80.50` (overall and
+  dimension scores, shown "/ 100"), `"0.9000"` → `90.00%` (data quality),
+  weights as `40%`, contributions as `32.50 points`. No score, weight, share
+  or contribution is computed in TypeScript; a test renders a deliberately
+  inconsistent payload to prove values are shown as given.
+- **Missing is never 0.** `null` renders as "Insufficient data", "Not
+  scored", "Not available" or "—", never as `0`. `INSUFFICIENT_DATA`
+  explains that the source lacked enough supported evidence; unavailable
+  dimensions show their reason; evidence shows the backend status
+  (`Insufficient evidence`, `Not supported for the analyzed languages`,
+  `Not available in the analysis result`).
+- **Layout.** Header (project, scoring version, calculation date, source
+  snapshot version); overall score card and data-quality card (with the
+  documented formula terms in a disclosure; never called confidence or
+  probability); one card per dimension with score, weight, redistributed
+  weight when it differs, contribution, data quality and an evidence
+  disclosure listing each measurement's counts, measured value, component
+  score, weight and thresholds; source and calculation card (snapshot, files
+  parsed, analysis run, scoring version, specification fingerprint, result
+  hash); history of earlier assessments when there is more than one.
+  Neutral bars (`ScoreBar`, `role="meter"`), no color scale and no
+  qualitative labels.
+- **States.** Skeleton while loading; "No CodeDNA assessment is available
+  yet." when the project has none, with the newest static analysis's real
+  status (queued/running, completed but not yet scored, failed) from the
+  analyses API and no simulated progress (analyses are started through the
+  API; there is no analysis screen); API errors through `ApiErrorAlert`
+  with the request reference and a retry; 401 → `/login`; 404 → "Project
+  not found" / "Assessment not found".
+- **Project page.** A CodeDNA card shows the newest assessment's score (or
+  "Insufficient data" / "No assessment available.") and data quality, and
+  links to the dashboard.
 
 ## API client (`lib/api`)
 

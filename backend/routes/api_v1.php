@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\Profile\ProfileController;
 use App\Http\Controllers\Api\V1\Projects\AnalysisController;
 use App\Http\Controllers\Api\V1\Projects\ArchiveProjectController;
+use App\Http\Controllers\Api\V1\Projects\DnaSnapshotController;
 use App\Http\Controllers\Api\V1\Projects\ProjectController;
 use App\Http\Controllers\Api\V1\Projects\SourceSnapshotController;
 use App\Http\Middleware\RequireSession;
@@ -95,4 +96,14 @@ Route::middleware('auth:sanctum')->prefix('projects')->name('projects.')->group(
         ->whereUlid(['project', 'analysisRun'])
         ->scopeBindings()
         ->name('analyses.result');
+
+    // DNA snapshots (Phase 12): read-only. They are created by the scoring
+    // engine (Phase 11) and never changed, so there is no write route.
+    Route::get('{project}/dna', [DnaSnapshotController::class, 'index'])
+        ->whereUlid('project')
+        ->name('dna.index');
+    Route::get('{project}/dna/{dnaSnapshot}', [DnaSnapshotController::class, 'show'])
+        ->whereUlid(['project', 'dnaSnapshot'])
+        ->scopeBindings()
+        ->name('dna.show');
 });

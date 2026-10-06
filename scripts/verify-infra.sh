@@ -223,6 +223,10 @@ done
 foundation_dna=$(db "SELECT count(*) FROM dna_snapshots WHERE analysis_run_id = '$foundation_run'" 2>/dev/null)
 check "static_analysis run has one DNA snapshot (scoring 1.0.0, same result_hash)" bash -c "[[ '$static_dna' == '1.0.0 INSUFFICIENT_DATA true' ]]"
 check "foundation run is not scored" bash -c "[[ '$foundation_dna' == 0 ]]"
+# Phase 12: the read-only DNA API serves it to the owner, with the stored decimal strings.
+check "GET dna -> 200, the static run's snapshot, scores as 4-place strings, no storage details" bash -c \
+    "out=\$(api_json GET /api/v1/projects/$project_id/dna); [[ \$out == 200* && \$out == *'\"analysis_run_id\":\"$static_run\"'* && \$out == *'\"data_quality\":\"0.'* && \$out != *storage* && \$out != *X-Amz* ]]"
+check "POST dna -> 405 (read-only)" bash -c "api_json POST /api/v1/projects/$project_id/dna '{}' | grep -q '^405 '"
 check "repeating a request returns the existing run (200, same ID)" bash -c \
     "out=\$(api_json POST /api/v1/projects/$project_id/analyses '{\"source_snapshot_id\":\"$snapshot_id\"}'); [[ \$out == 200* && \$out == *'$foundation_run'* ]]"
 check "GET result -> verified IR 1.1 static analysis with metrics, no source or URLs" bash -c \

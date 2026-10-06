@@ -252,8 +252,12 @@ final class CalculateDnaSnapshotTest extends TestCase
 
     public function test_no_http_endpoint_exposes_scoring(): void
     {
+        // DNA snapshots are only read over HTTP (Phase 12); nothing can trigger scoring.
         foreach (Route::getRoutes()->getRoutes() as $route) {
-            $this->assertDoesNotMatchRegularExpression('/dna|scor/i', $route->uri(), 'Phase 11 adds no scoring endpoint');
+            $this->assertDoesNotMatchRegularExpression('/scor/i', $route->uri(), 'no scoring endpoint');
+            if (preg_match('/dna/i', $route->uri()) === 1) {
+                $this->assertSame(['GET', 'HEAD'], $route->methods(), $route->uri());
+            }
         }
     }
 

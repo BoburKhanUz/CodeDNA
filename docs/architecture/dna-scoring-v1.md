@@ -363,9 +363,10 @@ Failures (`DnaScoringFailure`):
 
 Their messages are fixed, safe texts: no IDs, hashes or result content.
 
-There is **no HTTP endpoint** in Phase 11 (a test asserts this). Results
-become visible to users with the DNA dashboard (Phase 12), under the same
-owner-only rules as projects.
+Phase 11 added no HTTP endpoint. Since Phase 12 snapshots are readable
+(never writable) through `GET /api/v1/projects/{project}/dna[/{snapshot}]`
+([API](../api/README.md#dna)) and shown on the CodeDNA dashboard, under the
+same owner-only rules as projects.
 
 ## Snapshot record
 

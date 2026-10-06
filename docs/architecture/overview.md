@@ -6,7 +6,7 @@ later uses that evidence for competencies, skill gaps, learning and growth
 tracking. See [product vision](../product/vision.md) and
 [MVP definition](../product/mvp.md).
 
-**Current status:** Phase 11 (CodeDNA scoring engine) complete. The
+**Current status:** Phase 12 (CodeDNA dashboard) complete. The
 local environment runs every component. Users can register, sign in and
 sign out, edit their developer profile, change their password, create and
 archive projects, and upload ZIP archives that become immutable, versioned
@@ -22,8 +22,11 @@ result as an analysis run's result ([data-flow.md](data-flow.md#analysis-pipelin
 Each successful static-analysis result is then scored deterministically
 (scoring version 1.0.0: dimensions COMPLEXITY, STRUCTURE and CODE_HYGIENE,
 an overall score and a data-quality value) into an immutable DNA snapshot
-([dna-scoring-v1.md](dna-scoring-v1.md)). There is no DNA API or UI yet
-(Phase 12). Everything below is the target architecture.
+([dna-scoring-v1.md](dna-scoring-v1.md)). A read-only DNA API and the
+CodeDNA dashboard present those snapshots per project
+([frontend.md](frontend.md#codedna-dashboard-appprojectsprojectdna)); there is
+no analysis screen yet (analyses are started through the API). Everything
+below is the target architecture.
 
 ## System context
 
@@ -117,5 +120,5 @@ at a time:
 | 09 | AST and static analysis (PHP → Python → JS → TS) | Done (all ten languages) |
 | 10 | Analysis queue and pipeline | Done |
 | 11 | CodeDNA scoring engine | Done (scoring version 1.0.0, in Laravel; [dna-scoring-v1.md](dna-scoring-v1.md)) |
-| 12 | DNA dashboard (**MVP complete**) | Next |
+| 12 | DNA dashboard (**MVP complete**) | Done (per-project dashboard and read-only DNA API) |
 | 13–25 | Competencies, skill gaps, AI, challenges, learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |
