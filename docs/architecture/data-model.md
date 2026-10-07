@@ -43,11 +43,16 @@ users ──1:n──► projects ──1:n──► source_snapshots ──1:n�
 | `roadmap_step_completions` | Self-reported learning progress, one row per completed step (Phase 17) | **never** (insert-only) |
 | `growth_snapshots` | The comparison of one assessment (skill gap snapshot) with the immediately preceding one, per growth rules version (Phase 18) | **never** (trigger) |
 | `growth_observations` | One immutable observation per metric of a `COMPARED` growth snapshot (Phase 18) | **never** (trigger) |
+| `github_accounts` | A user's GitHub identity and encrypted GitHub App user tokens (Phase 19) | tokens on refresh or re-authorization |
+| `github_oauth_states` | Single-use, user-bound GitHub authorization states, hashed (Phase 19) | `consumed_at`, once |
+| `github_connections` | A project's verified GitHub repository and branch (Phase 19) | branch and metadata while ACTIVE; status once, ACTIVE → DISCONNECTED; identity never |
+| `github_imports` | One import of the connected branch into a source snapshot (Phase 19) | lifecycle forward only; **never** once finished |
 
 There is deliberately no separate `repositories` or `analyses` table. A
 project carries its source origin (`source_type`, `repository_url`). A
-re-analysis is simply another `analysis_run` for the same snapshot. Provider
-integrations (Phase 19) will add their own tables when they exist.
+re-analysis is simply another `analysis_run` for the same snapshot. The
+GitHub integration (Phase 19) adds its own tables; a GitHub import still ends
+in an ordinary `source_snapshots` row.
 
 ### Relationships (Eloquent)
 
@@ -55,7 +60,7 @@ integrations (Phase 19) will add their own tables when they exist.
 |---|---|
 | `User` | `developerProfile()` hasOne; `projects()` hasMany |
 | `DeveloperProfile` | `user()` belongsTo |
-| `Project` | `user()` belongsTo; `sourceSnapshots()`, `analysisRuns()`, `dnaSnapshots()`, `challengeInstances()`, `roadmapSnapshots()`, `growthSnapshots()` hasMany |
+| `Project` | `user()` belongsTo; `sourceSnapshots()`, `analysisRuns()`, `dnaSnapshots()`, `challengeInstances()`, `roadmapSnapshots()`, `growthSnapshots()`, `githubConnections()`, `githubImports()` hasMany |
 | `SourceSnapshot` | `project()` belongsTo; `analysisRuns()` hasMany |
 | `AnalysisRun` | `project()`, `sourceSnapshot()` belongsTo; `result()` hasOne; `dnaSnapshots()` hasMany (one per scoring version), `dnaSnapshot()` hasOne |
 | `DnaSnapshot` | `user()`, `project()`, `analysisRun()`, `sourceSnapshot()` belongsTo; `competencySnapshots()` hasMany |
@@ -70,6 +75,10 @@ integrations (Phase 19) will add their own tables when they exist.
 | `RoadmapStepCompletion` | none |
 | `GrowthSnapshot` | `observations()` hasMany (by position) |
 | `GrowthObservation` | `snapshot()` belongsTo |
+| `GitHubAccount` | `user()` belongsTo (tokens hidden from serialization) |
+| `GitHubOAuthState` | none |
+| `GitHubConnection` | `project()` belongsTo; `imports()` hasMany |
+| `GitHubImport` | `connection()`, `sourceSnapshot()` belongsTo |
 
 All relationships carry generic return types (`BelongsTo<Project, $this>`).
 Outside production, strict mode makes lazy loading throw, so callers must
@@ -546,6 +555,82 @@ snapshot:
 - **Nothing cascades.** All FKs are `RESTRICT`, and the models refuse
   updates and deletes.
 
+### github_accounts, github_oauth_states, github_connections, github_imports
+
+Phase 19 ([github-integration-v1.md](github-integration-v1.md)). GitHub is
+a source provider: these tables hold authorization, connections and import
+bookkeeping. Imported source lives only in object storage and
+`source_snapshots`. No source code, raw GitHub response or URL is stored.
+
+**`github_accounts`** holds one row per user:
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `user_id` | ulid unique | FK `users`, `RESTRICT` |
+| `github_user_id`, `login` | bigint, varchar(39) | from `GET /user` |
+| `access_token`, `refresh_token` | text | **encrypted** by the application (Laravel Crypt, APP_KEY); hidden from serialization |
+| `access_token_expires_at`, `refresh_token_expires_at` | timestamp null | |
+| `created_at`, `updated_at` | timestamp | |
+
+**`github_oauth_states`**:
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `user_id`, `project_id` | ulid | the user who started it; optional return project, composite FK `(project_id, user_id)` → `projects` |
+| `state_hash` | char(64) unique | SHA-256 of the state; the state itself is never stored |
+| `expires_at` | timestamp | at most one hour after creation (CHECK) |
+| `consumed_at` | timestamp null | set once, atomically |
+| `created_at` | timestamp | |
+
+**`github_connections`**:
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `project_id`, `user_id` | ulid | composite FK `(project_id, user_id)` → `projects (id, user_id)` |
+| `installation_id`, `repository_id` | bigint | from GitHub; never change (trigger) |
+| `repository_owner`, `repository_name`, `repository_full_name` | varchar | format CHECKs; full name = owner/name |
+| `repository_private`, `repository_archived`, `default_branch` | | as last verified |
+| `branch` | varchar(255) | git-ref-safe format (CHECK) |
+| `status` | varchar(16) | `ACTIVE` \| `DISCONNECTED`; `disconnected_at` present ⇔ `DISCONNECTED` |
+| `last_imported_commit_sha`, `last_imported_at` | char(40), timestamp null | together or not at all |
+| `metadata_verified_at`, `connected_at`, `disconnected_at`, `created_at`, `updated_at` | timestamp | |
+
+- **Unique:** `github_connections_one_active_unique` on `(project_id)`
+  `WHERE status = 'ACTIVE'`, and `github_connections_owner_unique` on
+  `(id, project_id, user_id)`.
+- **Trigger:** `github_connections_guarded`. The identity (project, user,
+  installation, repository, connection time) never changes, and a
+  disconnected connection never changes at all.
+
+**`github_imports`**:
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `github_connection_id`, `project_id`, `user_id` | ulid | composite FK → `github_connections (id, project_id, user_id)` |
+| `repository_id`, `repository_full_name`, `ref` | | what was imported |
+| `commit_sha` | char(40) null | resolved by the worker from GitHub |
+| `status` | varchar(16) | `QUEUED` \| `RUNNING` \| `SUCCEEDED` \| `FAILED` \| `CANCELLED` |
+| `failure_code` | varchar(64) null | present ⇔ `FAILED`; an application code, never a GitHub message |
+| `source_snapshot_id` | ulid null | present ⇔ `SUCCEEDED`; composite FK `(source_snapshot_id, project_id)` → `source_snapshots (id, project_id)` |
+| `created_snapshot` | boolean | true for the import that created the snapshot; false for a reuse |
+| `started_at`, `completed_at`, `created_at`, `updated_at` | timestamp | `completed_at` present ⇔ terminal |
+
+- **Unique:** `github_imports_one_active_unique` on `(project_id)` `WHERE
+  status IN ('QUEUED','RUNNING')`, and `github_imports_commit_unique` on
+  `(project_id, repository_id, commit_sha)` `WHERE created_snapshot`. The
+  latter means one snapshot per commit.
+- **Trigger:** `github_imports_guarded`. The identity never changes, the
+  status never goes back from `RUNNING` to `QUEUED`, and a finished import
+  never changes. The model refuses updates of finished imports and all
+  deletes.
+- **Provenance:** a GitHub snapshot's own `metadata.provenance` records the
+  provider, repository ID and name, ref, commit and import ID, so the
+  snapshot is self-describing even without these tables.
+
 ## States
 
 States are **VARCHAR columns with CHECK constraints**, mirrored by PHP backed
@@ -691,6 +776,12 @@ Every index serves a known or planned query:
 | `growth_snapshots (previous_skill_gap_snapshot_id)` | the growth that uses an assessment as its baseline |
 | `growth_observations (growth_snapshot_id, metric_type, metric_key)` unique | the observations of a snapshot |
 | `growth_observations (project_id, metric_type, metric_key)` | one metric across a project's growth |
+| `github_connections (project_id)` unique partial, ACTIVE only | the project's connection |
+| `github_connections (project_id, created_at)`, `(repository_id)` | connection history; connections of a repository |
+| `github_imports (project_id, created_at)` | a project's imports, newest first |
+| `github_imports (project_id, repository_id, commit_sha)` unique partial | the snapshot of a commit (idempotency) |
+| `github_imports (source_snapshot_id)` | the imports behind a snapshot |
+| `github_oauth_states (state_hash)` unique, `(user_id, created_at)` | consuming a state; a user's pending states |
 
 PostgreSQL does not index foreign keys automatically. Every FK column above
 is the leading column of some index.

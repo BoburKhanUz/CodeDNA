@@ -47,7 +47,11 @@ final class ApiExceptionRenderer
             $error['details'] = $details;
         }
 
-        $headers = $e instanceof HttpExceptionInterface ? $e->getHeaders() : [];
+        $headers = match (true) {
+            $e instanceof HttpExceptionInterface => $e->getHeaders(),
+            $e instanceof ApiException => $e->headers,
+            default => [],
+        };
 
         return new JsonResponse(['error' => $error], $code->status(), $headers);
     }

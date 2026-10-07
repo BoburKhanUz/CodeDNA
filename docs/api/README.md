@@ -58,6 +58,20 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `GET` | `/api/v1/projects/{project}/growth` | owner | 200 | Growth of the newest assessment: state, detail, trend series |
 | `GET` | `/api/v1/projects/{project}/growth/timeline` | owner | 200 | Growth snapshots (paginated, newest assessment first) |
 | `GET` | `/api/v1/projects/{project}/growth/{growthSnapshot}` | owner | 200 | One growth snapshot: observations, events, versions, provenance |
+| `GET` | `/api/v1/github` | authenticated | 200 | Whether GitHub is configured, and the caller's GitHub login |
+| `POST` | `/api/v1/github/authorizations` | authenticated, browser session | 201 | Start a GitHub authorization (GitHub URLs with a single-use state) |
+| `POST` | `/api/v1/github/callback` | authenticated, browser session | 200 | Complete it with GitHub's code and the state |
+| `DELETE` | `/api/v1/github` | authenticated | 204 | Forget the caller's GitHub tokens |
+| `GET` | `/api/v1/github/installations` | authenticated | 200 | The App installations the caller can access |
+| `GET` | `/api/v1/github/installations/{installation}/repositories` | authenticated | 200 | One page of repositories the caller can access there |
+| `GET` | `/api/v1/projects/{project}/github` | owner | 200 | The project's GitHub connection and latest import |
+| `POST` | `/api/v1/projects/{project}/github` | owner | 201 | Connect a repository (verified with GitHub) |
+| `PATCH` | `/api/v1/projects/{project}/github` | owner | 200 | Change the branch (verified with GitHub) |
+| `DELETE` | `/api/v1/projects/{project}/github` | owner | 200 | Disconnect (history is kept) |
+| `GET` | `/api/v1/projects/{project}/github/branches` | owner | 200 | One page of the connected repository's branches |
+| `GET` | `/api/v1/projects/{project}/github/imports` | owner | 200 | Imports (paginated, newest first) |
+| `POST` | `/api/v1/projects/{project}/github/imports` | owner | 202 / 200 | Import the branch's current commit into a source snapshot (200 = the import in progress) |
+| `GET` | `/api/v1/projects/{project}/github/imports/{import}` | owner | 200 | One import |
 
 There is no `DELETE` for projects (`405`) and no update, delete or download
 for snapshots. DNA, competency and skill gap snapshots are read-only (no
@@ -65,8 +79,8 @@ write method on `/dna`, `/competencies` or `/skill-gaps`). See
 [Projects](#projects), [Source snapshots](#source-snapshots),
 [Analyses](#analyses), [DNA](#dna), [Competencies](#competencies),
 [Skill gaps](#skill-gaps), [AI assessments](#ai-assessments) and
-[Growth tracking](#growth-tracking). Growth is read-only (no write method on
-`/growth`).
+[Growth tracking](#growth-tracking) and [GitHub integration](#github-integration).
+Growth is read-only (no write method on `/growth`).
 
 ### `GET /api/v1/health`
 
@@ -1170,6 +1184,144 @@ Values, deltas and qualities are decimal strings with 4 places. They are
 null when the evidence was not measured; they are never `0` for missing
 evidence.
 
+## GitHub integration
+
+Import source from GitHub (Phase 19,
+[github-integration-v1.md](../architecture/github-integration-v1.md),
+[ADR-011](../decisions/ADR-011-github-integration.md)). GitHub is a **source
+provider**: an import becomes an ordinary immutable source snapshot (`source_type:
+"REPOSITORY"`). It is analyzed only through `POST /analyses`, like an upload.
+
+- **Never sent to the browser:** tokens, installation secrets, GitHub API
+  URLs and storage URLs.
+- **Verified by the server:** a client sends at most a repository ID and a
+  branch name. Owner, name, visibility, installation and commit are read
+  from GitHub. Any other field (owner, name, `installation_id`,
+  `commit_sha`, `archive_url`, `download_url`, `token`, …) answers
+  `422 VALIDATION_FAILED`.
+- **Owner-only:** `404` for another user's project, connection or import.
+- **Archived projects:** they stay readable and can be disconnected.
+  Connecting, changing the branch and importing answer `409 PROJECT_ARCHIVED`.
+- **Disconnect:** never deletes source snapshots, analyses or any CodeDNA
+  result.
+- **When GitHub is not configured:** endpoints that need GitHub answer
+  `503 GITHUB_NOT_CONFIGURED`.
+
+| Error | When |
+|---|---|
+| `409 GITHUB_AUTH_REQUIRED` | The caller has no GitHub authorization, or GitHub refused it |
+| `422 GITHUB_STATE_INVALID` | The authorization state is unknown, expired, already used or another user's |
+| `409 GITHUB_INSTALLATION_REQUIRED` | The CodeDNA App is not installed for the repository |
+| `422 GITHUB_REPOSITORY_NOT_FOUND` | The repository is not visible to the caller through the App (or is disabled) |
+| `422 GITHUB_BRANCH_NOT_FOUND` | The branch does not exist |
+| `409 GITHUB_ALREADY_CONNECTED` | The project already has an active connection |
+| `409 GITHUB_NOT_CONNECTED` | The project has no active connection |
+| `429 GITHUB_RATE_LIMITED` | GitHub is rate limiting; `Retry-After` gives the delay |
+| `503 GITHUB_UNAVAILABLE` | GitHub is unreachable or answered unexpectedly |
+| `503 GITHUB_NOT_CONFIGURED` | The server has no GitHub App configuration |
+
+### `POST /api/v1/github/authorizations`
+
+```json
+{ "project_id": "01k6p0a1b2c3d4e5f6g7h8j9km" }
+```
+
+`project_id` is optional. It must be one of the caller's projects (`404`
+otherwise); the callback returns it so the UI can go back. The response
+(`201`) contains:
+
+```json
+{ "data": { "authorize_url": "https://github.com/login/oauth/authorize?client_id=…&redirect_uri=…&state=…",
+            "install_url": "https://github.com/apps/<slug>/installations/new?state=…",
+            "expires_at": "2026-10-16T09:10:00Z" } }
+```
+
+The state is single-use, expires after 10 minutes and is bound to the
+caller. Only its hash is stored.
+
+### `POST /api/v1/github/callback`
+
+```json
+{ "state": "<43 characters>", "code": "<GitHub's code>" }
+```
+
+GitHub's `installation_id` and `setup_action` may be passed and are
+ignored. The response (`200`) is `{"data": {"connected": true,
+"project_id": "…" | null}}`. A replayed, expired, unknown or foreign state
+answers `422 GITHUB_STATE_INVALID`. A code GitHub refuses answers `409
+GITHUB_AUTH_REQUIRED`; its state is spent.
+
+### `GET /api/v1/github/installations` and `…/installations/{installation}/repositories`
+
+- **Installations:** `[{id, account, account_type, repository_selection}]`.
+- **Repositories:** one page (`?page` ≤ 50, `?per_page` ≤ 100, default 50)
+  of `{id, owner, name, full_name, private, archived, default_branch}`, with
+  `meta: {page, per_page, has_more}`.
+- **A foreign installation:** an installation that is not the caller's
+  answers `404`.
+
+### `GET /api/v1/projects/{project}/github`
+
+```json
+{ "data": { "configured": true, "account_connected": true,
+  "connection": { "id": "…", "type": "github_connection", "status": "ACTIVE",
+    "repository": { "id": 1296269, "owner": "octo-org", "name": "billing-service", "full_name": "octo-org/billing-service",
+                    "private": true, "archived": false, "default_branch": "main" },
+    "branch": "main", "last_imported_commit_sha": "6dcb09b5…", "last_imported_at": "…",
+    "metadata_verified_at": "…", "connected_at": "…", "disconnected_at": null },
+  "latest_import": { "…": "an import, as below, or null" } } }
+```
+
+### `POST /api/v1/projects/{project}/github`
+
+```json
+{ "repository_id": 1296269, "branch": "main" }
+```
+
+`branch` is optional (default: the repository's default branch). Its
+syntax is checked before anything is sent to GitHub. The response is `201`
+with the connection.
+
+### `PATCH /api/v1/projects/{project}/github`
+
+The body is `{"branch": "develop"}` only. To change the repository,
+disconnect and connect again.
+
+### `DELETE /api/v1/projects/{project}/github`
+
+The response is `200` with the now `DISCONNECTED` connection. Queued
+imports are `CANCELLED`, and a running import records nothing. Snapshots
+and their history stay.
+
+### `GET /api/v1/projects/{project}/github/branches`
+
+One page of `{name, protected}` (`?page` ≤ 50, `?per_page` ≤ 100), with
+`meta: {page, per_page, has_more, default_branch}`.
+
+### `POST /api/v1/projects/{project}/github/imports`
+
+The body must be empty: `{}`.
+
+| Response | When |
+|---|---|
+| `202` + import (`QUEUED`) | Queued; the worker resolves the branch to a commit and imports it |
+| `200` + import, `Idempotent-Replayed: true` | An import is already in progress for this project |
+
+An import is an object with these fields:
+
+- `id`, `type: "github_import"` and `project_id`;
+- `status`: `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED` or `CANCELLED`;
+- `repository` and `ref`;
+- `commit_sha`: set once known;
+- `failure_code`: `GITHUB_*`, `SOURCE_ARCHIVE_*`, `SOURCE_*_EXCEEDED`,
+  `SOURCE_FILE_TOO_LARGE` or `PROJECT_ARCHIVED`;
+- `source_snapshot`: `{id, version}` when it succeeded;
+- `created_snapshot`: `false` when an earlier import of the same commit
+  already created the snapshot, which is then reused;
+- `created_at`, `started_at` and `completed_at`.
+
+The same commit of the same repository is never stored twice in a project.
+
 ## Authentication (browser, Sanctum SPA)
 
 Browsers authenticate with Laravel's **session cookie**. No token is ever
@@ -1308,6 +1460,16 @@ Every error, on every API route, uses one envelope:
 | 409 | `ROADMAP_EVIDENCE_INVALID` | The newest skill gap analysis does not match its specification |
 | 409 | `ROADMAP_NOT_ACTIVE` | The roadmap is superseded or completed; its progress cannot change |
 | 409 | `ROADMAP_STEP_PREREQUISITES_INCOMPLETE` | A step this step depends on is not completed |
+| 409 | `GITHUB_AUTH_REQUIRED` | The caller has no (valid) GitHub authorization |
+| 409 | `GITHUB_INSTALLATION_REQUIRED` | The CodeDNA GitHub App is not installed for the repository |
+| 409 | `GITHUB_ALREADY_CONNECTED` | The project already has an active GitHub connection |
+| 409 | `GITHUB_NOT_CONNECTED` | The project has no active GitHub connection |
+| 422 | `GITHUB_STATE_INVALID` | The authorization state is unknown, expired, already used or another user's |
+| 422 | `GITHUB_REPOSITORY_NOT_FOUND` | The repository is not visible to the caller through the App |
+| 422 | `GITHUB_BRANCH_NOT_FOUND` | The branch does not exist |
+| 429 | `GITHUB_RATE_LIMITED` | GitHub is rate limiting requests (`Retry-After`) |
+| 503 | `GITHUB_UNAVAILABLE` | GitHub is unreachable or answered unexpectedly |
+| 503 | `GITHUB_NOT_CONFIGURED` | GitHub integration is not configured on this server |
 | 413 | `PAYLOAD_TOO_LARGE` | Body exceeds the Nginx/PHP limit |
 | 413 | `SOURCE_ARCHIVE_TOO_LARGE` | Archive over `SOURCE_MAX_ARCHIVE_BYTES` |
 | 419 | `CSRF_TOKEN_MISMATCH` | Missing or stale `X-XSRF-TOKEN` |
@@ -1351,6 +1513,10 @@ queued jobs (Laravel Context).
 | `challenge-submit` | `POST /projects/{project}/challenges/{challenge}/submissions` | 10 / minute **and** 60 / hour | user ID |
 | `roadmap-generate` | `POST /projects/{project}/roadmaps` | 10 / minute | user ID |
 | `roadmap-progress` | `POST /projects/{project}/roadmaps/{roadmap}/steps/{step}/complete` | 60 / minute | user ID |
+| `github-authorize` | `POST /github/authorizations`, `POST /github/callback` | 10 / minute | user ID |
+| `github-read` | `GET /github/installations…`, `GET /projects/{project}/github/branches` | 60 / minute | user ID |
+| `github-write` | `POST`, `PATCH`, `DELETE /projects/{project}/github`, `DELETE /github` | 20 / minute | user ID |
+| `github-import` | `POST /projects/{project}/github/imports` | 5 / minute **and** 30 / hour | user ID |
 
 Every attempt counts, successful or not. When a limit is exceeded the
 response is `429 RATE_LIMITED` with `Retry-After`. Throttled routes also

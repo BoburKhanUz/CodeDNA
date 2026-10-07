@@ -12,6 +12,7 @@ use App\Services\Challenge\ChallengeCatalog;
 use App\Services\Challenge\Evaluator\ChallengeEvaluator;
 use App\Services\Challenge\Evaluator\SpoolChallengeEvaluator;
 use App\Services\Challenge\Evaluator\UnavailableChallengeEvaluator;
+use App\Services\GitHub\GitHubSettings;
 use App\Services\Growth\GrowthRules;
 use App\Services\Roadmap\RoadmapCatalog;
 use App\Services\Roadmap\RoadmapRules;
@@ -52,6 +53,10 @@ class AppServiceProvider extends ServiceProvider
                 ? new SpoolChallengeEvaluator((string) $config['spool_path'], (int) $config['wait_seconds'], (int) $config['heartbeat_max_age_seconds'])
                 : new UnavailableChallengeEvaluator;
         });
+
+        // GitHub integration (Phase 19): settings read from configuration on
+        // every resolution, so nothing caches a secret beyond one request or job.
+        $this->app->bind(GitHubSettings::class, static fn ($app): GitHubSettings => GitHubSettings::fromConfig($app['config']));
 
         // Growth tracking (Phase 18): the deterministic, versioned rules.
         $this->app->singleton(GrowthRules::class, static fn ($app): GrowthRules => GrowthRules::forVersion(
@@ -169,6 +174,25 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('roadmap-progress', static fn (Request $request): Limit => Limit::perMinute($limits['roadmap_progress_per_minute'])
             ->by('roadmap-progress:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        // GitHub (Phase 19): every call reaches GitHub; imports download a whole archive.
+        RateLimiter::for('github-authorize', static fn (Request $request): Limit => Limit::perMinute($limits['github_authorize_per_minute'])
+            ->by('github-authorize:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        RateLimiter::for('github-read', static fn (Request $request): Limit => Limit::perMinute($limits['github_read_per_minute'])
+            ->by('github-read:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        RateLimiter::for('github-write', static fn (Request $request): Limit => Limit::perMinute($limits['github_write_per_minute'])
+            ->by('github-write:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        RateLimiter::for('github-import', static function (Request $request) use ($limits): array {
+            $key = 'github-import:'.($request->user()?->getAuthIdentifier() ?? $request->ip());
+
+            return [
+                Limit::perMinute($limits['github_import_per_minute'])->by($key.'|minute'),
+                Limit::perHour($limits['github_import_per_hour'])->by($key.'|hour'),
+            ];
+        });
 
         RateLimiter::for('password-change', static function (Request $request) use ($limits): array {
             $key = 'password-change:'.($request->user()?->getAuthIdentifier() ?? $request->ip());

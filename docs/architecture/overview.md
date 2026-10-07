@@ -50,7 +50,11 @@ compares each new code assessment with the immediately preceding comparable
 one, from stored deterministic snapshots only; learning activity is shown as
 context and is never growth evidence
 ([growth-tracking-v1.md](growth-tracking-v1.md),
-[ADR-010](../decisions/ADR-010-growth-tracking.md)). Everything below is
+[ADR-010](../decisions/ADR-010-growth-tracking.md)). Source can be imported
+from GitHub through a read-only GitHub App. Each import becomes an ordinary
+immutable source snapshot, and repository code is never executed
+([github-integration-v1.md](github-integration-v1.md),
+[ADR-011](../decisions/ADR-011-github-integration.md)). Everything below is
 the target architecture.
 
 ## System context
@@ -109,6 +113,11 @@ the target architecture.
    challenges, AI or self-report; no baseline ≠ zero; incomparable ≠
    regression; insufficient evidence ≠ regression
    ([ADR-010](../decisions/ADR-010-growth-tracking.md)).
+9. **GitHub is a source provider; SourceSnapshot is the source of truth.**
+   Imports go through the upload checks into immutable snapshots, and are
+   analyzed by the same pipeline. Disconnecting GitHub never deletes
+   historical CodeDNA data, and tokens never leave the server
+   ([ADR-011](../decisions/ADR-011-github-integration.md)).
 
 ## Data flow
 
@@ -137,6 +146,7 @@ machine, timeouts and retries, and data classification.
 | [ADR-008](../decisions/ADR-008-coding-challenges.md) | Coding challenges: a practice layer with an isolated evaluator |
 | [ADR-009](../decisions/ADR-009-learning-roadmap.md) | Learning roadmap: a deterministic planning layer, generated on request |
 | [ADR-010](../decisions/ADR-010-growth-tracking.md) | Growth tracking: an observation layer over deterministic assessments |
+| [ADR-011](../decisions/ADR-011-github-integration.md) | GitHub integration: a GitHub App as a read-only source provider |
 
 New ADRs use the next free number and follow the same format: Status, Date,
 Context, Decision, Consequences, Alternatives considered, and Open questions
@@ -169,4 +179,5 @@ at a time:
 | 16 | Coding challenges | Done (catalog 1.0.0, Python, deterministic selection, sandboxed evaluator; [coding-challenges-v1.md](coding-challenges-v1.md)) |
 | 17 | Learning roadmap | Done (roadmap catalog and rules 1.0.0, deterministic, on request; [learning-roadmap-v1.md](learning-roadmap-v1.md)) |
 | 18 | Growth tracking | Done (growth rules 1.0.0, immediate previous comparable assessment, read-only; [growth-tracking-v1.md](growth-tracking-v1.md)) |
-| 19–25 | GitHub, history, hardening, QA, billing, teams, production | — |
+| 19 | GitHub integration | Done (GitHub App, read-only, imports into source snapshots; [github-integration-v1.md](github-integration-v1.md)) |
+| 20–25 | History, hardening, QA, billing, teams, production | — |

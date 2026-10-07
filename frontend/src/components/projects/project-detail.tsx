@@ -145,7 +145,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             <h2>Source</h2>
           </CardTitle>
           <CardDescription>
-            Each upload becomes an immutable, versioned source snapshot. Analysis is not available yet.
+            Each upload or GitHub import becomes an immutable, versioned source snapshot.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6">
@@ -160,10 +160,15 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           ) : project.status === "ARCHIVED" ? (
             <p className="text-muted-foreground text-sm">This project is archived. It keeps its history but accepts no new source.</p>
           ) : (
-            <p className="text-muted-foreground text-sm">
-              This is a repository project. Importing from repositories is not available yet, so it cannot receive source.
-            </p>
+            <p className="text-muted-foreground text-sm">This is a repository project: it receives source by importing from GitHub.</p>
           )}
+          {project.status === "ACTIVE" || project.source_type === "REPOSITORY" ? (
+            <p className="text-sm" data-testid="github-link">
+              <Link href={`/app/projects/${project.id}/github`} className="font-medium underline underline-offset-4">
+                {project.status === "ACTIVE" ? "Import from GitHub →" : "GitHub connection →"}
+              </Link>
+            </p>
+          ) : null}
 
           <SnapshotTable snapshots={snapshots} onPage={(page) => setSnapshotPage(page)} />
         </CardContent>

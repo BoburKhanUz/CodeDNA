@@ -492,6 +492,45 @@ snapshot opens with `?snapshot=<id>`.
 - **What it never does.** It sends no data, compares nothing in the
   browser (`lib/growth/format.ts` only reformats digits), and uses no AI.
 
+## GitHub (`/app/projects/[project]/github`, `/app/github/callback`)
+
+Phase 19. The page presents the [GitHub API](../api/README.md#github-integration)
+(`lib/github/client.ts`, `components/github/project-github.tsx`). It is
+reached from the project page's Source card ("Import from GitHub →").
+
+- **Notice.** GitHub is only a source: each import becomes an immutable
+  source snapshot. Repository code is never executed, and disconnecting
+  never deletes imported snapshots or analyses.
+- **States.**
+  - not configured;
+  - not connected ("Connect GitHub", which starts an authorization and
+    navigates only to the returned https URL);
+  - choosing a repository: installations, then repositories with owner,
+    visibility, default branch and archived state, paged; with states for
+    no installation ("Install the CodeDNA GitHub App") and no repositories;
+  - connection summary ("Connect repository": only the repository ID is
+    sent);
+  - connected: repository, visibility, archived on GitHub, branch, last
+    imported commit and time;
+  - authorization missing ("Connect GitHub" again);
+  - importing (polls every 3 s);
+  - import succeeded ("Source imported. Ready for analysis", with a link to
+    the snapshot; reuse explained);
+  - import failed, with plain sentences per failure code (inaccessible
+    repository, branch unavailable, rate limited, archive limits);
+  - archived project (read-only, disconnect only);
+  - loading, error with retry, 401 → `/login`, 404 → "Project not found".
+- **Branch.** A bounded, paged list from GitHub; "Use this branch" sends
+  the name only.
+- **Disconnect.** Two steps; history stays visible.
+- **Callback page.** `/app/github/callback` sends `state` and `code` once to
+  `POST /api/v1/github/callback`. It then goes to the project
+  (`?github=connected`) or the project list, and never shows the code or
+  state. A cancelled or incomplete authorization changes nothing.
+- **What it never does.** It never holds or shows a token, installation
+  secret, GitHub API URL or storage URL, and never builds a GitHub URL
+  itself.
+
 ## API client (`lib/api`)
 
 - **Same-origin only.** Paths must be absolute paths like `/api/v1/...`.

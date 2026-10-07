@@ -43,7 +43,12 @@ never change a score, competency or gap
 `App\Services\Growth`, as the last best-effort stage of the analysis job
 (`App\Actions\Growth\CalculateGrowthSnapshot`, `growth:calculate`). It
 never re-scores anything and never reads learning activity as evidence
-([growth-tracking-v1.md](growth-tracking-v1.md)). This includes coding
+([growth-tracking-v1.md](growth-tracking-v1.md)). The GitHub integration
+(Phase 19) talks to GitHub only through `App\Services\GitHub\GitHubHttp`.
+It imports archives through the official API into ordinary source snapshots
+(`App\Actions\GitHub\RunGitHubImport`, queue `github`) and never runs
+`git` or repository code
+([github-integration-v1.md](github-integration-v1.md)). This includes coding
 challenges (Phase 16):
 Laravel stores submitted challenge code and writes it to the spool for the
 isolated evaluator service. It never runs it
@@ -259,8 +264,9 @@ validation error.
 
 Phase 10 stores each verified analyzer result as one JSONB document
 (`analysis_results`); metrics and findings get dedicated tables only when a
-query needs them. Provider integrations (GitHub/GitLab) add their own tables
-in Phase 19.
+query needs them. The GitHub integration (Phase 19) has its own tables
+(`github_*`, [github-integration-v1.md](github-integration-v1.md)); GitLab
+and Bitbucket are not planned yet.
 
 `repository_files` and a materialized `developer_dna` table are not planned
 for the MVP. Developer DNA is derived from `dna_snapshots`

@@ -152,9 +152,9 @@ final class SkillGapMigrationAndConcurrencyTest extends TestCase
         // reset, not rollback: it reverts the growth and roadmap migrations whatever batch they are in.
         $this->artisan('migrate:reset', ['--path' => self::GROWTH_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:reset', ['--path' => self::ROADMAP_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::ASSESSMENT_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::ASSESSMENT_MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::MIGRATION])->assertSuccessful();
         $this->assertFalse(Schema::hasTable('skill_gap_snapshots'));
         $this->assertFalse(Schema::hasTable('skill_gap_results'));
         $this->assertNotContains('competency_snapshots_lineage_unique', $constraints('competency_snapshots'));

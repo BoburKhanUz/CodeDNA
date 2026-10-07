@@ -68,13 +68,26 @@ describe("ProjectDetail", () => {
     expect(String(archiveCall?.[0])).toBe(`/api/v1/projects/${project.id}/archive`);
   });
 
-  it("does not offer uploads for repository projects", async () => {
+  it("does not offer uploads for repository projects, which import from GitHub", async () => {
     respondWith({ ...project, source_type: "REPOSITORY", repository_url: "https://git.example.test/a.git" }, page([]));
     render(<ProjectDetail projectId={project.id} />);
 
-    expect(await screen.findByText(/Importing from repositories is not available yet/)).toBeInTheDocument();
+    expect(await screen.findByText(/it receives source by importing from GitHub/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Import from GitHub →" })).toHaveAttribute("href", `/app/projects/${project.id}/github`);
     expect(screen.getByText("https://git.example.test/a.git")).toBeInTheDocument();
     expect(screen.queryByLabelText("ZIP archive")).not.toBeInTheDocument();
+  });
+
+  it("links upload projects to GitHub imports, and archived ones to nothing new", async () => {
+    respondWith(project, page([]));
+    const { unmount } = render(<ProjectDetail projectId={project.id} />);
+    expect(await screen.findByRole("link", { name: "Import from GitHub →" })).toHaveAttribute("href", `/app/projects/${project.id}/github`);
+    unmount();
+
+    respondWith({ ...project, status: "ARCHIVED" }, page([]));
+    render(<ProjectDetail projectId={project.id} />);
+    expect(await screen.findByText(/This project is archived/)).toBeInTheDocument();
+    expect(screen.queryByTestId("github-link")).not.toBeInTheDocument();
   });
 
   it("treats missing and foreign projects alike", async () => {

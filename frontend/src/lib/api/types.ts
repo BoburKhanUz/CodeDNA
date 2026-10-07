@@ -1,7 +1,8 @@
 /**
  * TypeScript mirror of the Laravel API contract (docs/api/README.md).
  *
- * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary,SkillGapSnapshot,SkillGapSnapshotSummary,AiAssessment,AiAssessmentSummary,Challenge,ChallengeSummary,ChallengeSubmission,ChallengeSubmissionSummary,Roadmap,RoadmapSummary,GrowthSnapshot,GrowthSnapshotSummary}Resource.php,
+ * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary,SkillGapSnapshot,SkillGapSnapshotSummary,AiAssessment,AiAssessmentSummary,Challenge,ChallengeSummary,ChallengeSubmission,ChallengeSubmissionSummary,Roadmap,RoadmapSummary,GrowthSnapshot,GrowthSnapshotSummary,GitHubConnection,GitHubImport}Resource.php,
+ * backend/app/Http/Controllers/Api/V1/{GitHub/GitHubAccountController,Projects/ProjectGitHubController}.php,
  * backend/app/Http/Controllers/Api/V1/Projects/GrowthController.php (growth overview),
  * backend/app/Http/Resources/PaginatedCollection.php,
  * backend/app/Enums/{SupportedLocale,ProgrammingLanguage}.php and
@@ -63,6 +64,16 @@ export const API_ERROR_CODES = [
   "ROADMAP_EVIDENCE_INVALID",
   "ROADMAP_NOT_ACTIVE",
   "ROADMAP_STEP_PREREQUISITES_INCOMPLETE",
+  "GITHUB_NOT_CONFIGURED",
+  "GITHUB_AUTH_REQUIRED",
+  "GITHUB_STATE_INVALID",
+  "GITHUB_INSTALLATION_REQUIRED",
+  "GITHUB_REPOSITORY_NOT_FOUND",
+  "GITHUB_BRANCH_NOT_FOUND",
+  "GITHUB_ALREADY_CONNECTED",
+  "GITHUB_NOT_CONNECTED",
+  "GITHUB_RATE_LIMITED",
+  "GITHUB_UNAVAILABLE",
   "INTERNAL_ERROR",
   "SERVICE_UNAVAILABLE",
 ] as const;
@@ -1075,3 +1086,90 @@ export interface GrowthOverview {
 
 export type GrowthOverviewResponse = DataEnvelope<GrowthOverview>;
 export type GrowthSnapshotResponse = DataEnvelope<GrowthSnapshot>;
+
+/* ---------------------------------------------------------------- GitHub (Phase 19) */
+
+/** GET /api/v1/github — the signed-in user's GitHub authorization. Never a token. */
+export interface GitHubAccountStatus {
+  configured: boolean;
+  account: { login: string; connected_at: string | null } | null;
+}
+
+/** POST /api/v1/github/authorizations — where to send the browser (GitHub only). */
+export interface GitHubAuthorizationStart {
+  authorize_url: string;
+  install_url: string;
+  expires_at: string;
+}
+
+export interface GitHubInstallation {
+  id: number;
+  account: string;
+  account_type: "User" | "Organization";
+  repository_selection: "all" | "selected";
+}
+
+/** Repository metadata as verified with GitHub. */
+export interface GitHubRepository {
+  id: number;
+  owner: string;
+  name: string;
+  full_name: string;
+  private: boolean;
+  archived: boolean;
+  default_branch: string;
+}
+
+export interface GitHubBranch {
+  name: string;
+  protected: boolean;
+}
+
+/** A page of GitHub items: GitHub does not say how many exist, only whether more do. */
+export interface GitHubPage<T> {
+  data: T[];
+  meta: { page: number; per_page: number; has_more: boolean; default_branch?: string };
+}
+
+export type GitHubConnectionStatus = "ACTIVE" | "DISCONNECTED";
+export type GitHubImportStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
+
+/** `GitHubConnectionResource` */
+export interface GitHubConnection {
+  id: string;
+  type: "github_connection";
+  project_id: string;
+  status: GitHubConnectionStatus;
+  repository: GitHubRepository;
+  branch: string;
+  last_imported_commit_sha: string | null;
+  last_imported_at: string | null;
+  metadata_verified_at: string;
+  connected_at: string;
+  disconnected_at: string | null;
+}
+
+/** `GitHubImportResource` */
+export interface GitHubImport {
+  id: string;
+  type: "github_import";
+  project_id: string;
+  status: GitHubImportStatus;
+  repository: string;
+  ref: string;
+  commit_sha: string | null;
+  failure_code: string | null;
+  source_snapshot: { id: string; version: number } | null;
+  created_snapshot: boolean;
+  created_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+/** GET /api/v1/projects/{project}/github */
+export interface ProjectGitHub {
+  configured: boolean;
+  account_connected: boolean;
+  connection: GitHubConnection | null;
+  latest_import: GitHubImport | null;
+}

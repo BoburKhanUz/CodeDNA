@@ -416,6 +416,42 @@ roadmap_step_completions, challenge_submissions ──read at display time──
 
 Details: [growth-tracking-v1.md](growth-tracking-v1.md).
 
+### GitHub imports (Phase 19)
+
+GitHub is a source provider. An import ends in the same immutable source
+snapshot as an upload; the analysis sequence above is unchanged and is
+started separately (`POST /analyses`).
+
+1. **Authorization.** The user authorizes the CodeDNA GitHub App. The state
+   is single-use, user-bound and hashed. The code is exchanged server-side,
+   and the user tokens are stored encrypted.
+2. **Connection.** The owner connects a project to a repository ID and a
+   branch. Both are verified with GitHub as the user, and the installation
+   is found with the App JWT.
+3. **Request.** `POST /projects/{project}/github/imports` re-checks access
+   as the user and queues `ImportGitHubSource` with the import ID only, on
+   the queue `github`.
+4. **The job.**
+   1. It mints a one-repository, read-only installation token, kept in
+      memory only.
+   2. It resolves the branch to a commit, and reuses the project's snapshot
+      of that commit if there is one.
+   3. Otherwise it downloads `zipball/{sha}`. The redirect is followed only
+      to an allowed origin, and the download is streamed and capped.
+   4. It runs `ZipArchiveInspector` with the upload limits and hashes the
+      archive.
+   5. It stores the archive privately and records the snapshot
+      (`RecordSourceSnapshot`, `REPOSITORY`, GitHub provenance) under the
+      project lock.
+
+```text
+GitHub API ──(installation token, read-only, 1 repo)──► branch → commit SHA
+codeload (allowed origin) ──zip stream (≤ 50 MiB)──► ZipArchiveInspector ──► sources bucket ──► source_snapshots ──► (POST /analyses) ──► analysis pipeline
+          (no git, no extraction, no execution; disconnecting never removes snapshots or anything analyzed from them)
+```
+
+Details: [github-integration-v1.md](github-integration-v1.md).
+
 ## Run state machine
 
 ```text

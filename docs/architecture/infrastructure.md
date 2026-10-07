@@ -364,6 +364,10 @@ and prints no secrets:
 13. Growth tracking (Phase 18): reading the probe project's growth returns
     `200` and a write returns `405` (read-only). The probe's growth rows are
     deleted with it.
+14. GitHub integration (Phase 19): reading the probe project's GitHub
+    connection returns `200`. An import without a connection is `409
+    GITHUB_NOT_CONNECTED`, and an attempt to pass an archive URL is `422`.
+    The probe's GitHub rows are deleted with it.
 
 ## Troubleshooting
 

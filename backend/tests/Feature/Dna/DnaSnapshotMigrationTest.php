@@ -98,11 +98,11 @@ final class DnaSnapshotMigrationTest extends TestCase
         // reset, not rollback: it reverts the growth and roadmap migrations whatever batch they are in.
         $this->artisan('migrate:reset', ['--path' => self::GROWTH_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:reset', ['--path' => self::ROADMAP_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::ASSESSMENT_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::SKILL_GAP_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::COMPETENCY_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::ASSESSMENT_MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::SKILL_GAP_MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::COMPETENCY_MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::MIGRATION])->assertSuccessful();
 
         $this->assertFalse(Schema::hasColumn('dna_snapshots', 'source_snapshot_id'));
         $this->assertFalse(Schema::hasColumn('dna_snapshots', 'data_quality'));

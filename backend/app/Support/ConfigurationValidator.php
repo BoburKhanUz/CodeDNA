@@ -10,6 +10,7 @@ use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
 use App\Services\Challenge\ChallengeCatalog;
 use App\Services\Competency\CompetencySpecification;
 use App\Services\Dna\ScoringSpecification;
+use App\Services\GitHub\GitHubSettings;
 use App\Services\Growth\GrowthRules;
 use App\Services\Roadmap\RoadmapCatalog;
 use App\Services\Roadmap\RoadmapRules;
@@ -42,7 +43,7 @@ final class ConfigurationValidator
             $problems[] = 'The application timezone must be UTC.';
         }
 
-        $problems = [...$problems, ...$this->sourceStorageProblems($config), ...$this->analyzerProblems($config, $environment)];
+        $problems = [...$problems, ...$this->sourceStorageProblems($config), ...$this->analyzerProblems($config, $environment), ...$this->githubProblems($config, $environment)];
 
         if (! in_array($config->get('codedna.scoring.version'), ScoringSpecification::VERSIONS, true)) {
             $problems[] = 'CODEDNA_SCORING_VERSION must be one of: '.implode(', ', ScoringSpecification::VERSIONS).'.';
@@ -93,6 +94,77 @@ final class ConfigurationValidator
         }
 
         return $problems;
+    }
+
+    /**
+     * GitHub integration (Phase 19): off when no credential is set; when any
+     * is set, all must be, with a usable private key, absolute URLs (HTTPS in
+     * production) and download origins without paths.
+     *
+     * @return list<string>
+     */
+    private function githubProblems(Repository $config, string $environment): array
+    {
+        $settings = GitHubSettings::fromConfig($config);
+        $credentials = [
+            'GITHUB_APP_ID' => $settings->appId,
+            'GITHUB_APP_SLUG' => $settings->appSlug,
+            'GITHUB_APP_CLIENT_ID' => $settings->clientId,
+            'GITHUB_APP_CLIENT_SECRET' => $settings->clientSecret,
+            'GITHUB_APP_PRIVATE_KEY or GITHUB_APP_PRIVATE_KEY_PATH' => $settings->privateKey,
+        ];
+        $set = array_filter($credentials, static fn (string $value): bool => $value !== '');
+        if ($set === []) {
+            return [];
+        }
+        if (count($set) !== count($credentials)) {
+            return ['GitHub App configuration is incomplete: set '.implode(', ', array_keys(array_diff_key($credentials, $set))).'.'];
+        }
+
+        $problems = [];
+        if (openssl_pkey_get_private($settings->privateKey) === false) {
+            $problems[] = 'GITHUB_APP_PRIVATE_KEY is not a readable PEM private key.';
+        }
+        if (preg_match('/^[a-z0-9][a-z0-9-]{0,99}$/', $settings->appSlug) !== 1) {
+            $problems[] = "GITHUB_APP_SLUG must be the GitHub App's URL slug.";
+        }
+        $https = $environment === 'production';
+        foreach (['GITHUB_API_URL' => $settings->apiUrl, 'GITHUB_WEB_URL' => $settings->webUrl, 'GITHUB_CALLBACK_URL' => $settings->callbackUrl] as $name => $url) {
+            if (! self::absoluteUrl($url, $https)) {
+                $problems[] = "{$name} must be an absolute ".($https ? 'https' : 'http(s)').' URL.';
+            }
+        }
+        if ($settings->archiveOrigins === []) {
+            $problems[] = 'GITHUB_ARCHIVE_ORIGINS must list at least one origin.';
+        }
+        foreach ($settings->archiveOrigins as $origin) {
+            $path = parse_url($origin, PHP_URL_PATH);
+            if (! self::absoluteUrl($origin, $https) || ($path !== null && $path !== '') || parse_url($origin, PHP_URL_QUERY) !== null) {
+                $problems[] = 'GITHUB_ARCHIVE_ORIGINS entries must be origins (scheme://host[:port]) without a path'.($https ? ', using https' : '').'.';
+                break;
+            }
+        }
+        $job = (int) $config->get('codedna.github.job_timeout_seconds');
+        if ($settings->timeoutSeconds < 1 || $settings->connectTimeoutSeconds < 1 || $settings->downloadTimeoutSeconds < 1
+            || $job <= $settings->downloadTimeoutSeconds + $settings->timeoutSeconds) {
+            $problems[] = 'GitHub timeouts must be positive and GITHUB_IMPORT_JOB_TIMEOUT_SECONDS must exceed the download and request timeouts.';
+        }
+        $retryAfter = (int) $config->get('queue.connections.'.$config->get('codedna.github.queue_connection').'.retry_after');
+        if ($retryAfter <= $job) {
+            $problems[] = 'GITHUB_IMPORT_JOB_TIMEOUT_SECONDS must be lower than the queue retry_after.';
+        }
+
+        return $problems;
+    }
+
+    private static function absoluteUrl(string $url, bool $httpsOnly): bool
+    {
+        $parts = parse_url($url);
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host']) || isset($parts['user']) || isset($parts['pass'])) {
+            return false;
+        }
+
+        return $httpsOnly ? $parts['scheme'] === 'https' : in_array($parts['scheme'], ['http', 'https'], true);
     }
 
     /**

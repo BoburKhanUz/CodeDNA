@@ -306,7 +306,7 @@ final class ChallengeMigrationAndConcurrencyTest extends TestCase
         }
 
         $gaps = $this->gaps();
-        $this->artisan('migrate:rollback', ['--path' => self::MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::MIGRATION])->assertSuccessful();
         foreach (['challenge_definitions', 'challenge_instances', 'challenge_submissions'] as $table) {
             $this->assertFalse(Schema::hasTable($table));
         }

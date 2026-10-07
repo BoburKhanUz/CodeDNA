@@ -259,6 +259,54 @@ final class ConfigurationValidatorTest extends TestCase
         }
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private static function github(array $overrides = []): array
+    {
+        $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+        openssl_pkey_export($key, $pem);
+
+        return ['codedna.github' => $overrides + [
+            'app_id' => '1', 'app_slug' => 'codedna', 'client_id' => 'Iv1.x', 'client_secret' => 'secret', 'private_key' => (string) $pem,
+            'private_key_path' => '', 'api_url' => 'https://api.github.com', 'web_url' => 'https://github.com',
+            'archive_origins' => ['https://codeload.github.com'], 'callback_url' => 'https://app.codedna.example/app/github/callback',
+            'state_ttl_seconds' => 600, 'connect_timeout_seconds' => 5, 'timeout_seconds' => 15, 'download_timeout_seconds' => 120,
+            'max_response_bytes' => 4194304, 'retry_delay_ms' => 250, 'queue_connection' => 'analysis', 'queue' => 'github',
+            'job_timeout_seconds' => 180, 'import_stale_after_seconds' => 900,
+        ]];
+    }
+
+    public function test_github_is_optional_and_fully_configured_or_not_at_all(): void
+    {
+        $validator = new ConfigurationValidator;
+        $this->assertSame([], $validator->problems($this->config(self::github(['app_id' => '', 'app_slug' => '', 'client_id' => '', 'client_secret' => '', 'private_key' => ''])), 'production'));
+        $this->assertSame([], $validator->problems($this->config(self::github()), 'production'));
+        $this->assertSame(
+            ['GitHub App configuration is incomplete: set GITHUB_APP_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY or GITHUB_APP_PRIVATE_KEY_PATH.'],
+            $validator->problems($this->config(self::github(['client_secret' => '', 'private_key' => ''])), 'production'),
+        );
+    }
+
+    public function test_github_needs_a_real_key_https_urls_and_bare_origins_in_production(): void
+    {
+        $validator = new ConfigurationValidator;
+        $this->assertSame(['GITHUB_APP_PRIVATE_KEY is not a readable PEM private key.'], $validator->problems($this->config(self::github(['private_key' => 'not a key'])), 'production'));
+        $this->assertSame(['GITHUB_API_URL must be an absolute https URL.'], $validator->problems($this->config(self::github(['api_url' => 'http://api.github.com'])), 'production'));
+        $this->assertSame([], $validator->problems($this->config(self::github(['api_url' => 'http://github-double:8080'])), 'local'));
+        $this->assertSame(['GITHUB_WEB_URL must be an absolute https URL.'], $validator->problems($this->config(self::github(['web_url' => 'github.com'])), 'production'));
+        foreach (['https://codeload.github.com/path', 'http://codeload.github.com', 'https://user:pw@codeload.github.com', 'https://codeload.github.com?x=1'] as $origin) {
+            $this->assertSame(['GITHUB_ARCHIVE_ORIGINS entries must be origins (scheme://host[:port]) without a path, using https.'],
+                $validator->problems($this->config(self::github(['archive_origins' => [$origin]])), 'production'), $origin);
+        }
+        $this->assertSame(['GITHUB_ARCHIVE_ORIGINS must list at least one origin.'], $validator->problems($this->config(self::github(['archive_origins' => []])), 'production'));
+        $this->assertSame(["GITHUB_APP_SLUG must be the GitHub App's URL slug."], $validator->problems($this->config(self::github(['app_slug' => '../x'])), 'production'));
+        $this->assertSame(['GitHub timeouts must be positive and GITHUB_IMPORT_JOB_TIMEOUT_SECONDS must exceed the download and request timeouts.'],
+            $validator->problems($this->config(self::github(['job_timeout_seconds' => 130])), 'production'));
+        $this->assertSame(['GITHUB_IMPORT_JOB_TIMEOUT_SECONDS must be lower than the queue retry_after.'],
+            $validator->problems($this->config(self::github(['job_timeout_seconds' => 400])), 'production'));
+    }
+
     public function test_ai_is_disabled_by_default_and_needs_nothing_then(): void
     {
         $this->assertSame([], $this->aiProblems([]));

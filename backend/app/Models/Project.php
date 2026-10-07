@@ -163,4 +163,24 @@ class Project extends Model
     {
         return $this->hasMany(GrowthSnapshot::class);
     }
+
+    /**
+     * GitHub connections (Phase 19), the active one and earlier disconnected ones.
+     *
+     * @return HasMany<GitHubConnection, $this>
+     */
+    public function githubConnections(): HasMany
+    {
+        return $this->hasMany(GitHubConnection::class);
+    }
+
+    /**
+     * GitHub imports (Phase 19).
+     *
+     * @return HasMany<GitHubImport, $this>
+     */
+    public function githubImports(): HasMany
+    {
+        return $this->hasMany(GitHubImport::class);
+    }
 }

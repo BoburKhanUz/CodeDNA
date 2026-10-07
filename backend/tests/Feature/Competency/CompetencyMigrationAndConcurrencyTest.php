@@ -144,10 +144,10 @@ final class CompetencyMigrationAndConcurrencyTest extends TestCase
         // reset, not rollback: it reverts the growth and roadmap migrations whatever batch they are in.
         $this->artisan('migrate:reset', ['--path' => self::GROWTH_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:reset', ['--path' => self::ROADMAP_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::ASSESSMENT_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::SKILL_GAP_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::ASSESSMENT_MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::SKILL_GAP_MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::MIGRATION])->assertSuccessful();
         $this->assertFalse(Schema::hasTable('competency_snapshots'));
         $this->assertNotContains('dna_snapshots_lineage_unique', $constraints('dna_snapshots'));
         $this->assertSame(1, DB::table('dna_snapshots')->where('id', $dna->id)->count(), 'DNA history is untouched');

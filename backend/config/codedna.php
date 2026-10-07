@@ -218,6 +218,44 @@ return [
         'queue' => 'challenge',
     ],
 
+    /*
+    | GitHub integration (Phase 19, docs/architecture/github-integration-v1.md).
+    | A GitHub App with read-only Contents and Metadata permissions. GitHub is
+    | a source provider only: an import becomes an immutable source snapshot,
+    | analyzed by the existing pipeline. Every URL comes from configuration,
+    | never from a request. The integration is off unless all of app_id,
+    | app_slug, client_id, client_secret and the private key are set.
+    */
+    'github' => [
+        'app_id' => (string) env('GITHUB_APP_ID', ''),
+        'app_slug' => (string) env('GITHUB_APP_SLUG', ''),
+        'client_id' => (string) env('GITHUB_APP_CLIENT_ID', ''),
+        'client_secret' => (string) env('GITHUB_APP_CLIENT_SECRET', ''),
+        // PEM text (newlines may be written as \n) or a path to the PEM file. Never committed.
+        'private_key' => (string) env('GITHUB_APP_PRIVATE_KEY', ''),
+        'private_key_path' => (string) env('GITHUB_APP_PRIVATE_KEY_PATH', ''),
+        // Official endpoints; overridable only for a local test double.
+        'api_url' => (string) env('GITHUB_API_URL', 'https://api.github.com'),
+        'web_url' => (string) env('GITHUB_WEB_URL', 'https://github.com'),
+        // Origins a repository archive download may be redirected to.
+        'archive_origins' => array_values(array_filter(array_map('trim', explode(',', (string) env('GITHUB_ARCHIVE_ORIGINS', 'https://codeload.github.com'))))),
+        // Where GitHub sends the browser back to (a frontend page that completes the flow).
+        'callback_url' => (string) env('GITHUB_CALLBACK_URL', rtrim((string) env('APP_URL', 'http://localhost'), '/').'/app/github/callback'),
+        'state_ttl_seconds' => (int) env('GITHUB_STATE_TTL_SECONDS', 600),
+        'connect_timeout_seconds' => (int) env('GITHUB_CONNECT_TIMEOUT_SECONDS', 5),
+        'timeout_seconds' => (int) env('GITHUB_TIMEOUT_SECONDS', 15),
+        'download_timeout_seconds' => (int) env('GITHUB_DOWNLOAD_TIMEOUT_SECONDS', 120),
+        // Largest JSON response read from GitHub; anything larger is refused.
+        'max_response_bytes' => (int) env('GITHUB_MAX_RESPONSE_BYTES', 4 * 1024 * 1024),
+        // One retry of an idempotent GET after a 502/503/504 or a connection failure.
+        'retry_delay_ms' => (int) env('GITHUB_RETRY_DELAY_MS', 250),
+        'queue_connection' => 'analysis',
+        'queue' => 'github',
+        'job_timeout_seconds' => (int) env('GITHUB_IMPORT_JOB_TIMEOUT_SECONDS', 180),
+        // A QUEUED or RUNNING import untouched for this long no longer blocks a new one.
+        'import_stale_after_seconds' => (int) env('GITHUB_IMPORT_STALE_AFTER_SECONDS', 900),
+    ],
+
     'rate_limits' => [
         // Every /api/v1 route, per authenticated user or per IP.
         'api_per_minute' => 120,
@@ -249,6 +287,14 @@ return [
         // POST .../roadmaps and POST .../roadmaps/{roadmap}/steps/{step}/complete, per user.
         'roadmap_generate_per_minute' => 10,
         'roadmap_progress_per_minute' => 60,
+        // GitHub (Phase 19), per user: starting authorization, browsing
+        // installations, repositories and branches, changing a connection,
+        // and imports (each downloads a whole archive).
+        'github_authorize_per_minute' => 10,
+        'github_read_per_minute' => 60,
+        'github_write_per_minute' => 20,
+        'github_import_per_minute' => 5,
+        'github_import_per_hour' => 30,
     ],
 
 ];

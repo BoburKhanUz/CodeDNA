@@ -51,6 +51,17 @@ enum ErrorCode: string
     case RoadmapEvidenceInvalid = 'ROADMAP_EVIDENCE_INVALID';
     case RoadmapNotActive = 'ROADMAP_NOT_ACTIVE';
     case RoadmapStepPrerequisitesIncomplete = 'ROADMAP_STEP_PREREQUISITES_INCOMPLETE';
+    // GitHub integration (Phase 19).
+    case GitHubNotConfigured = 'GITHUB_NOT_CONFIGURED';
+    case GitHubAuthRequired = 'GITHUB_AUTH_REQUIRED';
+    case GitHubStateInvalid = 'GITHUB_STATE_INVALID';
+    case GitHubInstallationRequired = 'GITHUB_INSTALLATION_REQUIRED';
+    case GitHubRepositoryNotFound = 'GITHUB_REPOSITORY_NOT_FOUND';
+    case GitHubBranchNotFound = 'GITHUB_BRANCH_NOT_FOUND';
+    case GitHubAlreadyConnected = 'GITHUB_ALREADY_CONNECTED';
+    case GitHubNotConnected = 'GITHUB_NOT_CONNECTED';
+    case GitHubRateLimited = 'GITHUB_RATE_LIMITED';
+    case GitHubUnavailable = 'GITHUB_UNAVAILABLE';
     case InternalError = 'INTERNAL_ERROR';
     case ServiceUnavailable = 'SERVICE_UNAVAILABLE';
 
@@ -69,13 +80,15 @@ enum ErrorCode: string
             self::ChallengesDisabled, self::ChallengeNoEligibleGap, self::ChallengeNoneAvailable,
             self::ChallengeEvaluationUnavailable, self::ChallengeEvaluationPending, self::ChallengeClosed,
             self::RoadmapNoSkillGaps, self::RoadmapNoActionableGaps, self::RoadmapEvidenceInvalid,
-            self::RoadmapNotActive, self::RoadmapStepPrerequisitesIncomplete => 409,
+            self::RoadmapNotActive, self::RoadmapStepPrerequisitesIncomplete,
+            self::GitHubAuthRequired, self::GitHubInstallationRequired, self::GitHubAlreadyConnected, self::GitHubNotConnected => 409,
             self::ValidationFailed, self::InvalidCredentials, self::IdempotencyKeyReused,
             self::SourceArchiveInvalid, self::SourceArchiveUnsafe, self::SourceUncompressedSizeExceeded,
-            self::SourceFileCountExceeded, self::SourceFileTooLarge => 422,
-            self::RateLimited => 429,
+            self::SourceFileCountExceeded, self::SourceFileTooLarge,
+            self::GitHubStateInvalid, self::GitHubRepositoryNotFound, self::GitHubBranchNotFound => 422,
+            self::RateLimited, self::GitHubRateLimited => 429,
             self::InternalError => 500,
-            self::ServiceUnavailable => 503,
+            self::ServiceUnavailable, self::GitHubNotConfigured, self::GitHubUnavailable => 503,
         };
     }
 
@@ -116,6 +129,16 @@ enum ErrorCode: string
             self::RoadmapEvidenceInvalid => 'The newest skill gap analysis does not match its specification and cannot be used.',
             self::RoadmapNotActive => 'This roadmap is no longer active and cannot be changed.',
             self::RoadmapStepPrerequisitesIncomplete => 'Complete the earlier steps this step depends on first.',
+            self::GitHubNotConfigured => 'GitHub integration is not configured on this server.',
+            self::GitHubAuthRequired => 'Connect your GitHub account first.',
+            self::GitHubStateInvalid => 'This GitHub authorization link is invalid, expired or already used. Start again.',
+            self::GitHubInstallationRequired => 'Install the CodeDNA GitHub App for this repository first.',
+            self::GitHubRepositoryNotFound => 'This repository is not available to you through the CodeDNA GitHub App.',
+            self::GitHubBranchNotFound => 'This branch does not exist in the repository.',
+            self::GitHubAlreadyConnected => 'This project is already connected to a GitHub repository. Disconnect it first.',
+            self::GitHubNotConnected => 'This project is not connected to a GitHub repository.',
+            self::GitHubRateLimited => 'GitHub is rate limiting requests. Retry later.',
+            self::GitHubUnavailable => 'GitHub is not reachable right now. Retry later.',
             self::InternalError => 'An unexpected error occurred.',
             self::ServiceUnavailable => 'The service is temporarily unavailable.',
         };

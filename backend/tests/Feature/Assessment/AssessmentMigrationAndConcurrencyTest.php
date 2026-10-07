@@ -229,8 +229,8 @@ final class AssessmentMigrationAndConcurrencyTest extends TestCase
         // reset, not rollback: it reverts the growth and roadmap migrations whatever batch they are in.
         $this->artisan('migrate:reset', ['--path' => self::GROWTH_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:reset', ['--path' => self::ROADMAP_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();
-        $this->artisan('migrate:rollback', ['--path' => self::MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();
+        $this->artisan('migrate:reset', ['--path' => self::MIGRATION])->assertSuccessful();
         $this->assertFalse(Schema::hasTable('ai_assessments'));
         $this->assertNotContains('skill_gap_snapshots_lineage_unique', $constraints('skill_gap_snapshots'));
         $this->assertSame(0, (int) DB::scalar("select count(*) from pg_proc where proname = 'ai_assessments_refuse_terminal_update'"));

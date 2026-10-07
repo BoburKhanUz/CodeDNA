@@ -112,6 +112,28 @@ export function describeApiError(error: unknown): string {
       return "This roadmap is no longer active, so its progress cannot change.";
     case "ROADMAP_STEP_PREREQUISITES_INCOMPLETE":
       return "Complete the earlier steps this step depends on first.";
+    case "GITHUB_NOT_CONFIGURED":
+      return "GitHub integration is not configured on this server.";
+    case "GITHUB_AUTH_REQUIRED":
+      return "Connect your GitHub account to continue.";
+    case "GITHUB_STATE_INVALID":
+      return "This GitHub sign-in link is invalid, expired or already used. Start again.";
+    case "GITHUB_INSTALLATION_REQUIRED":
+      return "Install the CodeDNA GitHub App for this repository first.";
+    case "GITHUB_REPOSITORY_NOT_FOUND":
+      return "This repository is not available to you through the CodeDNA GitHub App.";
+    case "GITHUB_BRANCH_NOT_FOUND":
+      return "This branch does not exist in the repository.";
+    case "GITHUB_ALREADY_CONNECTED":
+      return "This project is already connected to a GitHub repository.";
+    case "GITHUB_NOT_CONNECTED":
+      return "This project is not connected to a GitHub repository.";
+    case "GITHUB_RATE_LIMITED":
+      return error.retryAfterSeconds !== null
+        ? `GitHub is rate limiting requests. Try again in ${formatSeconds(error.retryAfterSeconds)}.`
+        : "GitHub is rate limiting requests. Try again later.";
+    case "GITHUB_UNAVAILABLE":
+      return "GitHub is not reachable right now. Try again later.";
   }
 
   if (error.status !== null && error.status >= 500) {
