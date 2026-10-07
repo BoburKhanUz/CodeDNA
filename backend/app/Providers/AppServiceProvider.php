@@ -17,13 +17,16 @@ use App\Services\Growth\GrowthRules;
 use App\Services\Roadmap\RoadmapCatalog;
 use App\Services\Roadmap\RoadmapRules;
 use App\Support\ConfigurationValidator;
+use App\Support\Session\RedisSessionHandler;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Cache\RedisStore;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Client\Factory as Http;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -88,6 +91,21 @@ class AppServiceProvider extends ServiceProvider
         DB::prohibitDestructiveCommands($isProduction);
 
         TrustProxies::at(config('codedna.trusted_proxies'));
+
+        // Redis sessions that a request still running at logout cannot bring
+        // back (Phase 22). Built like Laravel's own redis driver.
+        Session::extend('redis', static function ($app): RedisSessionHandler {
+            $handler = new RedisSessionHandler(clone $app['cache']->store(config('session.store') ?: 'redis'), (int) config('session.lifetime'));
+            $store = $handler->getCache()->getStore();
+            if ($store instanceof RedisStore) {
+                $store->setConnection(config('session.connection'));
+                if (is_string($prefix = config('session.prefix')) && $prefix !== '') {
+                    $store->setPrefix($prefix);
+                }
+            }
+
+            return $handler;
+        });
 
         // bcrypt only uses the first 72 bytes of a password: longer ones
         // (also 72 characters of multibyte text) are refused rather than

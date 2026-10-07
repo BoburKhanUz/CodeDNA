@@ -12,6 +12,7 @@ use App\Models\AnalysisResult;
 use App\Models\AnalysisRun;
 use App\Services\Analyzer\CanonicalJson;
 use Closure;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
@@ -342,5 +343,31 @@ final class AnalyzeSourceSnapshotJobTest extends TestCase
         $this->assertSame('ANALYSIS_STALE', $lost->refresh()->failure_code);
         $this->assertSame(AnalysisRunStatus::Running, $active->refresh()->status);
         $this->assertSame(AnalysisRunStatus::Succeeded, $done->refresh()->status);
+    }
+
+    public function test_the_stale_sweeper_spares_a_run_renewed_after_it_was_selected(): void
+    {
+        $run = AnalysisRun::factory()->running()->create();
+        DB::table('analysis_runs')->where('id', $run->id)->update(['updated_at' => now()->subHour()]);
+        $this->afterCandidateQuery('analysis_runs', fn () => DB::table('analysis_runs')->where('id', $run->id)->update(['updated_at' => now()]));
+
+        $this->artisan('analysis:fail-stale')->expectsOutput('Stale analysis runs failed: 0')->assertSuccessful();
+
+        $this->assertSame(AnalysisRunStatus::Running, $run->refresh()->status);
+    }
+
+    /**
+     * Runs $touch once, right after the sweeper has read its candidates and
+     * before it locks them: a worker renewing the row in between.
+     */
+    private function afterCandidateQuery(string $table, Closure $touch): void
+    {
+        $done = false;
+        DB::listen(function (QueryExecuted $query) use ($table, &$done, $touch): void {
+            if (! $done && str_starts_with($query->sql, "select \"id\" from \"{$table}\"")) {
+                $done = true;
+                $touch();
+            }
+        });
     }
 }

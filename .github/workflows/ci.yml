@@ -1,9 +1,14 @@
-# CodeDNA CI — Phase 02: repository checks, secret scan, and a full Docker
-# development-environment build + runtime smoke test.
+# CodeDNA CI. Quality gates (docs/testing/test-strategy.md#ci-quality-gates):
 #
-# Application-level CI (backend Phase 03, frontend Phase 04, analyzer
-# Phase 08) is added in those phases. Tool versions are kept in sync with the
-# Makefile.
+# - foundation: repository checks, cross-service contract parity, linters;
+# - secrets: gitleaks over history and working tree;
+# - infrastructure: the full Docker stack, runtime smoke test, every test
+#   suite (a failing test fails the job), linters, type checks, the frontend
+#   production build and dependency audits;
+# - regression (nightly and on demand): every suite three times on a fresh
+#   stack, to surface flaky tests.
+#
+# Tool versions are kept in sync with the Makefile.
 
 name: CI
 
@@ -11,6 +16,9 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -50,6 +58,9 @@ jobs:
 
       - name: Check required files, links and .env.example hygiene
         run: python3 scripts/check_repo.py
+
+      - name: Check cross-service contract parity
+        run: python3 scripts/check_contracts.py
 
       - name: Lint Markdown
         run: npx --yes "markdownlint-cli2@${MARKDOWNLINT_CLI2_VERSION}" "**/*.md"
@@ -106,9 +117,10 @@ jobs:
         run: gitleaks dir --redact --no-banner --verbose .
 
   infrastructure:
-    name: Docker environment (build + runtime smoke test)
+    name: Docker environment (build, smoke test, test suites)
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -127,6 +139,8 @@ jobs:
       - name: Runtime smoke test
         run: make verify
 
+      # CODEDNA_REQUIRE_EVALUATOR / CODEDNA_REQUIRE_SANDBOX (set by make test)
+      # turn a missing evaluator into a failure instead of skipped tests.
       - name: Test suites (analyzer pytest, backend PHPUnit, frontend Vitest, evaluator sandbox)
         run: make test
 
@@ -135,10 +149,62 @@ jobs:
 
       - name: Backend code style (Laravel Pint)
         run: make lint-backend
+
       - name: Lint and type-check analyzer
         run: make lint-analyzer
+
       - name: Lint and type-check evaluator
         run: make lint-evaluator
+
+      - name: Frontend production build
+        run: make build-frontend
+
+      - name: Dependency audits (Composer, npm runtime, analyzer Python)
+        run: make audit
+
+      - name: Service status and logs (on failure)
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  regression:
+    name: Nightly regression (suites repeated for flakiness)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Generate local .env (random throwaway secrets)
+        run: ./scripts/setup.sh
+
+      - name: Build images without cache
+        run: docker compose build --no-cache
+
+      - name: Start environment, wait for health, run migrations
+        run: make up
+
+      - name: Runtime smoke test
+        run: make verify
+
+      - name: Test suites, three consecutive runs
+        run: |
+          for run in 1 2 3; do
+            echo "::group::run ${run}"
+            make test
+            echo "::endgroup::"
+          done
+
+      - name: Dependency audits
+        run: make audit
 
       - name: Service status and logs (on failure)
         if: failure()

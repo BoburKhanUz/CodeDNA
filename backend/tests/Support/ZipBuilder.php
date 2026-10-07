@@ -44,7 +44,8 @@ final class ZipBuilder
      * Options: method (0 stored, 8 deflated; default 8), declared_size,
      * declared_compressed_size, crc, made_by (default Unix), external,
      * flags, data_descriptor (bool), local_name, offset (overrides the
-     * recorded local header offset).
+     * recorded local header offset), trailing (bytes written after the
+     * entry's data and descriptor, which no central record points to).
      *
      * @param  array<string, mixed>  $options
      */
@@ -104,6 +105,7 @@ final class ZipBuilder
             if ($descriptor) {
                 $body .= pack('VVVV', 0x08074B50, $crc, $compressedSize, $size);
             }
+            $body .= (string) ($entry['trailing'] ?? '');
 
             $extra = '';
             [$cdCompressed, $cdSize, $cdOffset] = [$compressedSize, $size, $offset];

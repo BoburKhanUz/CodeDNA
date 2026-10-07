@@ -19,8 +19,10 @@ use App\Exceptions\SourceArchiveRejected;
  * (method 0) or deflated (method 8), unencrypted, with relative, normalized
  * UTF-8 paths, regular files and directories only, within the configured
  * limits. The layout must be unambiguous: no data before the first entry,
- * no overlapping entries, local headers that agree with the central
- * directory, and nothing between the central directory and its end record.
+ * no overlapping entries, nothing between entries or before the central
+ * directory except data descriptors, local headers that agree with the
+ * central directory, and nothing between the central directory and its end
+ * record.
  * Every other reader (including the future analyzer) therefore sees the same
  * entries.
  *
@@ -57,6 +59,9 @@ final readonly class ZipArchiveInspector
 
     /** Encrypted (bit 0), strong encryption (bit 6), encrypted central directory (bit 13). */
     private const ENCRYPTION_FLAGS = 0x0001 | 0x0040 | 0x2000;
+
+    /** General purpose flag bit 3: sizes and CRC follow the data in a data descriptor. */
+    private const DATA_DESCRIPTOR_FLAG = 0x0008;
 
     private const HOST_UNIX = 3;
 
@@ -468,10 +473,14 @@ final readonly class ZipArchiveInspector
         }
 
         $previousEnd = 0;
+        $allowedGaps = [0];
         $total = 0;
         foreach ($byOffset as $entry) {
             if ($entry['offset'] < $previousEnd) {
                 throw SourceArchiveRejected::unsafe('overlapping_entries');
+            }
+            if (! in_array($entry['offset'] - $previousEnd, $allowedGaps, true)) {
+                throw SourceArchiveRejected::invalid('data_between_entries');
             }
             if ($directoryOffset < $entry['offset'] + self::LOCAL_HEADER_SIZE) {
                 throw SourceArchiveRejected::invalid('entry_outside_archive');
@@ -498,7 +507,13 @@ final readonly class ZipArchiveInspector
             $this->verifyData($handle, $dataStart, $entry);
             $total += $entry['uncompressedSize'];
             // Bit 3: a data descriptor follows the data; the next entry starts after it.
+            // Only a descriptor may sit there (12, 16, 20 or 24 bytes: with or without
+            // its signature, 32- or 64-bit sizes), too short to hide a local entry.
             $previousEnd = $dataEnd;
+            $allowedGaps = ($local['flags'] & self::DATA_DESCRIPTOR_FLAG) !== 0 ? [12, 16, 20, 24] : [0];
+        }
+        if (! in_array($directoryOffset - $previousEnd, $allowedGaps, true)) {
+            throw SourceArchiveRejected::invalid('data_between_entries');
         }
 
         $files = array_values(array_map(

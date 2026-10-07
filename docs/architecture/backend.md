@@ -131,6 +131,7 @@ backend/
 │   │                              Evaluator/{SpoolChallengeEvaluator, UnavailableChallengeEvaluator} (Phase 16)
 │   ├── Services/Roadmap/          RoadmapCatalog, RoadmapRules, DevelopmentFocusResolver, RoadmapGenerator (Phase 17)
 │   ├── Support/ConfigurationValidator.php
+│   ├── Support/Session/           RedisSessionHandler (sessions destroyed at logout stay destroyed)
 │   └── Support/Sources/           ZipArchiveInspector, SourceArchiveLimits, ArchiveSummary, LanguageGuesser
 ├── bootstrap/app.php              routing (api prefix), middleware, exception rendering
 ├── config/codedna.php             CodeDNA settings (service, version, proxies, source storage and limits, analyzer, analysis, scoring, rate limits)
@@ -190,6 +191,13 @@ redirect.
 - **Register and login** regenerate the session ID. **Logout** logs out,
   invalidates the session and rotates the CSRF token. `RequireSession`
   returns `400` when register, login or logout is called without a session.
+- **Sessions destroyed while other requests run stay destroyed** (Phase 22).
+  A page sends several requests at once, and each one saves the session it
+  loaded when it ends. `App\Support\Session\RedisSessionHandler` (the
+  `redis` session driver) therefore only overwrites a session that existed
+  when the request loaded it, with Redis `SET ... XX`, and never re-creates
+  it. Before, a request still running at logout wrote the signed-in session
+  back, and the user stayed signed in.
 - **Passwords** are hashed with bcrypt through the model's `hashed` cast.
   The policy is 8–72 characters (`Password::defaults()`). Emails are stored
   lowercase and unique.

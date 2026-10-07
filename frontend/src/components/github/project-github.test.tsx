@@ -1,8 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ProjectGitHubView } from "@/components/github/project-github";
+import { POLL_MS, ProjectGitHubView } from "@/components/github/project-github";
 import type { GitHubImport, GitHubInstallation, GitHubRepository, Project, ProjectGitHub } from "@/lib/api/types";
 import { connection, githubImport, projectGitHub, repository, SHA } from "@/test/github";
 import { apiErrorResponse, jsonResponse, page, project } from "@/test/responses";
@@ -27,6 +27,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   Object.defineProperty(window, "location", { configurable: true, value: originalLocation });
 });
 
@@ -198,7 +199,8 @@ describe("ProjectGitHubView", () => {
     expect(screen.getByTestId("github-import")).toBeEnabled();
   });
 
-  it("imports, follows the import while it runs, and shows the result", { timeout: 10000 }, async () => {
+  it("imports, follows the import while it runs, and shows the result", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     let latest: GitHubImport | null = null;
     respondWith({
       github: () => projectGitHub({ connection: connection(), latest_import: latest }),
@@ -208,15 +210,40 @@ describe("ProjectGitHubView", () => {
       },
     });
     render(<ProjectGitHubView projectId={project.id} />);
-    await userEvent.click(await screen.findByTestId("github-import"));
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(await screen.findByTestId("github-import"));
 
     expect(writes()).toEqual([{ method: "POST", url: `/api/v1/projects/${project.id}/github/imports`, body: {} }]);
     expect(await screen.findByTestId("github-latest-import")).toHaveTextContent("Latest import: Waiting to start");
     expect(screen.getByTestId("github-import")).toBeDisabled();
 
-    // The page polls every 3 seconds while the import is in progress.
+    // The page polls every POLL_MS while the import is in progress.
     latest = githubImport();
-    expect(await screen.findByTestId("github-import-success", {}, { timeout: 5000 })).toHaveTextContent("Ready for analysis");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS);
+    });
+    expect(await screen.findByTestId("github-import-success")).toHaveTextContent("Ready for analysis");
+  });
+
+  it("keeps Import disabled until the page has reloaded, so one click sends one request", async () => {
+    let posted = false;
+    respondWith({
+      github: () => projectGitHub({ connection: connection(), latest_import: null }),
+      write: () => {
+        posted = true;
+        return jsonResponse({ data: githubImport({ status: "QUEUED", commit_sha: null, source_snapshot: null, created_snapshot: false, completed_at: null, started_at: null }) }, 202);
+      },
+    });
+    const respond = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation((input, init) =>
+      posted && (init?.method ?? "GET") === "GET" && String(input).endsWith("/github") ? new Promise<Response>(() => {}) : respond(input, init),
+    );
+    render(<ProjectGitHubView projectId={project.id} />);
+    const button = await screen.findByTestId("github-import");
+    await userEvent.click(button);
+    await userEvent.click(button);
+
+    expect(writes()).toHaveLength(1);
+    expect(screen.getByTestId("github-import")).toBeDisabled();
   });
 
   it("explains a reused snapshot and every failure in plain words", async () => {

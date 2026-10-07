@@ -74,7 +74,7 @@ included) with stored or deflated, unencrypted entries, and rejects:
 
 | Problem | Code |
 |---|---|
-| Not a ZIP by content (the name and MIME type are ignored), truncated, corrupt, encrypted, unsupported compression, no files, duplicate entries, a path that is both a file and a directory, data before the first entry, CRC or size mismatches | `SOURCE_ARCHIVE_INVALID` |
+| Not a ZIP by content (the name and MIME type are ignored), truncated, corrupt, encrypted, unsupported compression, no files, duplicate entries, a path that is both a file and a directory, data before the first entry, data between entries or before the central directory other than a data descriptor (`data_between_entries`, Phase 22), CRC or size mismatches | `SOURCE_ARCHIVE_INVALID` |
 | Paths with `..`, absolute paths, drive letters (`C:`), backslashes, `.` or empty segments, control characters, over `SOURCE_MAX_PATH_LENGTH`; symbolic links, devices, FIFOs; overlapping entries; a local header naming a different file than the central directory; an entry that decompresses to more than it declares (zip bomb) | `SOURCE_ARCHIVE_UNSAFE` |
 | Archive over `SOURCE_MAX_ARCHIVE_BYTES` | `SOURCE_ARCHIVE_TOO_LARGE` (413) |
 | Declared or real total over `SOURCE_MAX_UNCOMPRESSED_BYTES` | `SOURCE_UNCOMPRESSED_SIZE_EXCEEDED` |
@@ -153,7 +153,7 @@ Project ─► Source snapshot ─► POST …/analyses ─► AnalysisRun (QUEU
 | Job | `App\Jobs\AnalyzeSourceSnapshot` on queue connection and queue `analysis` |
 | Analyzer client | `App\Services\Analyzer\AnalyzerClient` (+ `HmacSigner`, `CanonicalJson`, `JsonSchemaValidator`, `AnalyzerErrorMap`) |
 | Persistence | `App\Actions\Analysis\PersistAnalysisResult`, table `analysis_results` |
-| Stale runs | `php artisan analysis:fail-stale`, scheduled every five minutes |
+| Stale runs | `php artisan analysis:fail-stale`, scheduled every five minutes. The staleness condition is checked again on the locked row, so a run a worker renewed after it was selected is never failed (Phase 22) |
 
 Laravel owns the lifecycle, authorization, queueing, retries and
 persistence; the analyzer owns download, archive safety, discovery, parsing,

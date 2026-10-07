@@ -10,6 +10,7 @@ same change.
 | [`analyzer/v1/foundation-result.schema.json`](analyzer/v1/foundation-result.schema.json) | Its `200` body when `result_type` is `"foundation"` (Phase 08, the default), including the IR 1.0 file record |
 | [`analyzer/v1/static-analysis-result.schema.json`](analyzer/v1/static-analysis-result.schema.json) | Its `200` body when the request asks for `"static_analysis"` (Phase 09): every foundation field unchanged, plus IR 1.1 file records, parse statuses, static metrics 1.0 and structural findings |
 | [`analyzer/v1/error.schema.json`](analyzer/v1/error.schema.json) | The analyzer's error envelope |
+| [`analyzer/v1/hmac-vectors.json`](analyzer/v1/hmac-vectors.json) | A request and a response signature test vector. Laravel and the analyzer both check their signing code against it, so neither can drift |
 
 The schemas are JSON Schema 2020-12 and use only a small subset of it
 (`type`, `required`, `properties`, `additionalProperties` (`false` or a schema), `items`, `enum`,

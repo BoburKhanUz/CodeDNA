@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiErrorAlert } from "@/components/auth/api-error-alert";
 import { StatusBadge } from "@/components/projects/status-badge";
@@ -92,17 +92,24 @@ export function HistoryView({ projectId }: { projectId: string }) {
     setPage(next);
   };
 
+  // Each selection change or request gets a new number; a comparison answering for an older one is dropped.
+  const comparisons = useRef(0);
   const toggle = (id: string) => {
+    comparisons.current += 1;
     setComparison({ status: "idle" });
     setSelected((current) => (current.includes(id) ? current.filter((s) => s !== id) : [...current, id].slice(-2)));
   };
 
   const compare = () => {
     if (selected.length !== 2) return;
+    const request = ++comparisons.current;
     setComparison({ status: "loading" });
     compareHistory(projectId, selected[0], selected[1])
-      .then((result) => setComparison({ status: "ready", comparison: result }))
+      .then((result) => {
+        if (request === comparisons.current) setComparison({ status: "ready", comparison: result });
+      })
       .catch((error: unknown) => {
+        if (request !== comparisons.current) return;
         if (isApiError(error) && error.status === 401) {
           handleError(error);
           return;

@@ -367,7 +367,9 @@ connection (the worker listens to `analysis,assessment`):
    - a terminal assessment, or one leased by another live job, is left
      alone.
 
-   Duplicate jobs therefore make no second provider call.
+   Duplicate jobs therefore make no second provider call. If AI has been
+   turned off since the request (`AI_ENABLED=false`), the assessment fails
+   with `ai_disabled` here, and nothing is sent to the provider.
 2. **Rebuild** the input. Its fingerprint must equal the stored one
    (`EVIDENCE_CHANGED`). The prompt fingerprint, provider and model must
    equal the stored ones; otherwise the assessment fails with
@@ -460,7 +462,7 @@ All settings live in `config/codedna.php` `ai`, from the environment only.
 
 | Variable | Default | Rule |
 |---|---|---|
-| `AI_ENABLED` | `false` | Boolean; POST answers `AI_ASSESSMENT_DISABLED` while false |
+| `AI_ENABLED` | `false` | Boolean; POST answers `AI_ASSESSMENT_DISABLED` while false, and a queued or retried job then fails as `ASSESSMENT_FAILED` (`ai_disabled`) without calling the provider |
 | `AI_PROVIDER` | `openai_compatible` | `openai_compatible` or `fake` (never in production) |
 | `AI_MODEL` | empty | Required when enabled with `openai_compatible` |
 | `AI_BASE_URL` | `https://api.openai.com/v1` | https in production; http allowed locally |

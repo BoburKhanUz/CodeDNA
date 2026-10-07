@@ -70,6 +70,8 @@ export function describeApiError(error: unknown): string {
       return "This project is archived. It keeps its history but cannot be changed or receive new source.";
     case "INVALID_SOURCE_TYPE":
       return "This project does not accept uploaded source.";
+    case "ANALYSIS_NOT_COMPLETED":
+      return "This analysis has no result yet: it has not succeeded.";
     case "IDEMPOTENCY_KEY_REUSED":
       return "This upload conflicts with an earlier one. Choose the file again and retry.";
     case "SOURCE_ARCHIVE_INVALID":

@@ -8,9 +8,10 @@ use App\Services\Analyzer\HmacSigner;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Signatures are checked against vectors produced by the analyzer's own
- * signing code (tests/Fixtures/analyzer/hmac-vectors.json), so Laravel and
- * the analyzer cannot drift apart.
+ * Signatures are checked against the shared contract vector
+ * (packages/api-contracts/analyzer/v1/hmac-vectors.json, mounted at
+ * /var/www/contracts), which the analyzer's own tests check too, so Laravel
+ * and the analyzer cannot drift apart.
  */
 final class HmacSignerTest extends TestCase
 {
@@ -18,16 +19,16 @@ final class HmacSignerTest extends TestCase
 
     private const PREVIOUS = 'pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp';
 
-    /** @return object{timestamp: int, request_id: string, body: string, request_signature: string, response_signature: string} */
+    /** @return object{method: string, path: string, status: int, timestamp: int, request_id: string, body: string, request_signature: string, response_signature: string} */
     private function vector(): object
     {
-        return json_decode((string) file_get_contents(__DIR__.'/../../Fixtures/analyzer/hmac-vectors.json'), false);
+        return json_decode((string) file_get_contents('/var/www/contracts/analyzer/v1/hmac-vectors.json'), false);
     }
 
     public function test_request_signatures_match_the_analyzer(): void
     {
         $v = $this->vector();
-        $headers = (new HmacSigner([self::SECRET], 300))->signRequest($v->timestamp, 'POST', '/internal/v1/analyze', $v->request_id, $v->body);
+        $headers = (new HmacSigner([self::SECRET], 300))->signRequest($v->timestamp, $v->method, $v->path, $v->request_id, $v->body);
 
         $this->assertSame([
             'X-Request-ID' => $v->request_id,

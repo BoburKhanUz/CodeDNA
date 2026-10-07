@@ -111,6 +111,27 @@ final class SessionLifecycleTest extends TestCase
             ->assertJsonPath('error.code', 'AUTHENTICATION_REQUIRED');
     }
 
+    public function test_a_request_still_running_during_logout_cannot_bring_the_session_back(): void
+    {
+        // Phase 22 regression: a page fires several requests at once. Each loads
+        // the session when it starts and saves it when it ends, so a request
+        // still running while the user signs out used to write the destroyed
+        // session back to Redis, with the login in it, and the user was still
+        // signed in afterwards (seen in the browser end-to-end runs).
+        $sessionId = $this->sessionIdFrom($this->login()->assertOk());
+        $this->forgetSessionState();
+        $inFlight = $this->app['session']->driver();
+        $inFlight->setId($sessionId);
+        $inFlight->start();
+        $this->assertNotEmpty($inFlight->all(), 'the in-flight request loaded the signed-in session');
+
+        $this->request('POST', '/api/v1/auth/logout', $sessionId)->assertNoContent();
+        $inFlight->save();
+
+        $this->assertFalse($this->sessionExists($sessionId), 'the destroyed session stays destroyed');
+        $this->request('GET', '/api/v1/me', $sessionId)->assertUnauthorized();
+    }
+
     private function changePassword(string $sessionId): TestResponse
     {
         return $this->request('PATCH', '/api/v1/auth/password', $sessionId, [

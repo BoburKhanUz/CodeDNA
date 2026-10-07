@@ -304,6 +304,12 @@ evaluator_locked_down() {
 }
 check "evaluator has no network interface but loopback" evaluator_offline
 check "evaluator: read-only root, only SETUID/SETGID/KILL capabilities, no credentials in its environment" evaluator_locked_down
+# Phase 22: no System V shared memory, message queues or semaphores (they would outlive a job).
+evaluator_no_sysv_ipc() {
+    [[ $(in_service evaluator cat /proc/sys/kernel/shmmni /proc/sys/kernel/msgmni | tr -d '[:space:]') == 00 ]] &&
+        [[ $(in_service evaluator cat /proc/sys/kernel/sem | tr -s '[:space:]' ' ' | sed 's/ $//') == "0 0 0 0" ]]
+}
+check "evaluator: no System V IPC (shmmni, msgmni and sem are 0)" evaluator_no_sysv_ipc
 check "GET challenges -> 200; POST with a definition -> 422 (server-owned catalog)" bash -c \
     "api_json GET /api/v1/projects/$project_id/challenges | grep -q '^200 ' && api_json POST /api/v1/projects/$project_id/challenges '{\"challenge_definition\":{\"key\":\"X\"}}' | grep -q '^422 '"
 # Phase 17: learning roadmaps are generated on request from the newest skill gap analysis,

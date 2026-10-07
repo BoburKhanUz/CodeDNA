@@ -1,9 +1,0 @@
-{
- "comment": "Produced by the analyzer's own signing code (analyzer/app/auth/hmac_signing.py) with secret 't' * 64.",
- "secret": "(tests/support.py SECRET: 't' * 64)",
- "timestamp": 1760000000,
- "request_id": "6f1c2a4e-1d3b-4c55-9a7e-2b8f0c9d1e23",
- "body": "{\"a\":1}",
- "request_signature": "v1=b812e054df9e0d1104f5b0f15ecbf5b62c88ba9440005fa64ae52246f5c7c35c",
- "response_signature": "v1=543e60a6734ca7549bad9f190fbe88c7621da00ee08ffdada9a7911566cb3fbd"
-}

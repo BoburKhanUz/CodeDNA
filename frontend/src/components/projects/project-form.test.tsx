@@ -100,4 +100,23 @@ describe("ProjectForm", () => {
     expect(screen.getByLabelText("Slug")).toHaveAttribute("aria-invalid", "true");
     expect(router.push).not.toHaveBeenCalled();
   });
+
+  it("sends a signed-out user to the login page, and explains a server failure without leaving the form", async () => {
+    const ui = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(apiErrorResponse(401, "AUTHENTICATION_REQUIRED"));
+    const { unmount } = render(<ProjectForm />);
+    await ui.type(screen.getByLabelText("Name"), "Billing Service");
+    await ui.click(screen.getByRole("button", { name: "Create project" }));
+    expect(router.replace).toHaveBeenCalledWith("/login");
+    unmount();
+
+    resetRouter();
+    fetchMock.mockResolvedValueOnce(apiErrorResponse(500, "INTERNAL_ERROR"));
+    render(<ProjectForm />);
+    await ui.type(screen.getByLabelText("Name"), "Billing Service");
+    await ui.click(screen.getByRole("button", { name: "Create project" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("11111111-2222-4333-8444-555555555555");
+    expect(router.push).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Name")).toHaveValue("Billing Service");
+  });
 });

@@ -1,4 +1,3 @@
-import hashlib
 import json
 import logging
 import os
@@ -110,7 +109,7 @@ def test_a_signed_request_returns_a_versioned_foundation_result(settings: Settin
     assert active_runs(settings.workspace_root) == []
 
 
-def test_the_result_hash_is_deterministic_across_processes(workspace_root: str) -> None:
+def test_the_result_hash_is_deterministic_across_app_instances(workspace_root: str) -> None:
     hashes = []
     for _ in range(2):
         with client_for(make_settings(workspace_root)) as client:
@@ -118,6 +117,42 @@ def test_the_result_hash_is_deterministic_across_processes(workspace_root: str) 
             hashes.append((response.json()["result_hash"], response.json()["request_id"]))
     assert hashes[0][0] == hashes[1][0]
     assert hashes[0][1] != hashes[1][1]
+
+
+def test_the_result_hash_is_deterministic_across_processes_and_hash_seeds(workspace_root: str) -> None:
+    """Phase 22: separate interpreters with different PYTHONHASHSEED values
+    (set and dict iteration orders differ) must produce the same result."""
+    import subprocess
+    import sys
+
+    with client_for(make_settings(workspace_root)) as client:
+        expected = post(client, request_body(ARCHIVE)).json()["result_hash"]
+    # The exact same archive bytes (test archives carry the time they were built).
+    archive_path = os.path.join(workspace_root, "same-archive.zip")
+    with open(archive_path, "wb") as handle:
+        handle.write(ARCHIVE)
+    script = (
+        "import sys\n"
+        "from tests.test_analyze_api import client_for, post\n"
+        "from tests.support import make_settings, request_body\n"
+        "archive = open(sys.argv[2], 'rb').read()\n"
+        "with client_for(make_settings(sys.argv[1]), archive) as client:\n"
+        "    print(post(client, request_body(archive)).json()['result_hash'])\n"
+    )
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for seed in ("1", "4242"):
+        completed = subprocess.run(  # noqa: S603 - fixed interpreter and script, no shell
+            [sys.executable, "-c", script, workspace_root, archive_path],
+            cwd=root,
+            env={**os.environ, "PYTHONHASHSEED": seed},
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=True,
+        )
+        # The hash is the last line; the analyzer's log lines come first.
+        assert completed.stdout.strip().splitlines()[-1] == expected, completed.stderr
+    os.unlink(archive_path)
 
 
 def test_the_result_hash_covers_everything_except_request_id_and_diagnostics(settings: Settings) -> None:
@@ -357,18 +392,34 @@ def test_logs_contain_only_safe_fields(settings: Settings) -> None:
 
 
 def test_concurrent_runs_use_separate_workspaces(settings: Settings) -> None:
+    """Phase 22: both runs are in flight at the same moment (a barrier inside
+    the download holds each until the other arrives), each in its own
+    workspace, and both workspaces are gone afterwards."""
+    import threading
+
     seen: list[str] = []
+    both_downloading = threading.Barrier(2, timeout=10)
 
     def record(target, destination, request, settings, deadline):  # type: ignore[no-untyped-def]
         seen.append(os.path.dirname(destination))
+        both_downloading.wait()
         with open(destination, "wb") as handle:
             handle.write(ARCHIVE)
 
+    statuses: list[int] = []
     with client_for(settings, fetcher=record) as client:
-        post(client, request_body(ARCHIVE))
-        post(client, request_body(ARCHIVE, run_id="01k6p0a1b2c3d4e5f6g7h8j9zz"))
+        runs = [
+            threading.Thread(target=lambda run_id=run_id: statuses.append(post(client, request_body(ARCHIVE, run_id=run_id)).status_code))
+            for run_id in ("01k6p0a1b2c3d4e5f6g7h8j9ka", "01k6p0a1b2c3d4e5f6g7h8j9kb")
+        ]
+        for run in runs:
+            run.start()
+        for run in runs:
+            run.join(timeout=30)
+
+    assert statuses == [200, 200]
     assert len(set(seen)) == 2
-    assert all(hashlib.sha256(path.encode()).hexdigest() for path in seen)
+    assert not any(os.path.exists(path) for path in seen)
 
 
 def test_a_chunked_body_is_cut_off_at_the_limit_before_authentication(settings: Settings) -> None:

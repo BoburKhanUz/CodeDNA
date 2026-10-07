@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -174,6 +174,29 @@ describe("RoadmapView", () => {
       expect(await screen.findByTestId("development-focus")).toBeInTheDocument();
     });
 
+    it("stays busy until the new roadmap is shown, so one click sends one request", async () => {
+      let created = false;
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (init?.method === "POST") {
+          created = true;
+          return jsonResponse({ data: roadmap() }, 201);
+        }
+        if (created) return new Promise<Response>(() => {});
+        if (url.includes("/roadmaps")) return jsonResponse(page([]));
+        if (url.includes("/skill-gaps")) return jsonResponse(page([skillGapSummary(gapsSnapshot)]));
+        return jsonResponse({ data: project });
+      });
+      const ui = userEvent.setup();
+      render(<RoadmapView projectId={project.id} />);
+      const button = await screen.findByRole("button", { name: "Create learning roadmap" });
+      await ui.click(button);
+      await ui.click(button);
+
+      expect(posts()).toHaveLength(1);
+      expect(button).toBeDisabled();
+    });
+
     it.each([
       ["no analysis", [], "No roadmap available"],
       ["not enough evidence", [skillGapSummary(insufficientSnapshot)], "Not enough evidence"],
@@ -228,6 +251,28 @@ describe("RoadmapView", () => {
     expect(screen.queryByRole("button", { name: "Mark as done" })).not.toBeInTheDocument();
     expect(screen.getByTestId("roadmap-progress")).toHaveTextContent("1 of 6 steps done · Superseded");
     expect(screen.getByTestId("roadmap-history")).toHaveTextContent("Superseded · 1 of 6 steps");
+  });
+
+  it("shows the roadmap last navigated to, even when an earlier one answers later", async () => {
+    const current = roadmap();
+    const old = { ...afterFirstStep(), id: OLD_ROADMAP_ID, status: "SUPERSEDED" as const, superseded_at: "2026-10-15T08:00:00Z", superseded_by: ROADMAP_ID, created_at: "2026-10-13T08:00:00Z" };
+    respondWith({ roadmaps: [current, old] });
+    const respond = fetchMock.getMockImplementation()!;
+    let finishOld: () => void = () => {};
+    fetchMock.mockImplementation((input, init) =>
+      String(input).endsWith(`/roadmaps/${OLD_ROADMAP_ID}`)
+        ? new Promise<Response>((resolve) => (finishOld = () => resolve(jsonResponse({ data: old }))))
+        : respond(input, init),
+    );
+    const { rerender } = render(<RoadmapView projectId={project.id} roadmapId={OLD_ROADMAP_ID} />);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith(`/roadmaps/${OLD_ROADMAP_ID}`))).toBe(true));
+
+    rerender(<RoadmapView projectId={project.id} roadmapId={ROADMAP_ID} />);
+    expect(await screen.findByTestId("roadmap-progress")).not.toHaveTextContent("Superseded");
+    await act(async () => finishOld());
+
+    expect(screen.queryByTestId("roadmap-superseded")).not.toBeInTheDocument();
+    expect(screen.getByTestId("roadmap-progress")).not.toHaveTextContent("Superseded");
   });
 
   it("notes a roadmap generated with an earlier catalog or rules version", async () => {

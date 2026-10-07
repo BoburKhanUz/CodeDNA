@@ -13,6 +13,7 @@ ACTIONLINT_PY_VERSION     := 1.7.12.25
 SHELLCHECK_PY_VERSION     := 0.11.0.1
 HADOLINT_PY_VERSION       := 2.15.1.2
 GITLEAKS_VERSION          := v8.30.1
+PIP_AUDIT                 ?= pipx run pip-audit==2.9.0
 
 COMPOSE := docker compose
 
@@ -76,9 +77,9 @@ shell-analyzer: ## Open a shell in the analyzer container
 test: ## Run all test suites inside the running containers (backend in the queue worker: it reaches the analyzer)
 	$(COMPOSE) exec -T analyzer pytest
 	./scripts/ensure-test-database.sh
-	$(COMPOSE) exec -T queue vendor/bin/phpunit
+	$(COMPOSE) exec -T -e CODEDNA_REQUIRE_EVALUATOR=1 queue vendor/bin/phpunit
 	$(COMPOSE) exec -T frontend npm test
-	$(COMPOSE) exec -T evaluator python3 -m unittest discover -s /opt/evaluator/tests -t /opt/evaluator
+	$(COMPOSE) exec -T -e CODEDNA_REQUIRE_SANDBOX=1 evaluator python3 -m unittest discover -s /opt/evaluator/tests -t /opt/evaluator
 
 .PHONY: lint-backend
 lint-backend: ## Check backend code style (Laravel Pint) in the running container
@@ -92,7 +93,7 @@ lint-analyzer: ## Lint (ruff), check formatting and type-check (mypy --strict) t
 
 .PHONY: test-evaluator
 test-evaluator: ## Run the evaluator's protocol and sandbox security tests inside the running evaluator container
-	$(COMPOSE) exec -T evaluator python3 -m unittest discover -s /opt/evaluator/tests -t /opt/evaluator
+	$(COMPOSE) exec -T -e CODEDNA_REQUIRE_SANDBOX=1 evaluator python3 -m unittest discover -s /opt/evaluator/tests -t /opt/evaluator
 
 .PHONY: lint-evaluator
 lint-evaluator: ## Lint (ruff), check formatting and type-check (mypy --strict) the evaluator with the analyzer's tools
@@ -103,6 +104,17 @@ lint-frontend: ## Lint (ESLint) and type-check (tsc) the frontend in the running
 	$(COMPOSE) exec -T frontend npm run lint
 	$(COMPOSE) exec -T frontend npm run typecheck
 
+.PHONY: build-frontend
+build-frontend: ## Production build of the frontend (catches server/client boundary and route errors tsc misses)
+	$(COMPOSE) exec -T frontend npm run build
+
+.PHONY: audit
+audit: ## Dependency vulnerability audits (needs internet): Composer, npm runtime packages, analyzer Python packages
+	$(COMPOSE) exec -T backend composer audit --locked
+	$(COMPOSE) exec -T frontend npm audit --omit=dev
+	$(PIP_AUDIT) --require-hashes --disable-pip -r analyzer/requirements.txt
+	$(PIP_AUDIT) --require-hashes --disable-pip -r analyzer/requirements-dev.txt
+
 .PHONY: verify
 verify: ## Runtime smoke test of the running environment (routing, networking, storage)
 	./scripts/verify-infra.sh
@@ -111,11 +123,15 @@ verify: ## Runtime smoke test of the running environment (routing, networking, s
 # Repository checks (same checks as CI)
 # ---------------------------------------------------------------------------
 .PHONY: check
-check: check-repo lint-docs lint-yaml lint-workflows lint-shell lint-docker compose-config ## Run all static checks
+check: check-repo check-contracts lint-docs lint-yaml lint-workflows lint-shell lint-docker compose-config ## Run all static checks
 
 .PHONY: check-repo
 check-repo: ## Required files, Markdown links/anchors, .env.example hygiene
 	python3 scripts/check_repo.py
+
+.PHONY: check-contracts
+check-contracts: ## Cross-service contract parity: error codes, evaluator statuses, shared HMAC vector
+	python3 scripts/check_contracts.py
 
 .PHONY: lint-docs
 lint-docs: ## Lint Markdown (requires Node/npx)

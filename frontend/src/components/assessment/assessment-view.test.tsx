@@ -157,6 +157,42 @@ describe("AssessmentView", () => {
     expect(fetchMock.mock.calls.filter(([input]) => String(input).includes(`/assessments/${ASSESSMENT_ID}`))).toHaveLength(reads);
   });
 
+  it("never lets a late poll of an earlier assessment replace a newer one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const OLD_GAP = "01k6p0a1b2c3d4e5f6g7h8j9zz";
+    const older = { ...queuedAssessment, lineage: { ...queuedAssessment.lineage, skill_gap_snapshot_id: OLD_GAP } };
+    const newer = { ...queuedAssessment, id: "01k6p0a1b2c3d4e5f6g7h8j9bb" };
+    let finishPoll: (response: Response) => void = () => {};
+    let reads = 0;
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (init?.method === "POST" && url.endsWith("/assessments")) return jsonResponse({ data: newer }, 202);
+      if (url.includes(`/assessments/${ASSESSMENT_ID}`)) {
+        reads += 1;
+        return reads === 1 ? jsonResponse({ data: older }) : new Promise<Response>((resolve) => (finishPoll = resolve));
+      }
+      if (url.includes(`/assessments/${newer.id}`)) return new Promise<Response>(() => {});
+      if (url.includes("/assessments")) return jsonResponse(page([assessmentSummary(older)]));
+      if (url.includes("/skill-gaps")) return jsonResponse(page([skillGapSummary(gapsSnapshot)]));
+      return jsonResponse({ data: project });
+    });
+    render(<AssessmentView projectId={project.id} />);
+
+    expect(await screen.findByTestId("assessment-queued")).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    });
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getByTestId("assessment-request"));
+    await act(async () => {
+      finishPoll(jsonResponse({ data: { ...succeededAssessment, lineage: older.lineage } }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(screen.queryByTestId("assessment-ready")).not.toBeInTheDocument();
+    expect(screen.getByTestId("assessment-queued")).toBeInTheDocument();
+    expect(screen.queryByTestId("assessment-outdated")).not.toBeInTheDocument();
+  });
+
   it("shows a safe failure without any partial interpretation and allows a new request", async () => {
     respondWith({ assessments: [failedAssessment] });
     render(<AssessmentView projectId={project.id} />);

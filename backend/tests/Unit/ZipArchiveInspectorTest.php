@@ -153,6 +153,7 @@ final class ZipArchiveInspectorTest extends TestCase
     {
         $invalid = ErrorCode::SourceArchiveInvalid;
         $tarGz = (string) gzencode(str_pad('src/main.php', 512, "\0").str_repeat("\0", 1024));
+        $hidden = substr((new ZipBuilder)->file('hidden.php', '<?php system($_GET[1]);', ['method' => 0])->build(), 0, 30 + strlen('hidden.php') + 23);
 
         return [
             'gzip/tar' => [$tarGz, $invalid, 'not_a_zip'],
@@ -169,6 +170,10 @@ final class ZipArchiveInspectorTest extends TestCase
             'directory type on a file name' => [(new ZipBuilder)->entry('file', '', ['method' => 0, 'external' => 0o040755 << 16]), $invalid, 'type_name_mismatch'],
             'shell stub before the archive' => [(new ZipBuilder)->prepend("#!/bin/sh\nexit 0\n")->file('a.php', 'x'), $invalid, 'not_a_zip'],
             'data before the first entry' => [(new ZipBuilder)->prepend("PK\x03\x04 hidden stub")->file('a.php', 'x'), $invalid, 'data_before_first_entry'],
+            // A local entry no central record lists: a reader that walks local headers would see an extra file.
+            'hidden entry between entries' => [(new ZipBuilder)->file('a.php', 'x', ['trailing' => $hidden])->file('b.php', 'y'), $invalid, 'data_between_entries'],
+            'hidden entry before the central directory' => [(new ZipBuilder)->file('a.php', 'x', ['trailing' => $hidden]), $invalid, 'data_between_entries'],
+            'bytes after a data descriptor' => [(new ZipBuilder)->file('a.php', 'x', ['data_descriptor' => true, 'trailing' => str_repeat("\0", 13)])->file('b.php', 'y'), $invalid, 'data_between_entries'],
             'crc mismatch' => [(new ZipBuilder)->file('a.php', 'hello', ['crc' => 12345]), $invalid, 'crc_mismatch'],
             'overstated size' => [(new ZipBuilder)->file('a.php', 'hello', ['declared_size' => 10]), $invalid, 'size_mismatch'],
             'stored size mismatch' => [(new ZipBuilder)->file('a.php', 'hello', ['method' => 0, 'declared_compressed_size' => 3]), $invalid, 'stored_size_mismatch'],

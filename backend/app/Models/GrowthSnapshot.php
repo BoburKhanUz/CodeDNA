@@ -18,7 +18,8 @@ use Illuminate\Support\Carbon;
  * (Phase 18, docs/architecture/growth-tracking-v1.md). Evidence from
  * repeated deterministic assessments only; never a score of its own.
  * Created only by App\Actions\Growth\CalculateGrowthSnapshot; never updated
- * or deleted (also a database trigger). Nothing is mass assignable.
+ * (also refused by a database trigger) or deleted (by the model only).
+ * Nothing is mass assignable.
  *
  * @property string $id
  * @property string $user_id

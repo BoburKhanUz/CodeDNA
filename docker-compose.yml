@@ -371,6 +371,14 @@ services:
       # would outlive a job, be shared between slots and count against the
       # memory limit. Root-owned and read-only to the slot users.
       - /dev/shm:size=64k,mode=0755
+    # No System V shared memory, message queues or semaphores (Phase 22):
+    # like /dev/shm they would outlive a job, be visible to the other slot and
+    # hold memory outside the job's limits. These limits apply to the
+    # container's own IPC namespace only.
+    sysctls:
+      kernel.shmmni: "0"
+      kernel.msgmni: "0"
+      kernel.sem: "0 0 0 0"
     volumes:
       - challenge-spool:/spool
     group_add:

@@ -104,7 +104,11 @@ crashed:
 Sandboxed processes also get `RLIMIT_MSGQUEUE 0` (no POSIX message queues)
 and `oom_score_adj 1000` (the OOM killer picks them before the supervisor).
 `/dev/shm` is a 64 KiB root-owned tmpfs that slot users cannot write, so no
-file outlives a job (Phase 21).
+file outlives a job (Phase 21). System V shared memory, message queues and
+semaphores are disabled in the container's IPC namespace (`kernel.shmmni`,
+`kernel.msgmni` and `kernel.sem` set to 0, Phase 22): such objects would
+outlive a job, be visible to the other slot and hold memory outside the
+job's limits.
 
 When the service starts, it kills every process left over for each slot
 uid.

@@ -89,7 +89,8 @@ or stack traces.
 - The evaluator has no network, a read-only root filesystem and no secrets.
 - Each job runs as a separate slot user: no-new-privileges, CPU, memory,
   process, file-size, open-file and message-queue limits, a wall-clock
-  timeout, and a kill of every process of that user.
+  timeout, and a kill of every process of that user. No System V IPC
+  objects can be created (Phase 22), and `/dev/shm` is not writable.
 - The slot directory is emptied after every job, and the evaluator stops
   using a slot it cannot empty.
 - Results are untrusted. Error names are reduced to builtin exception

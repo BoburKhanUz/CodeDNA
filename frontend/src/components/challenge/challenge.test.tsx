@@ -204,6 +204,97 @@ describe("ChallengeDetail", () => {
     expect(screen.getByTestId("challenge-status")).toHaveTextContent("Open");
   });
 
+  it("keeps polling a pending attempt while an earlier attempt is viewed, and keeps that view", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const EARLIER_ID = "01k6p0a1b2c3d4e5f6g7h8j9ea";
+    const earlier = submission({ id: EARLIER_ID, attempt_number: 1, status: "FAILED" });
+    const pending = submission({ attempt_number: 2, status: "QUEUED", evaluation: null, tests: null });
+    const done = submission({ attempt_number: 2 });
+    let finished = false;
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes(`/submissions/${EARLIER_ID}`)) return jsonResponse({ data: earlier });
+      if (url.includes(`/submissions/${SUBMISSION_ID}`)) {
+        const polls = fetchMock.mock.calls.filter(([i]) => String(i).includes(`/submissions/${SUBMISSION_ID}`)).length;
+        finished = polls > 2;
+        return jsonResponse({ data: finished ? done : pending });
+      }
+      if (url.includes(`/challenges/${CHALLENGE_ID}`)) {
+        return jsonResponse({
+          data: finished
+            ? challenge({ status: "ASSIGNED", attempts_used: 2, last_result: "FAILED", recent_attempts: [summaryOf(done), summaryOf(earlier)] })
+            : challenge({ status: "EVALUATING", attempts_used: 1, recent_attempts: [summaryOf(pending), summaryOf(earlier)] }),
+        });
+      }
+      return jsonResponse({ data: project });
+    });
+    render(<ChallengeDetail projectId={project.id} challengeId={CHALLENGE_ID} />);
+
+    expect(await screen.findByTestId("feedback-pending")).toBeInTheDocument();
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getByRole("button", { name: /^Attempt 1/ }));
+    expect(await screen.findByTestId("feedback")).toBeInTheDocument();
+    for (let i = 0; i < 3; i += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+      });
+    }
+
+    // The pending attempt finished in the background: the challenge reloaded, the viewed attempt stayed.
+    expect(screen.getByTestId("challenge-status")).toHaveTextContent("Open");
+    expect(screen.getByRole("button", { name: /^Attempt 1/ })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: /^Attempt 2/ })).not.toHaveAttribute("aria-current");
+  });
+
+  it("never lets a late poll replace the attempt the user chose to view", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const EARLIER_ID = "01k6p0a1b2c3d4e5f6g7h8j9ea";
+    const earlier = submission({ id: EARLIER_ID, attempt_number: 1, status: "FAILED" });
+    const pending = submission({ attempt_number: 2, status: "QUEUED", evaluation: null, tests: null });
+    let finishPoll: (response: Response) => void = () => {};
+    let reads = 0;
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes(`/submissions/${EARLIER_ID}`)) return jsonResponse({ data: earlier });
+      if (url.includes(`/submissions/${SUBMISSION_ID}`)) {
+        reads += 1;
+        return reads === 1 ? jsonResponse({ data: pending }) : new Promise<Response>((resolve) => (finishPoll = resolve));
+      }
+      if (url.includes(`/challenges/${CHALLENGE_ID}`)) {
+        return jsonResponse({ data: challenge({ status: "EVALUATING", attempts_used: 1, recent_attempts: [summaryOf(pending), summaryOf(earlier)] }) });
+      }
+      return jsonResponse({ data: project });
+    });
+    render(<ChallengeDetail projectId={project.id} challengeId={CHALLENGE_ID} />);
+
+    expect(await screen.findByTestId("feedback-pending")).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+    });
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(screen.getByRole("button", { name: /^Attempt 1/ }));
+    expect(await screen.findByTestId("feedback")).toBeInTheDocument();
+    await act(async () => {
+      finishPoll(jsonResponse({ data: { ...pending, status: "RUNNING" } }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(screen.getByTestId("feedback")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Attempt 1/ })).toHaveAttribute("aria-current", "true");
+  });
+
+  it("renders repeated instruction and constraint lines without key collisions", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const base = challenge();
+    const exercise = { ...base.challenge!, instructions: ["Same line.", "Same line."], constraints: ["Keep it short.", "Keep it short."] };
+    respondWith({ challenges: [challenge({ challenge: exercise })], submissions: [submission()] });
+    render(<ChallengeDetail projectId={project.id} challengeId={CHALLENGE_ID} />);
+
+    expect(await screen.findByTestId("challenge-instructions")).toBeInTheDocument();
+    expect(within(screen.getByTestId("challenge-instructions")).getAllByText("Same line.")).toHaveLength(2);
+    expect(screen.getAllByText("Keep it short.")).toHaveLength(2);
+    expect(errors.mock.calls.flat().join(" ")).not.toMatch(/same key/i);
+    errors.mockRestore();
+  });
+
   it("shows deterministic feedback: criteria, rules, visible cases with values and hidden cases by status only", async () => {
     const failed = submission();
     respondWith({ challenges: [challenge({ attempts_used: 1, last_result: "FAILED", recent_attempts: [summaryOf(failed)] })], submissions: [failed] });

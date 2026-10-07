@@ -87,6 +87,14 @@ final class GenerateAssessment implements ShouldQueue
         Log::info('assessment.started', $context);
         $started = microtime(true);
 
+        // AI was turned off after the request: nothing more is sent to the provider,
+        // including for queued jobs and retries.
+        if (! (bool) config('codedna.ai.enabled')) {
+            $this->fail($db, AssessmentFailure::AssessmentFailed, 'ai_disabled', $context);
+
+            return;
+        }
+
         try {
             $spec = AssessmentSpecification::forVersion($assessment->assessment_version);
             $gaps = SkillGapSnapshot::query()->findOrFail($assessment->skill_gap_snapshot_id);

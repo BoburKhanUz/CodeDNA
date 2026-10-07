@@ -33,19 +33,20 @@ final class FailStaleAssessments extends Command
     public function handle(ConnectionInterface $db): int
     {
         $now = Carbon::now();
-        $candidates = AiAssessment::query()
-            ->where(fn ($query) => $query
-                ->where(fn ($running) => $running->where('status', AssessmentStatus::Running->value)
-                    ->where('updated_at', '<', $now->copy()->subSeconds((int) config('codedna.ai.stale_after_seconds')))
-                    ->where('lease_expires_at', '<', $now))
-                ->orWhere(fn ($queued) => $queued->where('status', AssessmentStatus::Queued->value)
-                    ->where('updated_at', '<', $now->copy()->subSeconds((int) config('codedna.ai.queued_stale_after_seconds')))))
-            ->pluck('id');
+        // The same condition selects the candidates and is checked again on the locked row,
+        // so a run a worker renewed in between is never failed.
+        $stale = fn ($query) => $query
+            ->where(fn ($running) => $running->where('status', AssessmentStatus::Running->value)
+                ->where('updated_at', '<', $now->copy()->subSeconds((int) config('codedna.ai.stale_after_seconds')))
+                ->where('lease_expires_at', '<', $now))
+            ->orWhere(fn ($queued) => $queued->where('status', AssessmentStatus::Queued->value)
+                ->where('updated_at', '<', $now->copy()->subSeconds((int) config('codedna.ai.queued_stale_after_seconds'))));
+        $candidates = AiAssessment::query()->where($stale)->pluck('id');
 
         $failed = 0;
         foreach ($candidates as $id) {
-            $failed += (int) $db->transaction(function () use ($id): bool {
-                $assessment = AiAssessment::query()->whereKey($id)->lockForUpdate()->first();
+            $failed += (int) $db->transaction(function () use ($id, $stale): bool {
+                $assessment = AiAssessment::query()->whereKey($id)->where($stale)->lockForUpdate()->first();
                 if ($assessment === null || $assessment->status->isTerminal()) {
                     return false;
                 }

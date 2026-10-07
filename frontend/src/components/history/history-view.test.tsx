@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -210,6 +210,27 @@ describe("HistoryView", () => {
     expect(within(items[0]).getByTestId("history-growth")).toHaveTextContent("Since the previous assessment: 1 improved · 0 regressed");
     expect(within(items[0]).getByRole("link", { name: "View growth" })).toHaveAttribute("href", `/app/projects/${project.id}/growth?snapshot=01k6t0a1b2c3d4e5f6g7h8jw03`);
     expect(within(items[2]).getByTestId("history-growth")).toHaveTextContent("Baseline established");
+  });
+
+  it("drops a comparison that answers after the selection changed", async () => {
+    const user = userEvent.setup();
+    respondWith({ points: threeCompatible() });
+    const respond = fetchMock.getMockImplementation()!;
+    let finish: (response: Response) => void = () => {};
+    fetchMock.mockImplementation((input, init) =>
+      String(input).includes("/history/compare") ? new Promise<Response>((resolve) => (finish = resolve)) : respond(input, init),
+    );
+    render(<HistoryView projectId={project.id} />);
+
+    const button = await screen.findByTestId("history-compare");
+    const boxes = screen.getAllByRole("checkbox");
+    await user.click(boxes[0]);
+    await user.click(boxes[2]);
+    await user.click(button);
+    await user.click(boxes[2]);
+    await act(async () => finish(jsonResponse({ data: comparison() })));
+
+    expect(screen.queryByTestId("history-comparison")).not.toBeInTheDocument();
   });
 
   it("compares two selected assessments with server deltas and context-only activity", async () => {

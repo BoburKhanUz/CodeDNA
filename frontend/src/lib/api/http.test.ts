@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ApiError } from "@/lib/api/errors";
+import { ApiError, describeApiError } from "@/lib/api/errors";
 import { parseApiResponse, parseRetryAfter } from "@/lib/api/http";
 import { apiErrorResponse, jsonResponse, noContent, user } from "@/test/responses";
 
@@ -56,6 +56,13 @@ describe("parseApiResponse", () => {
     expect(error.status).toBe(502);
     expect(error.code).toBe("UNEXPECTED_RESPONSE");
     expect(error.requestId).toBe("rid");
+  });
+
+  it("keeps every code the backend sends, such as ANALYSIS_NOT_COMPLETED (scripts/check_contracts.py checks the full list)", async () => {
+    const error = await caught(parseApiResponse(apiErrorResponse(409, "ANALYSIS_NOT_COMPLETED")));
+
+    expect(error.code).toBe("ANALYSIS_NOT_COMPLETED");
+    expect(describeApiError(error)).toBe("This analysis has no result yet: it has not succeeded.");
   });
 
   it("ignores unknown error codes and malformed details", async () => {

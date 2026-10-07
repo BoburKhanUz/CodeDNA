@@ -70,4 +70,18 @@ describe("RegisterForm", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Please correct the highlighted fields.");
     expect(router.replace).not.toHaveBeenCalled();
   });
+
+  it("explains a server failure with its reference and a network failure, and stays on the form", async () => {
+    fetchMock.mockResolvedValueOnce(apiErrorResponse(500, "INTERNAL_ERROR"));
+    render(<RegisterForm />);
+    await fill({ name: "Ada", email: "ada@example.com", password: "secret-123", confirmation: "secret-123" });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("11111111-2222-4333-8444-555555555555");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("server message");
+
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to connect to CodeDNA");
+    expect(router.replace).not.toHaveBeenCalled();
+  });
 });

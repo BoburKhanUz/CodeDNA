@@ -68,7 +68,10 @@ export function AssessmentView({ projectId }: { projectId: string }) {
     if (pendingId === null) return;
     const timer = setTimeout(() => {
       getAssessment(projectId, pendingId)
-        .then((assessment) => setState((current) => (current.status === "loaded" ? { ...current, assessment } : current)))
+        // A late answer about an assessment that is no longer shown (a newer one was requested) is ignored.
+        .then((assessment) =>
+          setState((current) => (current.status === "loaded" && current.assessment?.id === assessment.id ? { ...current, assessment } : current)),
+        )
         .catch(handleError);
     }, POLL_INTERVAL_MS);
     return () => clearTimeout(timer);

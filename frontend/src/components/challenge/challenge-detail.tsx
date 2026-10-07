@@ -60,18 +60,42 @@ export function ChallengeDetail({ projectId, challengeId }: { projectId: string;
 
   useEffect(() => load(), [load]);
 
-  // Poll a pending attempt; when it finishes, reload the challenge (status and attempt counts).
+  // Poll a pending attempt, whichever attempt is being viewed; when it finishes, reload the challenge
+  // (status and attempt counts). Late answers never replace the attempt the user chose to view.
   const pending =
-    state.status === "loaded" && state.selected && (state.selected.status === "QUEUED" || state.selected.status === "RUNNING") ? state.selected.id : null;
+    state.status === "loaded"
+      ? state.selected && (state.selected.status === "QUEUED" || state.selected.status === "RUNNING")
+        ? state.selected.id
+        : (state.challenge.recent_attempts.find((attempt) => attempt.status === "QUEUED" || attempt.status === "RUNNING")?.id ?? null)
+      : null;
   useEffect(() => {
     if (pending === null) return;
     const timer = setTimeout(() => {
       getSubmission(projectId, challengeId, pending)
-        .then((submission) =>
-          submission.status === "QUEUED" || submission.status === "RUNNING"
-            ? setState((current) => (current.status === "loaded" ? { ...current, selected: submission } : current))
-            : fetchChallenge(projectId, challengeId, submission.id).then(setState),
-        )
+        .then((submission) => {
+          if (submission.status === "QUEUED" || submission.status === "RUNNING") {
+            setState((current) =>
+              current.status === "loaded"
+                ? {
+                    ...current,
+                    selected: current.selected?.id === submission.id ? submission : current.selected,
+                    challenge: {
+                      ...current.challenge,
+                      recent_attempts: current.challenge.recent_attempts.map((attempt) => (attempt.id === submission.id ? { ...attempt, status: submission.status } : attempt)),
+                    },
+                  }
+                : current,
+            );
+            return;
+          }
+          return fetchChallenge(projectId, challengeId, submission.id).then((next) =>
+            setState((current) =>
+              current.status === "loaded" && next.status === "loaded" && current.selected !== null && current.selected.id !== submission.id
+                ? { ...next, selected: current.selected }
+                : next,
+            ),
+          );
+        })
         .catch(handleError);
     }, POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
@@ -203,15 +227,15 @@ export function ChallengeDetail({ projectId, challengeId }: { projectId: string;
           </CardHeader>
           <CardContent className="grid gap-4 text-sm">
             <ul className="grid list-disc gap-1 pl-5" data-testid="challenge-instructions">
-              {exercise.instructions.map((line) => (
-                <li key={line}>{line}</li>
+              {exercise.instructions.map((line, index) => (
+                <li key={`${index}:${line}`}>{line}</li>
               ))}
             </ul>
             <div className="grid gap-1">
               <h3 className="font-medium">Constraints</h3>
               <ul className="grid list-disc gap-1 pl-5">
-                {exercise.constraints.map((line) => (
-                  <li key={line}>{line}</li>
+                {exercise.constraints.map((line, index) => (
+                  <li key={`${index}:${line}`}>{line}</li>
                 ))}
               </ul>
             </div>

@@ -325,6 +325,17 @@ final class GenerateAssessmentJobTest extends TestCase
         $this->assertSame(0, $this->provider->calls);
     }
 
+    public function test_turning_ai_off_stops_queued_assessments_without_a_call(): void
+    {
+        $assessment = $this->queued('valid');
+        config(['codedna.ai.enabled' => false]);
+
+        $this->runJob($this->newJob($assessment));
+
+        $this->assertSame(['FAILED', 'ASSESSMENT_FAILED', 'ai_disabled'], [$this->fresh($assessment)->status->value, $this->fresh($assessment)->failure_code, $this->fresh($assessment)->failure_detail]);
+        $this->assertSame(0, $this->provider->calls);
+    }
+
     public function test_changed_evidence_fails_the_assessment_without_a_call(): void
     {
         $assessment = $this->queued('valid');

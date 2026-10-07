@@ -89,4 +89,19 @@ describe("PasswordForm", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Too many attempts. Try again in 42 seconds.");
   });
+
+  it("sends a signed-out user to the login page, and explains a server failure", async () => {
+    fetchMock.mockResolvedValueOnce(apiErrorResponse(401, "AUTHENTICATION_REQUIRED"));
+    const { unmount } = render(<PasswordForm />);
+    await fill({ current: "old-secret-1", password: "new-secret-1", confirmation: "new-secret-1" });
+    expect(router.replace).toHaveBeenCalledWith("/login");
+    unmount();
+
+    resetRouter();
+    fetchMock.mockResolvedValueOnce(apiErrorResponse(500, "INTERNAL_ERROR"));
+    render(<PasswordForm />);
+    await fill({ current: "old-secret-1", password: "new-secret-1", confirmation: "new-secret-1" });
+    expect(await screen.findByRole("alert")).toHaveTextContent("CodeDNA is having trouble right now");
+    expect(router.replace).not.toHaveBeenCalled();
+  });
 });

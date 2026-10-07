@@ -30,7 +30,7 @@ import { formatDateTime } from "@/lib/projects/format";
 export const NOTICE =
   "GitHub is only a source: each import becomes an immutable source snapshot, analyzed like an upload. Repository code is never executed, and disconnecting never deletes imported snapshots or analyses.";
 
-const POLL_MS = 3000;
+export const POLL_MS = 3000;
 
 type State =
   | { status: "loading" }
@@ -63,20 +63,29 @@ export function ProjectGitHubView({ projectId, notice }: { projectId: string; no
     [router],
   );
 
-  const load = useCallback(() => {
-    if (!valid) return;
-    Promise.all([getProject(projectId), getProjectGitHub(projectId), listGitHubImports(projectId, 1, 10)])
-      .then(([project, github, imports]) => setState({ status: "ready", project, github, imports: imports.data }))
-      .catch(handleError);
+  // Only the most recently started load may update the page, so a slow poll never overwrites newer state.
+  const loads = useRef(0);
+  const load = useCallback((): Promise<void> => {
+    if (!valid) return Promise.resolve();
+    const sequence = ++loads.current;
+    return Promise.all([getProject(projectId), getProjectGitHub(projectId), listGitHubImports(projectId, 1, 10)])
+      .then(([project, github, imports]) => {
+        if (sequence === loads.current) setState({ status: "ready", project, github, imports: imports.data });
+      })
+      .catch((error: unknown) => {
+        if (sequence === loads.current) handleError(error);
+      });
   }, [projectId, valid, handleError]);
 
-  useEffect(() => load(), [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   // Follow an import in progress until it finishes.
   const importing = state.status === "ready" && (state.github.latest_import?.status === "QUEUED" || state.github.latest_import?.status === "RUNNING");
   useEffect(() => {
     if (!importing) return;
-    const timer = window.setTimeout(load, POLL_MS);
+    const timer = window.setTimeout(() => void load(), POLL_MS);
     return () => window.clearTimeout(timer);
   }, [importing, load, state]);
 
@@ -86,7 +95,8 @@ export function ProjectGitHubView({ projectId, notice }: { projectId: string; no
       setActionError(null);
       try {
         await action();
-        load();
+        // Stay busy until the page shows the result, so a second click cannot repeat the action.
+        await load();
       } catch (error) {
         if (isApiError(error) && error.status === 401) {
           handleError(error);

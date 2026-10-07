@@ -14,6 +14,7 @@ use App\Models\SkillGapSnapshot;
 use App\Models\User;
 use App\Services\Assessment\Provider\AiProvider;
 use Closure;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -224,5 +225,31 @@ final class AiAssessmentStorageTest extends TestCase
         $this->assertSame(['RUNNING', null], $status($live), 'a live lease is never failed');
         $this->assertSame(['QUEUED', null], $status($fresh));
         $this->assertNull($this->row($running)['claim_token']);
+    }
+
+    public function test_the_stale_sweeper_spares_a_lease_renewed_after_it_was_selected(): void
+    {
+        $assessment = $this->queued();
+        DB::table('ai_assessments')->where('id', $assessment->id)->update(['status' => 'RUNNING', 'claim_token' => (string) Str::uuid(), 'lease_expires_at' => Carbon::now()->subMinute(), 'updated_at' => Carbon::now()->subHour()]);
+        $this->afterCandidateQuery('ai_assessments', fn () => DB::table('ai_assessments')->where('id', $assessment->id)->update(['lease_expires_at' => Carbon::now()->addMinute(), 'updated_at' => Carbon::now()]));
+
+        $this->artisan('assessment:fail-stale')->expectsOutput('Stale AI assessments failed: 0')->assertSuccessful();
+
+        $this->assertSame(['RUNNING', null], [$this->row($assessment)['status'], $this->row($assessment)['failure_code']]);
+    }
+
+    /**
+     * Runs $touch once, right after the sweeper has read its candidates and
+     * before it locks them: a worker renewing the row in between.
+     */
+    private function afterCandidateQuery(string $table, Closure $touch): void
+    {
+        $done = false;
+        DB::listen(function (QueryExecuted $query) use ($table, &$done, $touch): void {
+            if (! $done && str_starts_with($query->sql, "select \"id\" from \"{$table}\"")) {
+                $done = true;
+                $touch();
+            }
+        });
     }
 }

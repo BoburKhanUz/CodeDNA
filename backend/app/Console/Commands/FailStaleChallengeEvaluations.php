@@ -34,19 +34,20 @@ final class FailStaleChallengeEvaluations extends Command
     public function handle(ConnectionInterface $db): int
     {
         $now = Carbon::now();
-        $candidates = ChallengeSubmission::query()
-            ->where(fn ($query) => $query
-                ->where(fn ($running) => $running->where('status', SubmissionStatus::Running->value)
-                    ->where('updated_at', '<', $now->copy()->subSeconds((int) config('codedna.challenges.stale_after_seconds')))
-                    ->where('lease_expires_at', '<', $now))
-                ->orWhere(fn ($queued) => $queued->where('status', SubmissionStatus::Queued->value)
-                    ->where('updated_at', '<', $now->copy()->subSeconds((int) config('codedna.challenges.queued_stale_after_seconds')))))
-            ->pluck('id');
+        // The same condition selects the candidates and is checked again on the locked row,
+        // so a run a worker renewed in between is never failed.
+        $stale = fn ($query) => $query
+            ->where(fn ($running) => $running->where('status', SubmissionStatus::Running->value)
+                ->where('updated_at', '<', $now->copy()->subSeconds((int) config('codedna.challenges.stale_after_seconds')))
+                ->where('lease_expires_at', '<', $now))
+            ->orWhere(fn ($queued) => $queued->where('status', SubmissionStatus::Queued->value)
+                ->where('updated_at', '<', $now->copy()->subSeconds((int) config('codedna.challenges.queued_stale_after_seconds'))));
+        $candidates = ChallengeSubmission::query()->where($stale)->pluck('id');
 
         $failed = 0;
         foreach ($candidates as $id) {
-            $failed += (int) $db->transaction(function () use ($id): bool {
-                $submission = ChallengeSubmission::query()->whereKey($id)->lockForUpdate()->first();
+            $failed += (int) $db->transaction(function () use ($id, $stale): bool {
+                $submission = ChallengeSubmission::query()->whereKey($id)->where($stale)->lockForUpdate()->first();
                 if ($submission === null || $submission->status->isTerminal()) {
                     return false;
                 }

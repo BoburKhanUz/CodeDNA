@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiErrorAlert } from "@/components/auth/api-error-alert";
 import { StatusBadge } from "@/components/projects/status-badge";
@@ -57,12 +57,23 @@ export function RoadmapView({ projectId, roadmapId }: { projectId: string; roadm
     [router],
   );
 
-  const load = useCallback(() => {
-    if (!valid) return;
-    fetchRoadmap(projectId, roadmapId).then(setState).catch(handleError);
+  // Only the most recently started load may update the page, so an earlier, slower load never wins.
+  const loads = useRef(0);
+  const load = useCallback((): Promise<void> => {
+    if (!valid) return Promise.resolve();
+    const sequence = ++loads.current;
+    return fetchRoadmap(projectId, roadmapId)
+      .then((next) => {
+        if (sequence === loads.current) setState(next);
+      })
+      .catch((error: unknown) => {
+        if (sequence === loads.current) handleError(error);
+      });
   }, [projectId, roadmapId, valid, handleError]);
 
-  useEffect(() => load(), [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const fail = useCallback(
     (error: unknown) => (isApiError(error) && error.status === 401 ? handleError(error) : setAction({ status: "error", error })),
@@ -73,11 +84,12 @@ export function RoadmapView({ projectId, roadmapId }: { projectId: string; roadm
     setAction({ status: "sending" });
     generateRoadmap(projectId)
       .then(() => {
-        setAction({ status: "idle" });
+        // Stay busy until the new roadmap is shown, so a second click cannot generate again.
         if (roadmapId !== undefined) {
           router.push(`/app/projects/${projectId}/roadmap`);
+          return;
         }
-        load();
+        return load().then(() => setAction({ status: "idle" }));
       })
       .catch(fail);
   }, [projectId, roadmapId, router, load, fail]);

@@ -16,6 +16,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\Challenge\Evaluator\ChallengeEvaluator;
 use Closure;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -286,5 +287,32 @@ final class ChallengeStorageTest extends TestCase
         $this->artisan('challenge:fail-stale')->expectsOutput('Stale challenge evaluations ended: 0')->assertSuccessful();
         DB::table('challenge_submissions')->where('id', $running->id)->update(['lease_expires_at' => Carbon::now()->subMinute(), 'updated_at' => Carbon::now()->subHour()]);
         $this->artisan('challenge:fail-stale')->expectsOutput('Stale challenge evaluations ended: 1')->assertSuccessful();
+    }
+
+    public function test_the_stale_sweeper_spares_a_lease_renewed_after_it_was_selected(): void
+    {
+        $submission = $this->submitted();
+        DB::table('challenge_submissions')->where('id', $submission->id)->update(['status' => 'RUNNING', 'claim_token' => (string) Str::uuid(), 'lease_expires_at' => Carbon::now()->subMinute(), 'updated_at' => Carbon::now()->subHour()]);
+        $this->afterCandidateQuery('challenge_submissions', fn () => DB::table('challenge_submissions')->where('id', $submission->id)->update(['lease_expires_at' => Carbon::now()->addMinute(), 'updated_at' => Carbon::now()]));
+
+        $this->artisan('challenge:fail-stale')->expectsOutput('Stale challenge evaluations ended: 0')->assertSuccessful();
+
+        $this->assertSame(['RUNNING', null], [$this->row('challenge_submissions', $submission->id)['status'], $this->row('challenge_submissions', $submission->id)['failure_code']]);
+        $this->assertSame('EVALUATING', $this->row('challenge_instances', $this->challenge->id)['status']);
+    }
+
+    /**
+     * Runs $touch once, right after the sweeper has read its candidates and
+     * before it locks them: a worker renewing the row in between.
+     */
+    private function afterCandidateQuery(string $table, Closure $touch): void
+    {
+        $done = false;
+        DB::listen(function (QueryExecuted $query) use ($table, &$done, $touch): void {
+            if (! $done && str_starts_with($query->sql, "select \"id\" from \"{$table}\"")) {
+                $done = true;
+                $touch();
+            }
+        });
     }
 }

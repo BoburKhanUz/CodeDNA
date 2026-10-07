@@ -18,6 +18,9 @@ from evaluator import config, sandbox, service
 
 ID = "01m4abcdefghjkmnpqrstvwxyz"
 IN_CONTAINER = os.geteuid() == 0 and Path("/sandbox/0").is_dir()
+# `make test` and CI set CODEDNA_REQUIRE_SANDBOX=1: there the sandbox tests must run, never skip.
+if os.environ.get("CODEDNA_REQUIRE_SANDBOX") == "1" and not IN_CONTAINER:
+    raise RuntimeError("the sandbox tests are required (CODEDNA_REQUIRE_SANDBOX=1) but this is not the evaluator container as root")
 
 
 def conf(spool: Path, timeout: int = 3) -> config.Config:
@@ -255,6 +258,23 @@ class Phase21SandboxTest(unittest.TestCase):
     def test_shared_memory_is_not_writable(self) -> None:
         source = "def solve(x):\n    try:\n        open('/dev/shm/persist', 'w').write('x')\n        return 'written'\n    except OSError:\n        return 'refused'\n"
         self.assertEqual("refused", value(evaluate(source)))
+
+    def test_system_v_ipc_objects_cannot_be_created(self) -> None:
+        # Shared memory, message queues and semaphores would outlive the job, be
+        # visible to the other slot and pin memory outside the job's limits (Phase 22).
+        source = (
+            "import ctypes\n"
+            "def solve(x):\n"
+            "    libc = ctypes.CDLL(None, use_errno=True)\n"
+            "    return [libc.shmget(0x2222, 4096, 0o1666), libc.msgget(0x3333, 0o1666), libc.semget(0x4444, 1, 0o1666)]\n"
+        )
+        self.assertEqual([-1, -1, -1], value(evaluate(source)))
+        with (
+            open("/proc/sysvipc/shm", encoding="ascii") as shm,
+            open("/proc/sysvipc/msg", encoding="ascii") as msg,
+            open("/proc/sysvipc/sem", encoding="ascii") as sem,
+        ):
+            self.assertEqual([1, 1, 1], [len(shm.readlines()), len(msg.readlines()), len(sem.readlines())])
 
     def test_sandboxed_code_is_the_first_choice_of_the_oom_killer(self) -> None:
         self.assertEqual(1000, value(evaluate("def solve(x):\n    return int(open('/proc/self/oom_score_adj').read())\n")))
