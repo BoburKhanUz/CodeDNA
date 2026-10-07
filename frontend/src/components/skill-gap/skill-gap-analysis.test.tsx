@@ -169,6 +169,7 @@ describe("SkillGapAnalysis", () => {
     expect(within(nav).getByRole("link", { name: `← ${project.name}` })).toHaveAttribute("href", `/app/projects/${project.id}`);
     expect(within(nav).getByRole("link", { name: "CodeDNA" })).toHaveAttribute("href", `/app/projects/${project.id}/dna`);
     expect(within(nav).getByRole("link", { name: "Competency Matrix" })).toHaveAttribute("href", `/app/projects/${project.id}/competencies`);
+    expect(within(nav).getByRole("link", { name: "Growth" })).toHaveAttribute("href", `/app/projects/${project.id}/growth`);
     expect(screen.getByRole("link", { name: /Competency version 1\.0\.0/ })).toHaveAttribute("href", `/app/projects/${project.id}/competencies`);
     expect(screen.getByRole("link", { name: "CodeDNA scoring 1.0.0" })).toHaveAttribute("href", `/app/projects/${project.id}/dna/${gapsSnapshot.dna_snapshot_id}`);
   });

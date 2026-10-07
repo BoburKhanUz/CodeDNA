@@ -67,6 +67,7 @@ describe("ChallengeList", () => {
     expect(await screen.findByTestId("challenge-notice")).toHaveTextContent(
       "Completing a challenge does not immediately change your CodeDNA score or skill gap. Reassessment occurs from new code analysis.",
     );
+    expect(screen.getByRole("link", { name: "Growth" })).toHaveAttribute("href", `/app/projects/${project.id}/growth`);
   });
 
   it("offers a first challenge and opens it after assignment, sending nothing but the request", async () => {

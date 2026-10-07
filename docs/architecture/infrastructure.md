@@ -361,6 +361,9 @@ and prints no secrets:
     and then idempotent (`200`), or `409 ROADMAP_NO_ACTIONABLE_GAPS` when the
     probe's analysis has no actionable gap. The probe's roadmap rows are
     deleted with it.
+13. Growth tracking (Phase 18): reading the probe project's growth returns
+    `200` and a write returns `405` (read-only). The probe's growth rows are
+    deleted with it.
 
 ## Troubleshooting
 

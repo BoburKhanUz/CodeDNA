@@ -61,6 +61,7 @@ describe("RoadmapView", () => {
     expect(screen.getByRole("status", { name: "Loading learning roadmap" })).toBeInTheDocument();
     expect(await screen.findByTestId("roadmap-notice")).toHaveTextContent(NOTICE);
     expect(screen.getByRole("heading", { level: 1, name: "Learning Roadmap" })).toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "Related pages" })).getByRole("link", { name: "Growth" })).toHaveAttribute("href", `/app/projects/${project.id}/growth`);
   });
 
   it("shows the development focus: why, current, target, gap, priority and evidence quality", async () => {

@@ -126,6 +126,16 @@ return [
     | version selects the server-owned tracks, the rules version the
     | selection and ordering rules.
     */
+    /*
+    | Growth tracking (docs/architecture/growth-tracking-v1.md). An
+    | observation layer: compares each new deterministic assessment with the
+    | project's preceding one, reading stored scores only. Never a score of
+    | its own, never AI, and never fed by learning activity.
+    */
+    'growth' => [
+        'rules_version' => (string) env('CODEDNA_GROWTH_RULES_VERSION', '1.0.0'),
+    ],
+
     'roadmap' => [
         'catalog_version' => (string) env('CODEDNA_ROADMAP_VERSION', '1.0.0'),
         'rules_version' => (string) env('CODEDNA_ROADMAP_RULES_VERSION', '1.0.0'),

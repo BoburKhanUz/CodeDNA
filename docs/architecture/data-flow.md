@@ -383,6 +383,39 @@ skill_gap_results ──read──► DevelopmentFocusResolver ──► Roadmap
 
 Details: [learning-roadmap-v1.md](learning-roadmap-v1.md).
 
+### Growth tracking (Phase 18)
+
+Growth compares stored assessments and never writes analysis data. Growth ≠
+learning, challenges, AI or self-report: only code assessments are evidence.
+
+1. After skill gaps, `AnalyzeSourceSnapshot` runs
+   `App\Actions\Growth\CalculateGrowthSnapshot` for the new skill gap
+   snapshot. This is best effort: a failure is logged as `growth.failed`,
+   and the run, DNA, competencies and skill gaps stay valid.
+2. In one transaction, holding a lock on the skill gap snapshot row:
+   1. It finds the baseline: the immediately preceding assessment of the
+      same project, by analysis run completion.
+   2. It reads both assessments' stored values.
+   3. It lets `GrowthEngine` compare them under the growth rules
+      (`NOT_ESTABLISHED`, `INCOMPARABLE` or `COMPARED`).
+   4. It stores the snapshot and its observations.
+
+   A repeat returns the existing snapshot.
+3. `php artisan growth:calculate <id>|--missing` recovers missing growth,
+   oldest first.
+4. The API is read-only. Learning activity between the two assessments is
+   counted at read time, as context only.
+
+```text
+dna_snapshots ─┐
+competency_snapshots ─┼─read─► GrowthAssessment ×2 ──► GrowthEngine ──► growth_snapshots + growth_observations
+skill_gap_* ───┘                 (current, baseline)      (rules 1.0.0)
+roadmap_step_completions, challenge_submissions ──read at display time──► "activity (context only)"
+          (no arrow into GrowthEngine, and no arrow back to any analysis table)
+```
+
+Details: [growth-tracking-v1.md](growth-tracking-v1.md).
+
 ## Run state machine
 
 ```text

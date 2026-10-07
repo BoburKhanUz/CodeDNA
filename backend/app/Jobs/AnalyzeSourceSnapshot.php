@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Actions\Analysis\PersistAnalysisResult;
 use App\Actions\Competency\CalculateCompetencyMatrix;
 use App\Actions\Dna\CalculateDnaSnapshot;
+use App\Actions\Growth\CalculateGrowthSnapshot;
 use App\Actions\SkillGap\CalculateSkillGapSnapshot;
 use App\Enums\AnalysisFailure;
 use App\Enums\AnalysisResultType;
@@ -17,6 +18,7 @@ use App\Services\Analyzer\AnalyzerClient;
 use App\Services\Analyzer\AnalyzerException;
 use App\Services\Competency\CompetencyException;
 use App\Services\Dna\DnaScoringException;
+use App\Services\Growth\GrowthException;
 use App\Services\SkillGap\SkillGapException;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\ConnectionInterface;
@@ -45,7 +47,9 @@ use Throwable;
  * 3. persists the verified result (PersistAnalysisResult) and, for a
  *    static_analysis result, scores it (CalculateDnaSnapshot, Phase 11) and
  *    derives its competency matrix (CalculateCompetencyMatrix, Phase 13) and
- *    its skill gaps (CalculateSkillGapSnapshot, Phase 14), or
+ *    its skill gaps (CalculateSkillGapSnapshot, Phase 14), then tracks
+ *    growth against the project's preceding assessment
+ *    (CalculateGrowthSnapshot, Phase 18), each best effort, or
  * 4. on a retryable failure releases itself with backoff while attempts
  *    remain (the run stays RUNNING), otherwise marks the run FAILED with a
  *    safe failure code.
@@ -87,6 +91,7 @@ final class AnalyzeSourceSnapshot implements ShouldQueue
         CalculateDnaSnapshot $score,
         CalculateCompetencyMatrix $competencies,
         CalculateSkillGapSnapshot $skillGaps,
+        CalculateGrowthSnapshot $growth,
     ): void {
         $claim = $db->transaction(fn (): ?array => $this->claim());
         if ($claim === null) {
@@ -122,8 +127,9 @@ final class AnalyzeSourceSnapshot implements ShouldQueue
         if ($stored && $run->result_type === AnalysisResultType::StaticAnalysis) {
             $dnaSnapshotId = $this->score($score, $run);
             $competencySnapshotId = $dnaSnapshotId === null ? null : $this->assessCompetencies($competencies, $run, $dnaSnapshotId);
-            if ($competencySnapshotId !== null) {
-                $this->analyzeSkillGaps($skillGaps, $run, $competencySnapshotId);
+            $skillGapSnapshotId = $competencySnapshotId === null ? null : $this->analyzeSkillGaps($skillGaps, $run, $competencySnapshotId);
+            if ($skillGapSnapshotId !== null) {
+                $this->trackGrowth($growth, $run, $skillGapSnapshotId);
             }
         }
     }
@@ -193,8 +199,10 @@ final class AnalyzeSourceSnapshot implements ShouldQueue
      * Compares the competency matrix with the target profile (Phase 14).
      * Best effort: the run, its DNA and its competency matrix stand whatever
      * happens here; php artisan skill-gap:calculate retries.
+     *
+     * @return string|null the skill gap snapshot ID
      */
-    private function analyzeSkillGaps(CalculateSkillGapSnapshot $skillGaps, AnalysisRun $run, string $competencySnapshotId): void
+    private function analyzeSkillGaps(CalculateSkillGapSnapshot $skillGaps, AnalysisRun $run, string $competencySnapshotId): ?string
     {
         $context = $this->context($run) + [
             'competency_snapshot_id' => $competencySnapshotId,
@@ -208,10 +216,40 @@ final class AnalyzeSourceSnapshot implements ShouldQueue
                 'status' => $calculated->snapshot->status->value,
                 'created' => $calculated->created,
             ]);
+
+            return $calculated->snapshot->id;
         } catch (SkillGapException $e) {
             Log::warning('skill_gap.failed', $context + ['error_code' => $e->failure->value]);
         } catch (Throwable $e) {
             Log::error('skill_gap.failed', $context + ['exception' => $e::class]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Compares the new assessment with the project's preceding one (Phase
+     * 18). Best effort: the run, its DNA, competency and skill gap snapshots
+     * stand whatever happens here; php artisan growth:calculate retries.
+     */
+    private function trackGrowth(CalculateGrowthSnapshot $growth, AnalysisRun $run, string $skillGapSnapshotId): void
+    {
+        $context = $this->context($run) + [
+            'skill_gap_snapshot_id' => $skillGapSnapshotId,
+            'growth_rules_version' => (string) config('codedna.growth.rules_version'),
+        ];
+
+        try {
+            $calculated = $growth->handle($skillGapSnapshotId);
+            Log::info('growth.calculated', $context + [
+                'growth_snapshot_id' => $calculated->snapshot->id,
+                'status' => $calculated->snapshot->status->value,
+                'created' => $calculated->created,
+            ]);
+        } catch (GrowthException $e) {
+            Log::warning('growth.failed', $context + ['error_code' => $e->failure->value]);
+        } catch (Throwable $e) {
+            Log::error('growth.failed', $context + ['exception' => $e::class]);
         }
     }
 

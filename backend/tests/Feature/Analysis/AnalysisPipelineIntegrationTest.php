@@ -71,6 +71,8 @@ final class AnalysisPipelineIntegrationTest extends TestCase
     {
         if ($this->project !== null) {
             $runs = DB::table('analysis_runs')->where('project_id', $this->project->id)->pluck('id');
+            DB::table('growth_observations')->where('project_id', $this->project->id)->delete();
+            DB::table('growth_snapshots')->where('project_id', $this->project->id)->delete();
             DB::table('skill_gap_results')->whereIn('skill_gap_snapshot_id', DB::table('skill_gap_snapshots')->whereIn('analysis_run_id', $runs)->select('id'))->delete();
             DB::table('skill_gap_snapshots')->whereIn('analysis_run_id', $runs)->delete();
             DB::table('competency_snapshots')->whereIn('analysis_run_id', $runs)->delete();

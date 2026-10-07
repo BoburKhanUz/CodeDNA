@@ -1,7 +1,8 @@
 /**
  * TypeScript mirror of the Laravel API contract (docs/api/README.md).
  *
- * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary,SkillGapSnapshot,SkillGapSnapshotSummary,AiAssessment,AiAssessmentSummary,Challenge,ChallengeSummary,ChallengeSubmission,ChallengeSubmissionSummary,Roadmap,RoadmapSummary}Resource.php,
+ * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary,SkillGapSnapshot,SkillGapSnapshotSummary,AiAssessment,AiAssessmentSummary,Challenge,ChallengeSummary,ChallengeSubmission,ChallengeSubmissionSummary,Roadmap,RoadmapSummary,GrowthSnapshot,GrowthSnapshotSummary}Resource.php,
+ * backend/app/Http/Controllers/Api/V1/Projects/GrowthController.php (growth overview),
  * backend/app/Http/Resources/PaginatedCollection.php,
  * backend/app/Enums/{SupportedLocale,ProgrammingLanguage}.php and
  * backend/app/Http/Errors/{ErrorCode,ApiExceptionRenderer}.php. When those
@@ -974,3 +975,103 @@ export interface Roadmap extends RoadmapSummary {
 }
 
 export type RoadmapResponse = DataEnvelope<Roadmap>;
+
+/* ---------------------------------------------------------------- Growth (Phase 18) */
+
+/** NOT_ESTABLISHED: no earlier assessment; INCOMPARABLE: versions differ, nothing compared. */
+export type GrowthSnapshotStatus = "NOT_ESTABLISHED" | "INCOMPARABLE" | "COMPARED";
+export type GrowthStatus = "IMPROVED" | "REGRESSED" | "UNCHANGED" | "INSUFFICIENT_EVIDENCE";
+export type GrowthMetricType = "DNA" | "COMPETENCY" | "SKILL_GAP";
+/** The overview state: a growth snapshot status, or why there is none for the newest assessment. */
+export type GrowthState = GrowthSnapshotStatus | "NO_ASSESSMENT" | "NOT_CALCULATED";
+export type GrowthEventKind = "IMPROVED" | "REGRESSED" | "GAP_CLOSED" | "GAP_OPENED" | "LEVEL_UP" | "LEVEL_DOWN";
+
+export interface GrowthAssessmentRef {
+  skill_gap_snapshot_id: string;
+  competency_snapshot_id: string;
+  dna_snapshot_id: string;
+  analysis_run_id: string;
+  source_snapshot_id: string;
+}
+
+export interface GrowthSummary {
+  observations: number;
+  statuses: Record<GrowthMetricType, Record<GrowthStatus, number>>;
+  level_changes: { UP: number; DOWN: number };
+}
+
+export interface GrowthEvent {
+  kind: GrowthEventKind;
+  metric_type: GrowthMetricType;
+  metric_key: string;
+  previous_value: DecimalString | null;
+  current_value: DecimalString | null;
+  /** Signed, e.g. "-0.1100". */
+  delta: string | null;
+  previous_level?: string | null;
+  current_level?: string | null;
+}
+
+/** `GrowthSnapshotSummaryResource` — GET /api/v1/projects/{project}/growth/timeline (newest first). */
+export interface GrowthSnapshotSummary {
+  id: string;
+  type: "growth_snapshot";
+  project_id: string;
+  status: GrowthSnapshotStatus;
+  assessed_at: string;
+  previous_assessed_at: string | null;
+  current: GrowthAssessmentRef;
+  previous: GrowthAssessmentRef | null;
+  summary: GrowthSummary;
+  events: GrowthEvent[];
+  rules_version: string;
+  created_at: string | null;
+}
+
+export interface GrowthObservation {
+  metric_key: string;
+  better: "HIGHER" | "LOWER";
+  previous_state: string;
+  current_state: string;
+  previous_value: DecimalString | null;
+  current_value: DecimalString | null;
+  delta: string | null;
+  previous_level: string | null;
+  current_level: string | null;
+  level_change: "UP" | "DOWN" | "SAME" | null;
+  previous_evidence_quality: DecimalString | null;
+  current_evidence_quality: DecimalString | null;
+  status: GrowthStatus;
+}
+
+/** `GrowthSnapshotResource` — one growth snapshot (owner only). */
+export interface GrowthSnapshot extends GrowthSnapshotSummary {
+  notice: string;
+  versions: Record<string, string | null>;
+  previous_versions: Record<string, string | null> | null;
+  /** The version fields that differ (INCOMPARABLE only). */
+  differences: string[];
+  rules: { version: string; fingerprint: string; current: boolean };
+  dna: GrowthObservation[];
+  competencies: GrowthObservation[];
+  skill_gaps: GrowthObservation[];
+  /** Learning activity between the two assessments: context only, never growth evidence. */
+  activity: { roadmap_steps_completed: number; challenges_passed: number } | null;
+}
+
+export interface GrowthSeries {
+  metric_type: GrowthMetricType;
+  metric_key: string;
+  points: { assessed_at: string | null; value: DecimalString | null }[];
+}
+
+/** GET /api/v1/projects/{project}/growth */
+export interface GrowthOverview {
+  state: GrowthState;
+  notice: string;
+  latest: GrowthSnapshot | null;
+  series: GrowthSeries[];
+}
+
+export type GrowthOverviewResponse = DataEnvelope<GrowthOverview>;
+export type GrowthSnapshotResponse = DataEnvelope<GrowthSnapshot>;

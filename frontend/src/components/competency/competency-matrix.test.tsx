@@ -46,6 +46,7 @@ describe("CompetencyMatrix", () => {
     render(<CompetencyMatrix projectId={project.id} />);
 
     expect(await screen.findByRole("heading", { level: 1, name: "Competency Matrix" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Growth" })).toHaveAttribute("href", `/app/projects/${project.id}/growth`);
     expect(screen.getByText(/Competency version 1\.0\.0 · calculated Oct 12, 2026, 8:00 AM UTC · source snapshot v1/)).toBeInTheDocument();
     expect(screen.getByTestId("competency-summary")).toHaveTextContent("4 of 4 competencies assessed");
 

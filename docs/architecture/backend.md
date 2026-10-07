@@ -38,7 +38,12 @@ process-execution or `eval` primitives, and a test enforces this
 (`NoCommandExecutionTest`). Learning roadmaps (Phase 17) are generated
 deterministically from stored skill gaps by `App\Services\Roadmap` and
 never change a score, competency or gap
-([learning-roadmap-v1.md](learning-roadmap-v1.md)). This includes coding
+([learning-roadmap-v1.md](learning-roadmap-v1.md)). Growth tracking
+(Phase 18) compares stored assessments with the versioned rules in
+`App\Services\Growth`, as the last best-effort stage of the analysis job
+(`App\Actions\Growth\CalculateGrowthSnapshot`, `growth:calculate`). It
+never re-scores anything and never reads learning activity as evidence
+([growth-tracking-v1.md](growth-tracking-v1.md)). This includes coding
 challenges (Phase 16):
 Laravel stores submitted challenge code and writes it to the spool for the
 isolated evaluator service. It never runs it

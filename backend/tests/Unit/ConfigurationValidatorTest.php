@@ -76,6 +76,7 @@ final class ConfigurationValidatorTest extends TestCase
             'codedna.skill_gap.version' => '1.0.0',
             'codedna.roadmap.catalog_version' => '1.0.0',
             'codedna.roadmap.rules_version' => '1.0.0',
+            'codedna.growth.rules_version' => '1.0.0',
             'codedna.ai' => self::AI,
             'codedna.challenges' => self::CHALLENGES,
         ], $overrides) as $key => $value) {
@@ -243,6 +244,17 @@ final class ConfigurationValidatorTest extends TestCase
             $this->assertSame(
                 ['CODEDNA_SKILL_GAP_VERSION must be one of: 1.0.0.'],
                 (new ConfigurationValidator)->problems($this->config(['codedna.skill_gap.version' => $version]), 'production'),
+            );
+        }
+    }
+
+    public function test_the_growth_rules_version_must_be_defined(): void
+    {
+        $this->assertSame([], (new ConfigurationValidator)->problems($this->config(), 'production'));
+        foreach (['1.0', '2.0.0', '', null] as $version) {
+            $this->assertSame(
+                ['CODEDNA_GROWTH_RULES_VERSION must be one of: 1.0.0.'],
+                (new ConfigurationValidator)->problems($this->config(['codedna.growth.rules_version' => $version]), 'production'),
             );
         }
     }

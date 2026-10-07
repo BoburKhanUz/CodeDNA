@@ -41,6 +41,8 @@ users ──1:n──► projects ──1:n──► source_snapshots ──1:n�
 | `roadmap_snapshots` | A learning roadmap generated from one skill gap snapshot: focus, tracks, versions, fingerprints, lineage (Phase 17) | status only, once: ACTIVE → COMPLETED or SUPERSEDED |
 | `roadmap_steps` | The roadmap's steps, copied from the catalog (Phase 17) | **never** |
 | `roadmap_step_completions` | Self-reported learning progress, one row per completed step (Phase 17) | **never** (insert-only) |
+| `growth_snapshots` | The comparison of one assessment (skill gap snapshot) with the immediately preceding one, per growth rules version (Phase 18) | **never** (trigger) |
+| `growth_observations` | One immutable observation per metric of a `COMPARED` growth snapshot (Phase 18) | **never** (trigger) |
 
 There is deliberately no separate `repositories` or `analyses` table. A
 project carries its source origin (`source_type`, `repository_url`). A
@@ -53,7 +55,7 @@ integrations (Phase 19) will add their own tables when they exist.
 |---|---|
 | `User` | `developerProfile()` hasOne; `projects()` hasMany |
 | `DeveloperProfile` | `user()` belongsTo |
-| `Project` | `user()` belongsTo; `sourceSnapshots()`, `analysisRuns()`, `dnaSnapshots()`, `challengeInstances()`, `roadmapSnapshots()` hasMany |
+| `Project` | `user()` belongsTo; `sourceSnapshots()`, `analysisRuns()`, `dnaSnapshots()`, `challengeInstances()`, `roadmapSnapshots()`, `growthSnapshots()` hasMany |
 | `SourceSnapshot` | `project()` belongsTo; `analysisRuns()` hasMany |
 | `AnalysisRun` | `project()`, `sourceSnapshot()` belongsTo; `result()` hasOne; `dnaSnapshots()` hasMany (one per scoring version), `dnaSnapshot()` hasOne |
 | `DnaSnapshot` | `user()`, `project()`, `analysisRun()`, `sourceSnapshot()` belongsTo; `competencySnapshots()` hasMany |
@@ -66,6 +68,8 @@ integrations (Phase 19) will add their own tables when they exist.
 | `RoadmapSnapshot` | `project()`, `skillGapSnapshot()` belongsTo; `steps()` hasMany (learning order), `completions()` hasMany |
 | `RoadmapStep` | `roadmap()` belongsTo |
 | `RoadmapStepCompletion` | none |
+| `GrowthSnapshot` | `observations()` hasMany (by position) |
+| `GrowthObservation` | `snapshot()` belongsTo |
 
 All relationships carry generic return types (`BelongsTo<Project, $this>`).
 Outside production, strict mode makes lazy loading throw, so callers must
@@ -491,6 +495,57 @@ step:
 - **Nothing is deleted.** All FKs are `RESTRICT`, and the models refuse
   updates and deletes.
 
+### growth_snapshots, growth_observations
+
+Phase 18 ([growth-tracking-v1.md](growth-tracking-v1.md)). An observation
+layer: it reads the stored DNA, competency and skill gap snapshots and writes
+only these tables. It never reads learning activity, challenges or AI
+assessments.
+
+**`growth_snapshots`** holds one comparison per (assessment, growth rules
+version):
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `user_id`, `project_id`, `skill_gap_snapshot_id`, `competency_snapshot_id`, `dna_snapshot_id`, `analysis_run_id`, `source_snapshot_id` | ulid | the assessment; composite FK `growth_snapshots_lineage_foreign` onto `skill_gap_snapshots`' lineage index, `RESTRICT` |
+| `assessed_at` | timestamp | the analysis run's `completed_at` |
+| `previous_skill_gap_snapshot_id` … `previous_source_snapshot_id` | ulid null | the baseline; composite FK `growth_snapshots_previous_lineage_foreign` with the **same** `project_id` and `user_id` |
+| `previous_assessed_at` | timestamp null | strictly earlier than `assessed_at` (CHECK) |
+| `rules_version`, `rules_fingerprint` | varchar(32), char(64) | the growth rules used |
+| `versions`, `previous_versions` | jsonb | the compatibility fields of each assessment |
+| `differences` | jsonb | the differing fields; non-empty ⇔ `INCOMPARABLE` (CHECK) |
+| `status` | varchar(32) | `NOT_ESTABLISHED` \| `INCOMPARABLE` \| `COMPARED`; a baseline is present ⇔ not `NOT_ESTABLISHED`, and all or none (CHECK) |
+| `summary` | jsonb | categorical counts only |
+| `created_at` | timestamp | no `updated_at` |
+
+- **Unique:** `growth_snapshots_assessment_rules_unique` on
+  `(skill_gap_snapshot_id, rules_version)`, and
+  `growth_snapshots_owner_unique` on `(id, project_id, user_id)`.
+
+**`growth_observations`** holds one row per metric of a `COMPARED`
+snapshot:
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `growth_snapshot_id`, `project_id`, `user_id` | ulid | composite FK onto `growth_snapshots (id, project_id, user_id)` |
+| `position` | smallint | unique per snapshot |
+| `metric_type`, `metric_key` | varchar | `DNA` \| `COMPETENCY` \| `SKILL_GAP`; unique per snapshot |
+| `better` | varchar(8) | `LOWER` ⇔ `SKILL_GAP`, otherwise `HIGHER` (CHECK) |
+| `previous_state`, `current_state` | varchar(32) | as stored, or `MISSING` |
+| `previous_value`, `current_value`, `delta` | decimal(5,4) null | all or none; values within 0–1; `delta = current − previous` (CHECK) |
+| `previous_level`, `current_level`, `level_change` | varchar null | `UP` \| `DOWN` \| `SAME` |
+| `previous_evidence_quality`, `current_evidence_quality` | decimal(5,4) null | |
+| `status` | varchar(32) | `IMPROVED` \| `REGRESSED` \| `UNCHANGED` \| `INSUFFICIENT_EVIDENCE`; a classified status needs a delta (CHECK) |
+| `created_at` | timestamp | |
+
+- **Triggers:** `growth_refuse_update` refuses every `UPDATE` of either
+  table. `growth_observations_compared_only` refuses observations of a
+  snapshot that is not `COMPARED`.
+- **Nothing cascades.** All FKs are `RESTRICT`, and the models refuse
+  updates and deletes.
+
 ## States
 
 States are **VARCHAR columns with CHECK constraints**, mirrored by PHP backed
@@ -559,7 +614,7 @@ Historical records (`source_snapshots`, terminal `analysis_runs`,
 `skill_gap_snapshots`, `skill_gap_results`, `challenge_definitions`,
 `roadmap_steps`, `roadmap_step_completions`) are append-only. Challenge instances and submissions change only their
 lifecycle columns, and their database triggers enforce that (Phase 16).
-Roadmap snapshots change only their status, once (Phase 17, trigger). This is an architectural invariant.
+Roadmap snapshots change only their status, once (Phase 17, trigger). Growth snapshots and observations never change (Phase 18, trigger). This is an architectural invariant.
 
 | Layer | Mechanism |
 |---|---|
@@ -631,6 +686,11 @@ Every index serves a known or planned query:
 | `dna_snapshots (analysis_run_id)` unique | one DNA per run; DNA of a run |
 | `dna_snapshots (user_id, created_at)` | a developer's DNA history |
 | `dna_snapshots (project_id, created_at)` | a project's DNA history |
+| `growth_snapshots (project_id, assessed_at)` | a project's growth overview and timeline |
+| `growth_snapshots (skill_gap_snapshot_id, rules_version)` unique | one growth snapshot per assessment and rules version |
+| `growth_snapshots (previous_skill_gap_snapshot_id)` | the growth that uses an assessment as its baseline |
+| `growth_observations (growth_snapshot_id, metric_type, metric_key)` unique | the observations of a snapshot |
+| `growth_observations (project_id, metric_type, metric_key)` | one metric across a project's growth |
 
 PostgreSQL does not index foreign keys automatically. Every FK column above
 is the leading column of some index.

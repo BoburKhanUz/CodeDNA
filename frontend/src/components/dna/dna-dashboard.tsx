@@ -119,6 +119,22 @@ export function DnaDashboard({ projectId, snapshotId }: { projectId: string; sna
               </Link>
             </CardContent>
           </Card>
+          <Card data-testid="growth-link">
+            <CardHeader>
+              <CardTitle>
+                <h2>Growth</h2>
+              </CardTitle>
+              <CardDescription>
+                How this assessment compares with the one immediately before it, measured with the same versions. Only new code analysis
+                shows change.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href={`/app/projects/${project.id}/growth`} className="text-sm font-medium underline underline-offset-4">
+                View Growth →
+              </Link>
+            </CardContent>
+          </Card>
           <History history={state.history} projectId={project.id} selectedId={state.snapshot.id} />
         </>
       )}

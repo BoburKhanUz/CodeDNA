@@ -113,6 +113,9 @@ export function ChallengeList({ projectId }: { projectId: string }) {
           <Link href={`/app/projects/${project.id}/roadmap`} className="text-muted-foreground underline-offset-4 hover:underline">
             Learning Roadmap
           </Link>
+          <Link href={`/app/projects/${project.id}/growth`} className="text-muted-foreground underline-offset-4 hover:underline">
+            Growth
+          </Link>
         </nav>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">Coding Challenges</h1>

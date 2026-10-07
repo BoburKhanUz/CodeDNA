@@ -55,13 +55,18 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `GET` | `/api/v1/projects/{project}/assessments` | owner | 200 | AI assessments (paginated, newest first) |
 | `POST` | `/api/v1/projects/{project}/assessments` | owner | 202 / 200 | Request an AI interpretation of a skill gap analysis (200 = the existing one) |
 | `GET` | `/api/v1/projects/{project}/assessments/{assessment}` | owner | 200 | One AI assessment: status, output, evidence, versions, lineage |
+| `GET` | `/api/v1/projects/{project}/growth` | owner | 200 | Growth of the newest assessment: state, detail, trend series |
+| `GET` | `/api/v1/projects/{project}/growth/timeline` | owner | 200 | Growth snapshots (paginated, newest assessment first) |
+| `GET` | `/api/v1/projects/{project}/growth/{growthSnapshot}` | owner | 200 | One growth snapshot: observations, events, versions, provenance |
 
 There is no `DELETE` for projects (`405`) and no update, delete or download
 for snapshots. DNA, competency and skill gap snapshots are read-only (no
 write method on `/dna`, `/competencies` or `/skill-gaps`). See
 [Projects](#projects), [Source snapshots](#source-snapshots),
 [Analyses](#analyses), [DNA](#dna), [Competencies](#competencies),
-[Skill gaps](#skill-gaps) and [AI assessments](#ai-assessments).
+[Skill gaps](#skill-gaps), [AI assessments](#ai-assessments) and
+[Growth tracking](#growth-tracking). Growth is read-only (no write method on
+`/growth`).
 
 ### `GET /api/v1/health`
 
@@ -1068,6 +1073,102 @@ records learning progress only.
 | `409 PROJECT_ARCHIVED` | The project is archived |
 | `422 VALIDATION_FAILED` | The body was not empty |
 | `429 RATE_LIMITED` | `roadmap-progress` limit |
+
+## Growth tracking
+
+How the newest code assessment compares with the one immediately before it
+(Phase 18, [growth-tracking-v1.md](../architecture/growth-tracking-v1.md)).
+It is an **observation layer**: growth is calculated automatically after
+each analysis from the stored DNA, competency and skill gap snapshots, and
+never changes them. No AI is involved.
+
+- **Growth ≠ learning.** Learning steps, challenges, AI assessments and
+  self-report are never growth evidence. Only a new code analysis can show
+  change.
+- **No baseline ≠ zero.** A first assessment is `NOT_ESTABLISHED`, with no
+  observations.
+- **Incomparable ≠ regression.** Assessments measured with different
+  versions are `INCOMPARABLE`, with no observations and no delta.
+- **Insufficient evidence ≠ regression.** Unmeasured evidence or evidence
+  quality below 0.6000 is `INSUFFICIENT_EVIDENCE`.
+- **Access.** Owner-only: `404` for a missing project, another user's
+  project, and a growth snapshot of another project. Archived projects stay
+  readable.
+- **Read-only.** There is no write method (`405`). Query parameters other
+  than pagination are ignored: no client chooses a snapshot, baseline,
+  value, status or rules version.
+
+Every growth response carries this `notice`:
+
+> Growth compares deterministic code assessments only. Completed learning
+> steps and challenges are not growth evidence; only a new code analysis
+> can show change.
+
+### `GET /api/v1/projects/{project}/growth`
+
+```json
+{ "data": {
+  "state": "COMPARED",
+  "notice": "Growth compares deterministic code assessments only. …",
+  "latest": { "…": "a growth snapshot, as below, or null" },
+  "series": [
+    { "metric_type": "DNA", "metric_key": "OVERALL",
+      "points": [ { "assessed_at": "2026-10-01T12:00:00Z", "value": "0.3050" },
+                  { "assessed_at": "2026-10-07T12:00:00Z", "value": "0.8050" } ] }
+  ]
+} }
+```
+
+| `state` | Meaning |
+|---|---|
+| `NO_ASSESSMENT` | The project has no successful analysis with skill gaps. `latest` is null |
+| `NOT_CALCULATED` | The newest assessment has no growth snapshot yet. `latest` is the newest one that exists |
+| `NOT_ESTABLISHED` | The newest assessment is the first: "Baseline not established" |
+| `INCOMPARABLE` | The previous assessment was measured with different versions |
+| `COMPARED` | Compared with the immediately preceding assessment |
+
+`series` covers the newest unbroken chain of `COMPARED` snapshots, at most
+10, oldest first. It is empty when there is none. It never spans a missing
+baseline or a version change.
+
+### `GET /api/v1/projects/{project}/growth/timeline`
+
+Growth snapshot summaries, newest assessment first, paginated (`?page`,
+`?per_page` ≤ 100). Each item has:
+
+- `id` and `type: "growth_snapshot"`;
+- `project_id`;
+- `status`: `NOT_ESTABLISHED`, `INCOMPARABLE` or `COMPARED`;
+- `assessed_at` and `previous_assessed_at`;
+- `current` and `previous`: the lineage of each assessment
+  (`skill_gap_snapshot_id`, `competency_snapshot_id`, `dna_snapshot_id`,
+  `analysis_run_id`, `source_snapshot_id`). `previous` is null without a
+  baseline;
+- `summary`: `{observations, statuses: {DNA|COMPETENCY|SKILL_GAP:
+  {IMPROVED, REGRESSED, UNCHANGED, INSUFFICIENT_EVIDENCE}}, level_changes:
+  {UP, DOWN}}`. These are counts only; there is no growth score;
+- `events`: `{kind, metric_type, metric_key, previous_value,
+  current_value, delta}`, plus `previous_level` and `current_level` for
+  level events. `kind` is `IMPROVED`, `REGRESSED`, `GAP_CLOSED`,
+  `GAP_OPENED`, `LEVEL_UP` or `LEVEL_DOWN`;
+- `rules_version` and `created_at`.
+
+### `GET /api/v1/projects/{project}/growth/{growthSnapshot}`
+
+The summary fields, plus:
+
+| Field | Content |
+|---|---|
+| `notice` | The notice above |
+| `versions`, `previous_versions` | Both assessments' DNA scoring, metrics, competency, skill gap and target profile versions and specification fingerprints |
+| `differences` | The differing version fields (`INCOMPARABLE` only, otherwise `[]`) |
+| `rules` | `{version, fingerprint, current}`. `current` is false when the server now uses other growth rules |
+| `dna`, `competencies`, `skill_gaps` | Observations: `metric_key`, `better` (`HIGHER` or `LOWER`), `previous_state`, `current_state`, `previous_value`, `current_value`, `delta` (signed, `current − previous`), `previous_level`, `current_level`, `level_change` (`UP`, `DOWN`, `SAME` or null), `previous_evidence_quality`, `current_evidence_quality`, `status` |
+| `activity` | `{roadmap_steps_completed, challenges_passed}` between the two assessment times, or null without a baseline. **Context only, never growth evidence** |
+
+Values, deltas and qualities are decimal strings with 4 places. They are
+null when the evidence was not measured; they are never `0` for missing
+evidence.
 
 ## Authentication (browser, Sanctum SPA)
 

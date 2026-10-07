@@ -103,6 +103,15 @@ describe("DnaDashboard", () => {
     expect(within(card).getByRole("link", { name: "View Competency Matrix →" })).toHaveAttribute("href", `/app/projects/${project.id}/competencies`);
   });
 
+  it("links to Growth", async () => {
+    respondWith();
+    render(<DnaDashboard projectId={project.id} />);
+
+    const card = await screen.findByTestId("growth-link");
+    expect(within(card).getByRole("link", { name: "View Growth →" })).toHaveAttribute("href", `/app/projects/${project.id}/growth`);
+    expect(card).toHaveTextContent("Only new code analysis shows change.");
+  });
+
   it("shows the source, run and scoring version", async () => {
     respondWith();
     render(<DnaDashboard projectId={project.id} />);

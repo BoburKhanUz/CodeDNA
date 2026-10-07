@@ -12,6 +12,7 @@ use App\Services\Challenge\ChallengeCatalog;
 use App\Services\Challenge\Evaluator\ChallengeEvaluator;
 use App\Services\Challenge\Evaluator\SpoolChallengeEvaluator;
 use App\Services\Challenge\Evaluator\UnavailableChallengeEvaluator;
+use App\Services\Growth\GrowthRules;
 use App\Services\Roadmap\RoadmapCatalog;
 use App\Services\Roadmap\RoadmapRules;
 use App\Support\ConfigurationValidator;
@@ -51,6 +52,11 @@ class AppServiceProvider extends ServiceProvider
                 ? new SpoolChallengeEvaluator((string) $config['spool_path'], (int) $config['wait_seconds'], (int) $config['heartbeat_max_age_seconds'])
                 : new UnavailableChallengeEvaluator;
         });
+
+        // Growth tracking (Phase 18): the deterministic, versioned rules.
+        $this->app->singleton(GrowthRules::class, static fn ($app): GrowthRules => GrowthRules::forVersion(
+            (string) $app['config']->get('codedna.growth.rules_version'),
+        ));
 
         // Learning roadmaps (Phase 17): the server-owned track catalog and the
         // deterministic rules. No AI, no network.

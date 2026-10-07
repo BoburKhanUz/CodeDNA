@@ -45,7 +45,12 @@ generated deterministically from the newest skill gap analysis, sets the
 development focus and ordered learning steps. Completing steps is learning
 progress, never an assessment
 ([learning-roadmap-v1.md](learning-roadmap-v1.md),
-[ADR-009](../decisions/ADR-009-learning-roadmap.md)). Everything below is
+[ADR-009](../decisions/ADR-009-learning-roadmap.md)). Growth tracking
+compares each new code assessment with the immediately preceding comparable
+one, from stored deterministic snapshots only; learning activity is shown as
+context and is never growth evidence
+([growth-tracking-v1.md](growth-tracking-v1.md),
+[ADR-010](../decisions/ADR-010-growth-tracking.md)). Everything below is
 the target architecture.
 
 ## System context
@@ -99,6 +104,11 @@ the target architecture.
 7. **Roadmap ≠ assessment.** Completing learning steps never changes a
    score, competency, gap or priority; only a new analysis of new code
    does ([ADR-009](../decisions/ADR-009-learning-roadmap.md)).
+8. **Growth is observed, never scored.** Growth compares stored assessments
+   of the same project measured with the same versions. Growth ≠ learning,
+   challenges, AI or self-report; no baseline ≠ zero; incomparable ≠
+   regression; insufficient evidence ≠ regression
+   ([ADR-010](../decisions/ADR-010-growth-tracking.md)).
 
 ## Data flow
 
@@ -126,6 +136,7 @@ machine, timeouts and retries, and data classification.
 | [ADR-007](../decisions/ADR-007-ai-interpretation.md) | AI interpretation: non-authoritative, provider-neutral, evidence-bound |
 | [ADR-008](../decisions/ADR-008-coding-challenges.md) | Coding challenges: a practice layer with an isolated evaluator |
 | [ADR-009](../decisions/ADR-009-learning-roadmap.md) | Learning roadmap: a deterministic planning layer, generated on request |
+| [ADR-010](../decisions/ADR-010-growth-tracking.md) | Growth tracking: an observation layer over deterministic assessments |
 
 New ADRs use the next free number and follow the same format: Status, Date,
 Context, Decision, Consequences, Alternatives considered, and Open questions
@@ -157,4 +168,5 @@ at a time:
 | 15 | AI assessment and interpretation | Done (assessment version 1.0.0, non-authoritative, on request; [ai-assessment-v1.md](ai-assessment-v1.md)) |
 | 16 | Coding challenges | Done (catalog 1.0.0, Python, deterministic selection, sandboxed evaluator; [coding-challenges-v1.md](coding-challenges-v1.md)) |
 | 17 | Learning roadmap | Done (roadmap catalog and rules 1.0.0, deterministic, on request; [learning-roadmap-v1.md](learning-roadmap-v1.md)) |
-| 18–25 | Growth, GitHub, history, hardening, QA, billing, teams, production | — |
+| 18 | Growth tracking | Done (growth rules 1.0.0, immediate previous comparable assessment, read-only; [growth-tracking-v1.md](growth-tracking-v1.md)) |
+| 19–25 | GitHub, history, hardening, QA, billing, teams, production | — |

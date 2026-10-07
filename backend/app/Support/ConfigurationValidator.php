@@ -10,6 +10,7 @@ use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
 use App\Services\Challenge\ChallengeCatalog;
 use App\Services\Competency\CompetencySpecification;
 use App\Services\Dna\ScoringSpecification;
+use App\Services\Growth\GrowthRules;
 use App\Services\Roadmap\RoadmapCatalog;
 use App\Services\Roadmap\RoadmapRules;
 use App\Services\SkillGap\SkillGapSpecification;
@@ -51,6 +52,9 @@ final class ConfigurationValidator
         }
         if (! in_array($config->get('codedna.skill_gap.version'), SkillGapSpecification::VERSIONS, true)) {
             $problems[] = 'CODEDNA_SKILL_GAP_VERSION must be one of: '.implode(', ', SkillGapSpecification::VERSIONS).'.';
+        }
+        if (! in_array($config->get('codedna.growth.rules_version'), GrowthRules::VERSIONS, true)) {
+            $problems[] = 'CODEDNA_GROWTH_RULES_VERSION must be one of: '.implode(', ', GrowthRules::VERSIONS).'.';
         }
         if (! in_array($config->get('codedna.roadmap.catalog_version'), RoadmapCatalog::VERSIONS, true)) {
             $problems[] = 'CODEDNA_ROADMAP_VERSION must be one of: '.implode(', ', RoadmapCatalog::VERSIONS).'.';

@@ -29,6 +29,8 @@ final class DnaSnapshotMigrationTest extends TestCase
 
     private const ROADMAP_MIGRATION = 'database/migrations/2026_10_14_000001_create_roadmap_tables.php';
 
+    private const GROWTH_MIGRATION = 'database/migrations/2026_10_15_000001_create_growth_tables.php';
+
     private const ASSESSMENT_MIGRATION = 'database/migrations/2026_10_12_000001_create_ai_assessments_table.php';
 
     /** @var list<string> */
@@ -93,7 +95,8 @@ final class DnaSnapshotMigrationTest extends TestCase
     public function test_rollback_restores_the_phase_05_shape_and_the_upgrade_backfills_existing_rows(): void
     {
         // The skill gap (Phase 14) and competency (Phase 13) tables depend on dna_snapshots and are rolled back first.
-        // reset, not rollback: it reverts the roadmap migration whatever batch it is in.
+        // reset, not rollback: it reverts the growth and roadmap migrations whatever batch they are in.
+        $this->artisan('migrate:reset', ['--path' => self::GROWTH_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:reset', ['--path' => self::ROADMAP_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::ASSESSMENT_MIGRATION])->assertSuccessful();

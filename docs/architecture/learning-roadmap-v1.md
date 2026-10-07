@@ -295,7 +295,8 @@ The three tables are described in
 
 These are left for later phases:
 
-- growth tracking and history analytics (Phase 18);
+- growth tracking is Phase 18 ([growth-tracking-v1.md](growth-tracking-v1.md)); roadmap
+  progress is shown there as context only and is never growth evidence;
 - automatic generation after each analysis;
 - undoing a completion;
 - reminders, notifications, calendars;

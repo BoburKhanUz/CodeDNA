@@ -452,6 +452,46 @@ Challenges navigation.
 - **What it never does.** It sends no content. It has no AI, chat, hints,
   courses or external links, and computes no score.
 
+## Growth (`/app/projects/[project]/growth`)
+
+Phase 18. The page presents the read-only [growth API](../api/README.md#growth-tracking)
+(`lib/growth/client.ts`, `components/growth/growth-view.tsx`). It is reached
+from the CodeDNA dashboard's "Growth" card and from the Competency Matrix,
+Skill Gaps, Learning Roadmap and Coding Challenges navigation. An earlier
+snapshot opens with `?snapshot=<id>`.
+
+- **Notice.** "Growth compares deterministic code assessments only.
+  Completed learning steps and challenges are not growth evidence; only a
+  new code analysis can show change."
+- **States.**
+  - no assessment: "No assessment yet";
+  - one assessment: "Baseline not established" (never a zero baseline);
+  - different versions: "No comparable assessment", with the differing
+    versions and no values;
+  - nothing meaningful: "No meaningful changes detected";
+  - only unmeasured evidence: "Insufficient evidence";
+  - the newest assessment not tracked yet: "Growth not calculated yet";
+  - an earlier snapshot: a superseded note with a link to the newest;
+  - archived project: readable, with a note;
+  - loading, error with retry, 401 → `/login`, and 404 → "not found".
+- **Content.**
+  - **Summary:** categorical counts, with no growth score.
+  - **Assessments compared:** with links to their CodeDNA.
+  - **Changes:** the server's events.
+  - **CodeDNA dimensions, competencies and skill gaps:** "lower is
+    better" for gaps. Each card shows its status and both states. Measured
+    values get two neutral 0–100 bars (`ScoreBar`) and the signed
+    difference. Unmeasured values show "No values compared", never a bar or
+    a 0. Competencies show their level transition.
+  - **Trend:** only for three or more comparable assessments, on a fixed
+    0–100 axis.
+  - **Timeline.**
+  - **Provenance:** rules, versions and lineage.
+- **Learning activity.** A separate dashed box titled "Learning activity
+  (context only)", with no causal wording.
+- **What it never does.** It sends no data, compares nothing in the
+  browser (`lib/growth/format.ts` only reformats digits), and uses no AI.
+
 ## API client (`lib/api`)
 
 - **Same-origin only.** Paths must be absolute paths like `/api/v1/...`.

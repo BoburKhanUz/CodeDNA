@@ -236,4 +236,5 @@ threshold and each priority bound, and the evidence-quality cap.
 - AI explanations are Phase 15; learning recommendations are the Phase 17
   [learning roadmap](learning-roadmap-v1.md), which reads these gaps and
   never changes them.
-- Growth over time (Phase 18). The history list is available in the API.
+- Growth over time is the Phase 18 [growth tracking](growth-tracking-v1.md):
+  it compares stored skill gap snapshots and never changes them.

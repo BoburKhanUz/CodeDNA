@@ -153,4 +153,14 @@ class Project extends Model
     {
         return $this->hasMany(RoadmapSnapshot::class);
     }
+
+    /**
+     * Growth snapshots (Phase 18): observations over assessments, never part of scoring.
+     *
+     * @return HasMany<GrowthSnapshot, $this>
+     */
+    public function growthSnapshots(): HasMany
+    {
+        return $this->hasMany(GrowthSnapshot::class);
+    }
 }

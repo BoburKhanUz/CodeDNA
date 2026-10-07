@@ -85,6 +85,7 @@ x-backend-environment: &backend-environment
   # Learning roadmap catalog and rules versions (Phase 17).
   CODEDNA_ROADMAP_VERSION: ${CODEDNA_ROADMAP_VERSION:-1.0.0}
   CODEDNA_ROADMAP_RULES_VERSION: ${CODEDNA_ROADMAP_RULES_VERSION:-1.0.0}
+  CODEDNA_GROWTH_RULES_VERSION: ${CODEDNA_GROWTH_RULES_VERSION:-1.0.0}
   # AI assessment (Phase 15): disabled unless AI_ENABLED=true. The key comes
   # only from .env and never reaches the frontend.
   CODEDNA_ASSESSMENT_VERSION: ${CODEDNA_ASSESSMENT_VERSION:-1.0.0}

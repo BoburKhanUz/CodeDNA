@@ -116,6 +116,9 @@ export function SkillGapAnalysis({ projectId }: { projectId: string }) {
           <Link href={`/app/projects/${project.id}/competencies`} className="text-muted-foreground underline-offset-4 hover:underline">
             Competency Matrix
           </Link>
+          <Link href={`/app/projects/${project.id}/growth`} className="text-muted-foreground underline-offset-4 hover:underline">
+            Growth
+          </Link>
         </nav>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">Skill Gaps</h1>
