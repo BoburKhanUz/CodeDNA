@@ -90,6 +90,18 @@ export function describeApiError(error: unknown): string {
       return "There is no skill gap analysis that can be interpreted yet. Run a static analysis first.";
     case "ASSESSMENT_INPUT_TOO_LARGE":
       return "The evidence of this analysis is too large for an AI interpretation.";
+    case "CHALLENGES_DISABLED":
+      return "Coding challenges are not enabled on this server.";
+    case "CHALLENGE_NO_ELIGIBLE_GAP":
+      return "There is no material skill gap with a matching challenge. Run a static analysis first.";
+    case "CHALLENGE_NONE_AVAILABLE":
+      return "Every challenge for this skill gap analysis has already been assigned.";
+    case "CHALLENGE_EVALUATION_UNAVAILABLE":
+      return "Challenge evaluation is not available right now. Nothing was submitted.";
+    case "CHALLENGE_EVALUATION_PENDING":
+      return "Your previous attempt is still being evaluated.";
+    case "CHALLENGE_CLOSED":
+      return "This challenge is closed and accepts no further attempts.";
   }
 
   if (error.status !== null && error.status >= 500) {

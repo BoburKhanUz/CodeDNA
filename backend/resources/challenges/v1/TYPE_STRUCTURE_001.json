@@ -1,0 +1,250 @@
+{
+  "schema_version": "challenge-definition/1",
+  "key": "TYPE_STRUCTURE_001",
+  "version": "1.0.0",
+  "category": "TYPE_STRUCTURE",
+  "difficulty": "INTERMEDIATE",
+  "language": "python",
+  "runtime": "python3.11",
+  "estimated_minutes": 40,
+  "title": "Split the inventory type",
+  "summary": "Break an inventory class that does everything into small types and functions with one responsibility each.",
+  "instructions": [
+    "run_inventory(operations) executes the operations in order and returns one output per operation.",
+    "['add', sku, qty] adds stock and outputs null. ['remove', sku, qty] removes stock and outputs true, or outputs false and changes nothing when there is not enough.",
+    "['count', sku] outputs the current quantity (0 for an unknown sku). ['low', threshold] outputs the sorted skus whose quantity is below threshold.",
+    "The starter class is correct but mixes storage, rules, reporting and command handling.",
+    "Keep at least one class, and keep every class small."
+  ],
+  "constraints": [
+    "Python 3.11 standard library only.",
+    "At least one class.",
+    "Every class is at most 25 lines long.",
+    "Every class has at most 5 methods."
+  ],
+  "entrypoint": "run_inventory",
+  "starter_code": "class Inventory:\n    \"\"\"Stock, removal rules, reporting and the command loop in one type.\"\"\"\n\n    def __init__(self):\n        self.quantities = {}\n        self.history = []\n\n    def add(self, sku, qty):\n        self.quantities[sku] = self.quantities.get(sku, 0) + qty\n        self.history.append((\"add\", sku, qty))\n\n    def remove(self, sku, qty):\n        if self.quantities.get(sku, 0) < qty:\n            self.history.append((\"rejected\", sku, qty))\n            return False\n        self.quantities[sku] = self.quantities[sku] - qty\n        self.history.append((\"remove\", sku, qty))\n        return True\n\n    def count(self, sku):\n        return self.quantities.get(sku, 0)\n\n    def low(self, threshold):\n        result = []\n        for sku in self.quantities:\n            if self.quantities[sku] < threshold:\n                result.append(sku)\n        result.sort()\n        return result\n\n    def report(self):\n        lines = []\n        for sku in sorted(self.quantities):\n            lines.append(sku + \": \" + str(self.quantities[sku]))\n        return \"\\n\".join(lines)\n\n    def history_size(self):\n        return len(self.history)\n\n    def run(self, operations):\n        outputs = []\n        for op in operations:\n            if op[0] == \"add\":\n                outputs.append(self.add(op[1], op[2]))\n            elif op[0] == \"remove\":\n                outputs.append(self.remove(op[1], op[2]))\n            elif op[0] == \"count\":\n                outputs.append(self.count(op[1]))\n            elif op[0] == \"low\":\n                outputs.append(self.low(op[1]))\n        return outputs\n\n\ndef run_inventory(operations):\n    return Inventory().run(operations)\n",
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "description": "The examples produce the expected outputs.",
+      "checks": [
+        "tests:visible"
+      ]
+    },
+    {
+      "id": "AC2",
+      "description": "All further operation sequences produce the expected outputs.",
+      "checks": [
+        "tests:hidden"
+      ]
+    },
+    {
+      "id": "AC3",
+      "description": "The solution defines at least one class.",
+      "checks": [
+        "rule:min_classes"
+      ]
+    },
+    {
+      "id": "AC4",
+      "description": "Every class is at most 25 lines long and has at most 5 methods.",
+      "checks": [
+        "rule:max_class_lines",
+        "rule:max_class_methods"
+      ]
+    }
+  ],
+  "rules": {
+    "syntax_valid": true,
+    "min_classes": 1,
+    "max_class_lines": 25,
+    "max_class_methods": 5
+  },
+  "cases": [
+    {
+      "id": "v1",
+      "visibility": "VISIBLE",
+      "args": [
+        [
+          [
+            "add",
+            "apple",
+            5
+          ],
+          [
+            "count",
+            "apple"
+          ],
+          [
+            "remove",
+            "apple",
+            2
+          ],
+          [
+            "count",
+            "apple"
+          ]
+        ]
+      ],
+      "description": "add, count, remove",
+      "expected": [
+        null,
+        5,
+        true,
+        3
+      ]
+    },
+    {
+      "id": "v2",
+      "visibility": "VISIBLE",
+      "args": [
+        [
+          [
+            "add",
+            "pear",
+            1
+          ],
+          [
+            "remove",
+            "pear",
+            3
+          ],
+          [
+            "count",
+            "pear"
+          ]
+        ]
+      ],
+      "description": "removal beyond stock is refused",
+      "expected": [
+        null,
+        false,
+        1
+      ]
+    },
+    {
+      "id": "h1",
+      "visibility": "HIDDEN",
+      "args": [
+        [
+          [
+            "add",
+            "b",
+            2
+          ],
+          [
+            "add",
+            "a",
+            9
+          ],
+          [
+            "add",
+            "c",
+            1
+          ],
+          [
+            "low",
+            3
+          ]
+        ]
+      ],
+      "expected": [
+        null,
+        null,
+        null,
+        [
+          "b",
+          "c"
+        ]
+      ]
+    },
+    {
+      "id": "h2",
+      "visibility": "HIDDEN",
+      "args": [
+        [
+          [
+            "count",
+            "ghost"
+          ],
+          [
+            "low",
+            1
+          ]
+        ]
+      ],
+      "expected": [
+        0,
+        []
+      ]
+    },
+    {
+      "id": "h3",
+      "visibility": "HIDDEN",
+      "args": [
+        [
+          [
+            "add",
+            "x",
+            3
+          ],
+          [
+            "remove",
+            "x",
+            3
+          ],
+          [
+            "count",
+            "x"
+          ],
+          [
+            "low",
+            1
+          ]
+        ]
+      ],
+      "expected": [
+        null,
+        true,
+        0,
+        [
+          "x"
+        ]
+      ]
+    },
+    {
+      "id": "h4",
+      "visibility": "HIDDEN",
+      "args": [
+        [
+          [
+            "add",
+            "x",
+            2
+          ],
+          [
+            "add",
+            "x",
+            2
+          ],
+          [
+            "remove",
+            "x",
+            1
+          ],
+          [
+            "count",
+            "x"
+          ]
+        ]
+      ],
+      "expected": [
+        null,
+        null,
+        true,
+        3
+      ]
+    }
+  ]
+}

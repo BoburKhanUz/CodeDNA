@@ -127,7 +127,7 @@ jobs:
       - name: Runtime smoke test
         run: make verify
 
-      - name: Test suites (analyzer pytest, backend PHPUnit, frontend Vitest)
+      - name: Test suites (analyzer pytest, backend PHPUnit, frontend Vitest, evaluator sandbox)
         run: make test
 
       - name: Frontend lint and type check
@@ -137,6 +137,8 @@ jobs:
         run: make lint-backend
       - name: Lint and type-check analyzer
         run: make lint-analyzer
+      - name: Lint and type-check evaluator
+        run: make lint-evaluator
 
       - name: Service status and logs (on failure)
         if: failure()

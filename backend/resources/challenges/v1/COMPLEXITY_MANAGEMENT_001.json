@@ -1,0 +1,146 @@
+{
+  "schema_version": "challenge-definition/1",
+  "key": "COMPLEXITY_MANAGEMENT_001",
+  "version": "1.0.0",
+  "category": "COMPLEXITY_MANAGEMENT",
+  "difficulty": "BEGINNER",
+  "language": "python",
+  "runtime": "python3.11",
+  "estimated_minutes": 25,
+  "title": "Shipping costs without the branching",
+  "summary": "Refactor a branch-heavy shipping cost function into a small, table-driven one with the same behavior.",
+  "instructions": [
+    "The starter code computes shipping costs correctly, but every zone and option adds another branch.",
+    "Keep the behavior and reduce the decision logic, for example by moving the rates into a lookup table.",
+    "shipping_cost(weight_kg, zone, express) returns the cost in cents: base + per_kg x weight_kg, where express doubles the base only.",
+    "Rates (base, per kg): domestic 500 and 100, europe 900 and 250, world 1500 and 400.",
+    "Return -1 for an unknown zone, or when weight_kg is not between 1 and 30."
+  ],
+  "constraints": [
+    "Python 3.11 standard library only.",
+    "Every function has a cyclomatic complexity of at most 4.",
+    "Control flow is nested at most 2 levels deep."
+  ],
+  "entrypoint": "shipping_cost",
+  "starter_code": "def shipping_cost(weight_kg, zone, express):\n    # Works, but every rule is another branch.\n    if weight_kg <= 0:\n        return -1\n    if weight_kg > 30:\n        return -1\n    if zone == \"domestic\":\n        if express:\n            return 1000 + 100 * weight_kg\n        else:\n            return 500 + 100 * weight_kg\n    elif zone == \"europe\":\n        if express:\n            return 1800 + 250 * weight_kg\n        else:\n            return 900 + 250 * weight_kg\n    elif zone == \"world\":\n        if express:\n            return 3000 + 400 * weight_kg\n        else:\n            return 1500 + 400 * weight_kg\n    else:\n        return -1\n",
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "description": "The examples return the expected costs.",
+      "checks": [
+        "tests:visible"
+      ]
+    },
+    {
+      "id": "AC2",
+      "description": "All further cases, including edge cases, return the expected costs.",
+      "checks": [
+        "tests:hidden"
+      ]
+    },
+    {
+      "id": "AC3",
+      "description": "Every function has a cyclomatic complexity of at most 4.",
+      "checks": [
+        "rule:max_function_complexity"
+      ]
+    },
+    {
+      "id": "AC4",
+      "description": "Control flow is nested at most 2 levels deep.",
+      "checks": [
+        "rule:max_function_nesting"
+      ]
+    }
+  ],
+  "rules": {
+    "syntax_valid": true,
+    "max_function_complexity": 4,
+    "max_function_nesting": 2
+  },
+  "cases": [
+    {
+      "id": "v1",
+      "visibility": "VISIBLE",
+      "args": [
+        2,
+        "domestic",
+        false
+      ],
+      "description": "2 kg domestic, standard",
+      "expected": 700
+    },
+    {
+      "id": "v2",
+      "visibility": "VISIBLE",
+      "args": [
+        2,
+        "domestic",
+        true
+      ],
+      "description": "2 kg domestic, express",
+      "expected": 1200
+    },
+    {
+      "id": "v3",
+      "visibility": "VISIBLE",
+      "args": [
+        5,
+        "mars",
+        false
+      ],
+      "description": "unknown zone",
+      "expected": -1
+    },
+    {
+      "id": "h1",
+      "visibility": "HIDDEN",
+      "args": [
+        30,
+        "world",
+        true
+      ],
+      "expected": 15000
+    },
+    {
+      "id": "h2",
+      "visibility": "HIDDEN",
+      "args": [
+        31,
+        "europe",
+        false
+      ],
+      "expected": -1
+    },
+    {
+      "id": "h3",
+      "visibility": "HIDDEN",
+      "args": [
+        0,
+        "europe",
+        false
+      ],
+      "expected": -1
+    },
+    {
+      "id": "h4",
+      "visibility": "HIDDEN",
+      "args": [
+        1,
+        "europe",
+        true
+      ],
+      "expected": 2050
+    },
+    {
+      "id": "h5",
+      "visibility": "HIDDEN",
+      "args": [
+        -3,
+        "domestic",
+        false
+      ],
+      "expected": -1
+    }
+  ]
+}

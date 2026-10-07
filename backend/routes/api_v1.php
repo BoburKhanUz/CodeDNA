@@ -10,6 +10,8 @@ use App\Http\Controllers\Api\V1\Profile\ProfileController;
 use App\Http\Controllers\Api\V1\Projects\AnalysisController;
 use App\Http\Controllers\Api\V1\Projects\ArchiveProjectController;
 use App\Http\Controllers\Api\V1\Projects\AssessmentController;
+use App\Http\Controllers\Api\V1\Projects\ChallengeController;
+use App\Http\Controllers\Api\V1\Projects\ChallengeSubmissionController;
 use App\Http\Controllers\Api\V1\Projects\CompetencySnapshotController;
 use App\Http\Controllers\Api\V1\Projects\DnaSnapshotController;
 use App\Http\Controllers\Api\V1\Projects\ProjectController;
@@ -143,4 +145,32 @@ Route::middleware('auth:sanctum')->prefix('projects')->name('projects.')->group(
         ->whereUlid(['project', 'aiAssessment'])
         ->scopeBindings()
         ->name('assessments.show');
+
+    // Coding challenges (Phase 16): a practice layer selected from skill
+    // gaps. Assigning and submitting only record and queue; submitted code
+    // runs in the isolated evaluator. No update or delete routes.
+    Route::get('{project}/challenges', [ChallengeController::class, 'index'])
+        ->whereUlid('project')
+        ->name('challenges.index');
+    Route::post('{project}/challenges', [ChallengeController::class, 'store'])
+        ->whereUlid('project')
+        ->middleware('throttle:challenge-assign')
+        ->name('challenges.store');
+    Route::get('{project}/challenges/{challengeInstance}', [ChallengeController::class, 'show'])
+        ->whereUlid(['project', 'challengeInstance'])
+        ->scopeBindings()
+        ->name('challenges.show');
+    Route::get('{project}/challenges/{challengeInstance}/submissions', [ChallengeSubmissionController::class, 'index'])
+        ->whereUlid(['project', 'challengeInstance'])
+        ->scopeBindings()
+        ->name('challenges.submissions.index');
+    Route::post('{project}/challenges/{challengeInstance}/submissions', [ChallengeSubmissionController::class, 'store'])
+        ->whereUlid(['project', 'challengeInstance'])
+        ->scopeBindings()
+        ->middleware('throttle:challenge-submit')
+        ->name('challenges.submissions.store');
+    Route::get('{project}/challenges/{challengeInstance}/submissions/{challengeSubmission}', [ChallengeSubmissionController::class, 'show'])
+        ->whereUlid(['project', 'challengeInstance', 'challengeSubmission'])
+        ->scopeBindings()
+        ->name('challenges.submissions.show');
 });

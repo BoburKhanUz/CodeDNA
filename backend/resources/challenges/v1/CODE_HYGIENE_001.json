@@ -1,0 +1,104 @@
+{
+  "schema_version": "challenge-definition/1",
+  "key": "CODE_HYGIENE_001",
+  "version": "1.0.0",
+  "category": "CODE_HYGIENE",
+  "difficulty": "BEGINNER",
+  "language": "python",
+  "runtime": "python3.11",
+  "estimated_minutes": 15,
+  "title": "Repair the configuration parser",
+  "summary": "Fix the syntax errors in a small parser so that the file is valid and behaves as specified.",
+  "instructions": [
+    "The starter file does not parse. Fix it so that it is valid Python 3.11.",
+    "parse_config(text) reads 'key = value' lines into a dictionary.",
+    "Ignore empty lines, lines starting with # and lines without '='. Keys are lowercased; keys and values are stripped.",
+    "When a key appears twice, the later value wins."
+  ],
+  "constraints": [
+    "Python 3.11 standard library only.",
+    "The file has no syntax errors."
+  ],
+  "entrypoint": "parse_config",
+  "starter_code": "def parse_config(text)\n    config = {}\n    for raw in text.splitlines():\n        line = raw.strip(\n        if not line or line.startswith(\"#\") or \"=\" not in line:\n            continue\n        key, value = line.split(\"=\", 1)\n        config[key.strip().lower()] = value.strip()\n    return config\n",
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "description": "The file is valid Python with no syntax errors.",
+      "checks": [
+        "rule:syntax_valid"
+      ]
+    },
+    {
+      "id": "AC2",
+      "description": "The examples parse as expected.",
+      "checks": [
+        "tests:visible"
+      ]
+    },
+    {
+      "id": "AC3",
+      "description": "All further inputs parse as expected.",
+      "checks": [
+        "tests:hidden"
+      ]
+    }
+  ],
+  "rules": {
+    "syntax_valid": true
+  },
+  "cases": [
+    {
+      "id": "v1",
+      "visibility": "VISIBLE",
+      "args": [
+        "name = CodeDNA\nversion=1"
+      ],
+      "description": "two settings",
+      "expected": {
+        "name": "CodeDNA",
+        "version": "1"
+      }
+    },
+    {
+      "id": "v2",
+      "visibility": "VISIBLE",
+      "args": [
+        "# comment\n\nMode = fast"
+      ],
+      "description": "comments and empty lines",
+      "expected": {
+        "mode": "fast"
+      }
+    },
+    {
+      "id": "h1",
+      "visibility": "HIDDEN",
+      "args": [
+        ""
+      ],
+      "expected": {}
+    },
+    {
+      "id": "h2",
+      "visibility": "HIDDEN",
+      "args": [
+        "a=1\nA = 2\nbroken line\n b = x = y "
+      ],
+      "expected": {
+        "a": "2",
+        "b": "x = y"
+      }
+    },
+    {
+      "id": "h3",
+      "visibility": "HIDDEN",
+      "args": [
+        "   \n#only=comment\nKEY=  \n"
+      ],
+      "expected": {
+        "key": ""
+      }
+    }
+  ]
+}

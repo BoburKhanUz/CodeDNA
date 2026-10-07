@@ -35,7 +35,12 @@ engineering target into per-competency skill gaps with priorities
 AI model writes a non-authoritative, evidence-referenced interpretation of
 a skill gap analysis; it never changes any score
 ([ai-assessment-v1.md](ai-assessment-v1.md),
-[ADR-007](../decisions/ADR-007-ai-interpretation.md)). Everything below is
+[ADR-007](../decisions/ADR-007-ai-interpretation.md)). Coding challenges
+selected deterministically from a project's skill gaps let developers
+practice. Submissions run only in a network-less sandbox, and challenge
+completion never changes CodeDNA
+([coding-challenges-v1.md](coding-challenges-v1.md),
+[ADR-008](../decisions/ADR-008-coding-challenges.md)). Everything below is
 the target architecture.
 
 ## System context
@@ -66,7 +71,8 @@ the target architecture.
 | Frontend | `frontend/` | UI only: dashboard, projects, analyses, DNA views | [frontend.md](frontend.md) |
 | Backend | `backend/` | Auth, domain, persistence, orchestration, authorization, business rules | [backend.md](backend.md), [data-model.md](data-model.md) |
 | Analyzer | `analyzer/` | Parsing, IR, metrics, findings | [analyzer.md](analyzer.md) |
-| AI interpretation | (Phase 15) | Explaining stored deterministic results; never producing scores | ADR to be written in Phase 15 |
+| AI interpretation | `backend/` (Phase 15) | Explaining stored deterministic results; never producing scores | [ai-assessment-v1.md](ai-assessment-v1.md), [ADR-007](../decisions/ADR-007-ai-interpretation.md) |
+| Challenge evaluator | `evaluator/` (Phase 16) | Running submitted challenge code in a network-less sandbox; observations only | [challenge-evaluator.md](challenge-evaluator.md), [ADR-008](../decisions/ADR-008-coding-challenges.md) |
 | Infrastructure | `docker/`, `docker-compose.yml`, `.github/` | Containers, routing, CI | [infrastructure.md](infrastructure.md) |
 | Contracts | `packages/api-contracts/` | OpenAPI (public) and JSON Schema (internal analyzer) | [api/](../api/README.md) |
 
@@ -81,6 +87,10 @@ the target architecture.
    generates them ([ADR-004](../decisions/ADR-004-dna-scoring.md)).
 5. **Repository content is untrusted.** It is never executed, and secrets in
    it are never logged, stored as values, or sent to an AI provider.
+6. **Submitted challenge code runs only in the evaluator**, which has no
+   network, no secrets and no data. Challenge completion ≠ CodeDNA
+   improvement: no evaluation result changes a score, competency, skill gap
+   or snapshot ([ADR-008](../decisions/ADR-008-coding-challenges.md)).
 
 ## Data flow
 
@@ -106,6 +116,7 @@ machine, timeouts and retries, and data classification.
 | [ADR-005](../decisions/ADR-005-service-communication.md) | Laravel ↔ analyzer communication |
 | [ADR-006](../decisions/ADR-006-authentication.md) | Authentication (Sanctum SPA cookies, tokens later) |
 | [ADR-007](../decisions/ADR-007-ai-interpretation.md) | AI interpretation: non-authoritative, provider-neutral, evidence-bound |
+| [ADR-008](../decisions/ADR-008-coding-challenges.md) | Coding challenges: a practice layer with an isolated evaluator |
 
 New ADRs use the next free number and follow the same format: Status, Date,
 Context, Decision, Consequences, Alternatives considered, and Open questions
@@ -135,4 +146,5 @@ at a time:
 | 13 | Competency matrix | Done (competency version 1.0.0; [competency-matrix-v1.md](competency-matrix-v1.md)) |
 | 14 | Skill gap analysis | Done (skill gap version 1.0.0, ENGINEERING_STANDARD; [skill-gap-v1.md](skill-gap-v1.md)) |
 | 15 | AI assessment and interpretation | Done (assessment version 1.0.0, non-authoritative, on request; [ai-assessment-v1.md](ai-assessment-v1.md)) |
-| 16–25 | Challenges, learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |
+| 16 | Coding challenges | Done (catalog 1.0.0, Python, deterministic selection, sandboxed evaluator; [coding-challenges-v1.md](coding-challenges-v1.md)) |
+| 17–25 | Learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |

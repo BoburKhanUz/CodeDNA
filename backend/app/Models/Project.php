@@ -119,6 +119,16 @@ class Project extends Model
         return $this->hasMany(AiAssessment::class);
     }
 
+    /**
+     * Assigned coding challenges (Phase 16): practice records, never part of scoring.
+     *
+     * @return HasMany<ChallengeInstance, $this>
+     */
+    public function challengeInstances(): HasMany
+    {
+        return $this->hasMany(ChallengeInstance::class);
+    }
+
     public function isActive(): bool
     {
         return $this->status === ProjectStatus::Active;

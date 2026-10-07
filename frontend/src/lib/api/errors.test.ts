@@ -23,6 +23,9 @@ describe("describeApiError", () => {
     [error({ status: 409, code: "AI_ASSESSMENT_DISABLED" }), "AI interpretation is not enabled on this server."],
     [error({ status: 409, code: "ASSESSMENT_EVIDENCE_UNAVAILABLE" }), "There is no skill gap analysis that can be interpreted yet. Run a static analysis first."],
     [error({ status: 409, code: "ASSESSMENT_INPUT_TOO_LARGE" }), "The evidence of this analysis is too large for an AI interpretation."],
+    [error({ status: 409, code: "CHALLENGE_EVALUATION_PENDING" }), "Your previous attempt is still being evaluated."],
+    [error({ status: 409, code: "CHALLENGE_CLOSED" }), "This challenge is closed and accepts no further attempts."],
+    [error({ status: 409, code: "CHALLENGE_EVALUATION_UNAVAILABLE" }), "Challenge evaluation is not available right now. Nothing was submitted."],
     [error({ status: 404, code: "RESOURCE_NOT_FOUND" }), "The request could not be completed."],
     [new Error("boom"), "Something went wrong. Please try again."],
   ])("describes %o", (input, expected) => {

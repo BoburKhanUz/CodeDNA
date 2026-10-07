@@ -1,0 +1,213 @@
+{
+  "schema_version": "challenge-definition/1",
+  "key": "FUNCTION_DESIGN_001",
+  "version": "1.0.0",
+  "category": "FUNCTION_DESIGN",
+  "difficulty": "BEGINNER",
+  "language": "python",
+  "runtime": "python3.11",
+  "estimated_minutes": 30,
+  "title": "Split the order summary",
+  "summary": "Break one long order-summary function into short, focused functions with narrow interfaces.",
+  "instructions": [
+    "summarize_order(order) returns item_count, subtotal_cents, discount_cents, tax_cents and total_cents for an order.",
+    "An order has items (each with qty and unit_cents), an optional coupon and a country.",
+    "Coupons: SAVE10 takes 10% off the subtotal (rounded down); FLAT500 takes 500 cents off, at most the subtotal; anything else nothing.",
+    "Tax is applied after the discount, rounded down: DE 19%, FR 20%, every other country 0%.",
+    "The starter code is correct; restructure it into functions that each do one thing."
+  ],
+  "constraints": [
+    "Python 3.11 standard library only.",
+    "Every function is at most 15 lines long.",
+    "Every function takes at most 3 parameters."
+  ],
+  "entrypoint": "summarize_order",
+  "starter_code": "def summarize_order(order):\n    # One long function: totals, coupon, tax and the result in one place.\n    subtotal = 0\n    count = 0\n    for item in order[\"items\"]:\n        subtotal = subtotal + item[\"qty\"] * item[\"unit_cents\"]\n        count = count + item[\"qty\"]\n    coupon = order.get(\"coupon\")\n    discount = 0\n    if coupon == \"SAVE10\":\n        discount = subtotal * 10 // 100\n    elif coupon == \"FLAT500\":\n        if subtotal < 500:\n            discount = subtotal\n        else:\n            discount = 500\n    country = order[\"country\"]\n    if country == \"DE\":\n        rate = 19\n    elif country == \"FR\":\n        rate = 20\n    elif country == \"US\":\n        rate = 0\n    else:\n        rate = 0\n    taxable = subtotal - discount\n    tax = taxable * rate // 100\n    total = taxable + tax\n    result = {}\n    result[\"item_count\"] = count\n    result[\"subtotal_cents\"] = subtotal\n    result[\"discount_cents\"] = discount\n    result[\"tax_cents\"] = tax\n    result[\"total_cents\"] = total\n    return result\n",
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "description": "The examples produce the expected summaries.",
+      "checks": [
+        "tests:visible"
+      ]
+    },
+    {
+      "id": "AC2",
+      "description": "All further orders produce the expected summaries.",
+      "checks": [
+        "tests:hidden"
+      ]
+    },
+    {
+      "id": "AC3",
+      "description": "Every function is at most 15 lines long.",
+      "checks": [
+        "rule:max_function_lines"
+      ]
+    },
+    {
+      "id": "AC4",
+      "description": "Every function takes at most 3 parameters.",
+      "checks": [
+        "rule:max_function_parameters"
+      ]
+    }
+  ],
+  "rules": {
+    "syntax_valid": true,
+    "max_function_lines": 15,
+    "max_function_parameters": 3
+  },
+  "cases": [
+    {
+      "id": "v1",
+      "visibility": "VISIBLE",
+      "args": [
+        {
+          "items": [
+            {
+              "sku": "A",
+              "qty": 2,
+              "unit_cents": 1250
+            }
+          ],
+          "coupon": null,
+          "country": "DE"
+        }
+      ],
+      "description": "no coupon, German tax",
+      "expected": {
+        "item_count": 2,
+        "subtotal_cents": 2500,
+        "discount_cents": 0,
+        "tax_cents": 475,
+        "total_cents": 2975
+      }
+    },
+    {
+      "id": "v2",
+      "visibility": "VISIBLE",
+      "args": [
+        {
+          "items": [
+            {
+              "sku": "A",
+              "qty": 1,
+              "unit_cents": 1000
+            },
+            {
+              "sku": "B",
+              "qty": 3,
+              "unit_cents": 333
+            }
+          ],
+          "coupon": "SAVE10",
+          "country": "US"
+        }
+      ],
+      "description": "percentage coupon",
+      "expected": {
+        "item_count": 4,
+        "subtotal_cents": 1999,
+        "discount_cents": 199,
+        "tax_cents": 0,
+        "total_cents": 1800
+      }
+    },
+    {
+      "id": "h1",
+      "visibility": "HIDDEN",
+      "args": [
+        {
+          "items": [
+            {
+              "sku": "A",
+              "qty": 1,
+              "unit_cents": 300
+            }
+          ],
+          "coupon": "FLAT500",
+          "country": "FR"
+        }
+      ],
+      "expected": {
+        "item_count": 1,
+        "subtotal_cents": 300,
+        "discount_cents": 300,
+        "tax_cents": 0,
+        "total_cents": 0
+      }
+    },
+    {
+      "id": "h2",
+      "visibility": "HIDDEN",
+      "args": [
+        {
+          "items": [],
+          "coupon": "SAVE10",
+          "country": "DE"
+        }
+      ],
+      "expected": {
+        "item_count": 0,
+        "subtotal_cents": 0,
+        "discount_cents": 0,
+        "tax_cents": 0,
+        "total_cents": 0
+      }
+    },
+    {
+      "id": "h3",
+      "visibility": "HIDDEN",
+      "args": [
+        {
+          "items": [
+            {
+              "sku": "X",
+              "qty": 7,
+              "unit_cents": 999
+            }
+          ],
+          "coupon": "UNKNOWN",
+          "country": "JP"
+        }
+      ],
+      "expected": {
+        "item_count": 7,
+        "subtotal_cents": 6993,
+        "discount_cents": 0,
+        "tax_cents": 0,
+        "total_cents": 6993
+      }
+    },
+    {
+      "id": "h4",
+      "visibility": "HIDDEN",
+      "args": [
+        {
+          "items": [
+            {
+              "sku": "X",
+              "qty": 4,
+              "unit_cents": 2500
+            },
+            {
+              "sku": "Y",
+              "qty": 1,
+              "unit_cents": 1
+            }
+          ],
+          "coupon": "FLAT500",
+          "country": "DE"
+        }
+      ],
+      "expected": {
+        "item_count": 5,
+        "subtotal_cents": 10001,
+        "discount_cents": 500,
+        "tax_cents": 1805,
+        "total_cents": 11306
+      }
+    }
+  ]
+}

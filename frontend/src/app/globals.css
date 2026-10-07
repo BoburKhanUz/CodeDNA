@@ -126,3 +126,17 @@ body {
     @apply bg-background text-foreground;
   }
 }
+/* Code editor syntax colours (Phase 16 challenges). */
+.code-editor .token-keyword {
+  color: #c4b5fd;
+}
+.code-editor .token-string {
+  color: #86efac;
+}
+.code-editor .token-comment {
+  color: #94a3b8;
+  font-style: italic;
+}
+.code-editor .token-number {
+  color: #fdba74;
+}

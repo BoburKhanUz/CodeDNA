@@ -18,6 +18,21 @@ final class ConfigurationValidatorTest extends TestCase
         'queue_connection' => 'analysis', 'version' => '1.0.0',
     ];
 
+    private const CHALLENGES = [
+        'enabled' => true, 'catalog_version' => '1.0.0', 'evaluator' => 'spool', 'spool_path' => '/var/spool/codedna-challenges',
+        'wait_seconds' => 45, 'max_source_bytes' => 16384, 'max_source_lines' => 400, 'max_attempts' => 5, 'job_timeout_seconds' => 90,
+        'queue_connection' => 'analysis',
+    ];
+
+    /**
+     * @param  array<string, mixed>  $challenges
+     * @return list<string>
+     */
+    private function challengeProblems(array $challenges): array
+    {
+        return (new ConfigurationValidator)->problems($this->config(['codedna.challenges' => $challenges + self::CHALLENGES]), 'production');
+    }
+
     /**
      * @param  array<string, mixed>  $ai
      * @return list<string>
@@ -60,6 +75,7 @@ final class ConfigurationValidatorTest extends TestCase
             'codedna.competency.version' => '1.0.0',
             'codedna.skill_gap.version' => '1.0.0',
             'codedna.ai' => self::AI,
+            'codedna.challenges' => self::CHALLENGES,
         ], $overrides) as $key => $value) {
             $config->set($key, $value);
         }
@@ -263,5 +279,25 @@ final class ConfigurationValidatorTest extends TestCase
     {
         $this->assertSame(['AI_JOB_TIMEOUT_SECONDS must be greater than AI_TIMEOUT_SECONDS.'], $this->aiProblems(['timeout_seconds' => 90]));
         $this->assertSame(['AI_JOB_TIMEOUT_SECONDS must be lower than the queue retry_after.'], $this->aiProblems(['timeout_seconds' => 300, 'job_timeout_seconds' => 360]));
+    }
+
+    public function test_challenge_settings_are_validated(): void
+    {
+        $this->assertSame([], $this->challengeProblems([]));
+        $this->assertSame([], $this->challengeProblems(['evaluator' => 'none', 'enabled' => false]));
+        $this->assertSame(['CHALLENGE_EVALUATOR must be "spool" or "none".'], $this->challengeProblems(['evaluator' => 'host']));
+        $this->assertSame(['CHALLENGE_ENABLED must be true or false.'], $this->challengeProblems(['enabled' => 'yes']));
+        $this->assertSame(['CODEDNA_CHALLENGE_CATALOG_VERSION must be one of: 1.0.0.'], $this->challengeProblems(['catalog_version' => '2.0.0']));
+        $this->assertSame(['CHALLENGE_EVALUATOR_SPOOL must be an absolute path.'], $this->challengeProblems(['spool_path' => '../spool']));
+        $this->assertSame(['CHALLENGE_EVALUATOR_SPOOL must be an absolute path.'], $this->challengeProblems(['spool_path' => '/var/../etc']));
+        $this->assertSame(['CHALLENGE_MAX_SOURCE_BYTES must be an integer between 256 and 65536.'], $this->challengeProblems(['max_source_bytes' => 1048576]));
+        $this->assertSame(['CHALLENGE_MAX_ATTEMPTS must be an integer between 1 and 20.'], $this->challengeProblems(['max_attempts' => 0]));
+        $this->assertSame(['CHALLENGE_MAX_SOURCE_LINES must be an integer between 10 and 5000.'], $this->challengeProblems(['max_source_lines' => 1]));
+    }
+
+    public function test_the_challenge_timeout_chain_must_let_inner_limits_fire_first(): void
+    {
+        $this->assertSame(['CHALLENGE_JOB_TIMEOUT_SECONDS must be greater than CHALLENGE_EVALUATOR_WAIT_SECONDS.'], $this->challengeProblems(['wait_seconds' => 90]));
+        $this->assertSame(['CHALLENGE_JOB_TIMEOUT_SECONDS must be lower than the queue retry_after.'], $this->challengeProblems(['job_timeout_seconds' => 360]));
     }
 }

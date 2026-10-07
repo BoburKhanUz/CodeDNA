@@ -78,6 +78,7 @@ test: ## Run all test suites inside the running containers
 	./scripts/ensure-test-database.sh
 	$(COMPOSE) exec -T backend vendor/bin/phpunit
 	$(COMPOSE) exec -T frontend npm test
+	$(COMPOSE) exec -T evaluator python3 -m unittest discover -s /opt/evaluator/tests -t /opt/evaluator
 
 .PHONY: lint-backend
 lint-backend: ## Check backend code style (Laravel Pint) in the running container
@@ -88,6 +89,14 @@ lint-analyzer: ## Lint (ruff), check formatting and type-check (mypy --strict) t
 	$(COMPOSE) exec -T analyzer ruff check .
 	$(COMPOSE) exec -T analyzer ruff format --check .
 	$(COMPOSE) exec -T analyzer mypy
+
+.PHONY: test-evaluator
+test-evaluator: ## Run the evaluator's protocol and sandbox security tests inside the running evaluator container
+	$(COMPOSE) exec -T evaluator python3 -m unittest discover -s /opt/evaluator/tests -t /opt/evaluator
+
+.PHONY: lint-evaluator
+lint-evaluator: ## Lint (ruff), check formatting and type-check (mypy --strict) the evaluator with the analyzer's tools
+	$(COMPOSE) run --rm --no-deps -T -v ./evaluator:/evaluator:ro -w /evaluator --entrypoint sh analyzer -c 'ruff check . && ruff format --check . && mypy'
 
 .PHONY: lint-frontend
 lint-frontend: ## Lint (ESLint) and type-check (tsc) the frontend in the running container

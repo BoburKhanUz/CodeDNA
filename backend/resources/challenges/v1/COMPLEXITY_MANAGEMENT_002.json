@@ -1,0 +1,161 @@
+{
+  "schema_version": "challenge-definition/1",
+  "key": "COMPLEXITY_MANAGEMENT_002",
+  "version": "1.0.0",
+  "category": "COMPLEXITY_MANAGEMENT",
+  "difficulty": "INTERMEDIATE",
+  "language": "python",
+  "runtime": "python3.11",
+  "estimated_minutes": 35,
+  "title": "Password rules as data",
+  "summary": "Report every password rule a candidate violates, keeping each function's decision logic small.",
+  "instructions": [
+    "check_password(password) returns the ids of the violated rules, in this order: LENGTH, UPPER, LOWER, DIGIT, SYMBOL, SPACE.",
+    "LENGTH: shorter than 12 characters. UPPER, LOWER, DIGIT: no uppercase letter, no lowercase letter, no digit.",
+    "SYMBOL: none of the characters !@#$%^&*-_ appears. SPACE: the password contains whitespace.",
+    "A password that satisfies every rule returns an empty list.",
+    "Represent the rules as data rather than as a chain of conditions."
+  ],
+  "constraints": [
+    "Python 3.11 standard library only.",
+    "Every function has a cyclomatic complexity of at most 4.",
+    "Control flow is nested at most 2 levels deep."
+  ],
+  "entrypoint": "check_password",
+  "starter_code": "def check_password(password):\n    \"\"\"Return the ids of the violated rules, in the order of the rule table.\"\"\"\n    raise NotImplementedError\n",
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "description": "The examples report the expected rules.",
+      "checks": [
+        "tests:visible"
+      ]
+    },
+    {
+      "id": "AC2",
+      "description": "All further passwords report the expected rules.",
+      "checks": [
+        "tests:hidden"
+      ]
+    },
+    {
+      "id": "AC3",
+      "description": "Every function has a cyclomatic complexity of at most 4.",
+      "checks": [
+        "rule:max_function_complexity"
+      ]
+    },
+    {
+      "id": "AC4",
+      "description": "Control flow is nested at most 2 levels deep.",
+      "checks": [
+        "rule:max_function_nesting"
+      ]
+    }
+  ],
+  "rules": {
+    "syntax_valid": true,
+    "max_function_complexity": 4,
+    "max_function_nesting": 2
+  },
+  "cases": [
+    {
+      "id": "v1",
+      "visibility": "VISIBLE",
+      "args": [
+        "short"
+      ],
+      "description": "too short and more",
+      "expected": [
+        "LENGTH",
+        "UPPER",
+        "DIGIT",
+        "SYMBOL"
+      ]
+    },
+    {
+      "id": "v2",
+      "visibility": "VISIBLE",
+      "args": [
+        "Correct-Horse-7"
+      ],
+      "description": "satisfies every rule",
+      "expected": []
+    },
+    {
+      "id": "v3",
+      "visibility": "VISIBLE",
+      "args": [
+        "has space Aa1!xyz"
+      ],
+      "description": "contains whitespace",
+      "expected": [
+        "SPACE"
+      ]
+    },
+    {
+      "id": "h1",
+      "visibility": "HIDDEN",
+      "args": [
+        ""
+      ],
+      "expected": [
+        "LENGTH",
+        "UPPER",
+        "LOWER",
+        "DIGIT",
+        "SYMBOL"
+      ]
+    },
+    {
+      "id": "h2",
+      "visibility": "HIDDEN",
+      "args": [
+        "ALLUPPERCASE123!"
+      ],
+      "expected": [
+        "LOWER"
+      ]
+    },
+    {
+      "id": "h3",
+      "visibility": "HIDDEN",
+      "args": [
+        "alllowercase123!"
+      ],
+      "expected": [
+        "UPPER"
+      ]
+    },
+    {
+      "id": "h4",
+      "visibility": "HIDDEN",
+      "args": [
+        "NoDigitsHere!!x"
+      ],
+      "expected": [
+        "DIGIT"
+      ]
+    },
+    {
+      "id": "h5",
+      "visibility": "HIDDEN",
+      "args": [
+        "NoSymbols12345x"
+      ],
+      "expected": [
+        "SYMBOL"
+      ]
+    },
+    {
+      "id": "h6",
+      "visibility": "HIDDEN",
+      "args": [
+        "Tab\tSeparated1!"
+      ],
+      "expected": [
+        "SPACE"
+      ]
+    }
+  ]
+}

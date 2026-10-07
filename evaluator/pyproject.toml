@@ -1,0 +1,23 @@
+[project]
+name = "codedna-evaluator"
+version = "1.0.0"
+requires-python = ">=3.11,<3.12"
+description = "CodeDNA challenge evaluator (internal service, standard library only)"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 140
+cache-dir = "/tmp/ruff-cache"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "S", "N", "A", "C4", "RET", "T20", "BLE"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S108", "E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+cache_dir = "/tmp/mypy-cache"
+files = ["evaluator"]

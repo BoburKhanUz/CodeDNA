@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+#
+# CodeDNA challenge evaluator (Phase 16) — runs submitted code in a sandbox.
+#
+# Build context: evaluator/
+#
+# Standard library only: nothing is installed, at build time or at runtime.
+# The code is baked into the image (no bind mount), owned by root and not
+# readable by the sandbox users, except the runner they execute. At runtime
+# the container has no network, a read-only root filesystem and only the
+# SETUID, SETGID and KILL capabilities (docker-compose.yml); the supervisor
+# runs as root inside it to drop each job to an unprivileged slot user.
+
+FROM python:3.11-slim-trixie
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Spool group (shared with the Laravel queue worker through a volume) and one
+# unprivileged user per sandbox slot. Slot users are in no other group.
+RUN groupadd --gid 10500 codedna-spool \
+    && for i in 0 1 2 3; do \
+         uid=$((10002 + i)); \
+         groupadd --gid "$uid" "sandbox$i" \
+         && useradd --uid "$uid" --gid "$uid" --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin "sandbox$i"; \
+       done \
+    && mkdir -p /sandbox /spool
+
+COPY --chown=root:root evaluator /opt/evaluator/evaluator
+COPY --chown=root:root tests /opt/evaluator/tests
+
+# Supervisor code and tests: root only. The runner: readable by everyone
+# (it holds nothing secret).
+RUN chmod -R go-rwx /opt/evaluator \
+    && chmod 0711 /opt/evaluator /opt/evaluator/evaluator \
+    && chmod 0755 /opt/evaluator/evaluator/runner \
+    && chmod 0644 /opt/evaluator/evaluator/runner/*.py
+
+WORKDIR /opt/evaluator
+# The supervisor must be root to drop each job to its slot user (setuid);
+# compose limits it to the SETUID, SETGID and KILL capabilities, no network
+# and a read-only root filesystem. Submitted code never runs as root.
+# hadolint ignore=DL3002
+USER root
+CMD ["python3", "-m", "evaluator.service"]

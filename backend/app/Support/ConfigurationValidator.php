@@ -7,6 +7,7 @@ namespace App\Support;
 use App\Services\Assessment\AssessmentSpecification;
 use App\Services\Assessment\Provider\FakeAiProvider;
 use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
+use App\Services\Challenge\ChallengeCatalog;
 use App\Services\Competency\CompetencySpecification;
 use App\Services\Dna\ScoringSpecification;
 use App\Services\SkillGap\SkillGapSpecification;
@@ -49,7 +50,7 @@ final class ConfigurationValidator
         if (! in_array($config->get('codedna.skill_gap.version'), SkillGapSpecification::VERSIONS, true)) {
             $problems[] = 'CODEDNA_SKILL_GAP_VERSION must be one of: '.implode(', ', SkillGapSpecification::VERSIONS).'.';
         }
-        $problems = [...$problems, ...$this->aiProblems($config, $environment)];
+        $problems = [...$problems, ...$this->aiProblems($config, $environment), ...$this->challengeProblems($config)];
 
         // The test suite swaps in in-memory drivers; every other environment
         // must use the Redis-backed infrastructure (docs/architecture/backend.md).
@@ -214,6 +215,52 @@ final class ConfigurationValidator
             $problems[] = 'AI_JOB_TIMEOUT_SECONDS must be greater than AI_TIMEOUT_SECONDS.';
         } elseif (! is_int($retryAfter) || $job >= $retryAfter) {
             $problems[] = 'AI_JOB_TIMEOUT_SECONDS must be lower than the queue retry_after.';
+        }
+
+        return $problems;
+    }
+
+    /**
+     * Coding challenges (Phase 16).
+     *
+     * @return list<string>
+     */
+    private function challengeProblems(Repository $config): array
+    {
+        $problems = [];
+        $challenges = (array) $config->get('codedna.challenges', []);
+
+        if (! is_bool($challenges['enabled'] ?? null)) {
+            $problems[] = 'CHALLENGE_ENABLED must be true or false.';
+        }
+        if (! in_array($challenges['catalog_version'] ?? null, ChallengeCatalog::VERSIONS, true)) {
+            $problems[] = 'CODEDNA_CHALLENGE_CATALOG_VERSION must be one of: '.implode(', ', ChallengeCatalog::VERSIONS).'.';
+        }
+        if (! in_array($challenges['evaluator'] ?? null, ['spool', 'none'], true)) {
+            $problems[] = 'CHALLENGE_EVALUATOR must be "spool" or "none".';
+        }
+        $spool = $challenges['spool_path'] ?? null;
+        if (! is_string($spool) || preg_match('#^/[A-Za-z0-9._/-]+$#', $spool) !== 1 || str_contains($spool, '..')) {
+            $problems[] = 'CHALLENGE_EVALUATOR_SPOOL must be an absolute path.';
+        }
+        $ranges = [
+            'CHALLENGE_MAX_SOURCE_BYTES' => [$challenges['max_source_bytes'] ?? null, 256, 65536],
+            'CHALLENGE_MAX_SOURCE_LINES' => [$challenges['max_source_lines'] ?? null, 10, 5000],
+            'CHALLENGE_MAX_ATTEMPTS' => [$challenges['max_attempts'] ?? null, 1, 20],
+            'CHALLENGE_EVALUATOR_WAIT_SECONDS' => [$challenges['wait_seconds'] ?? null, 5, 300],
+        ];
+        foreach ($ranges as $variable => [$value, $min, $max]) {
+            if (! is_int($value) || $value < $min || $value > $max) {
+                $problems[] = "{$variable} must be an integer between {$min} and {$max}.";
+            }
+        }
+        $wait = $challenges['wait_seconds'] ?? null;
+        $job = $challenges['job_timeout_seconds'] ?? null;
+        $retryAfter = $config->get('queue.connections.'.($challenges['queue_connection'] ?? 'analysis').'.retry_after');
+        if (! is_int($job) || ! is_int($wait) || $job <= $wait) {
+            $problems[] = 'CHALLENGE_JOB_TIMEOUT_SECONDS must be greater than CHALLENGE_EVALUATOR_WAIT_SECONDS.';
+        } elseif (! is_int($retryAfter) || $job >= $retryAfter) {
+            $problems[] = 'CHALLENGE_JOB_TIMEOUT_SECONDS must be lower than the queue retry_after.';
         }
 
         return $problems;

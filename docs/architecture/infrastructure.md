@@ -30,12 +30,20 @@ Related: [ADR-001](../decisions/ADR-001-stack.md) (versions),
 
   network codedna           : nginx, frontend, backend, postgres, redis, minio
   network codedna-internal  : backend, analyzer, minio, minio-init  (no internet)
+  no network at all         : evaluator  (files only, via the challenge-spool volume
+                              shared with backend, queue and scheduler)
 ```
 
 The analyzer is **not** routed by Nginx and shares no network with Nginx or
 the frontend. Only the backend calls it. The analyzer's only outbound
 traffic is to MinIO, for pre-signed downloads
 ([ADR-005](../decisions/ADR-005-service-communication.md)).
+
+The challenge evaluator (Phase 16) has **no network interface but
+loopback**. It runs submitted challenge code in a sandbox and exchanges
+request and result files with the queue worker through the
+`challenge-spool` volume ([challenge-evaluator.md](challenge-evaluator.md),
+[ADR-008](../decisions/ADR-008-coding-challenges.md)).
 
 ## Services
 
@@ -44,9 +52,10 @@ traffic is to MinIO, for pre-signed downloads
 | `nginx` | `nginx:1.28-alpine` | Single-origin router | `127.0.0.1:80` | codedna | `GET /nginx-health` |
 | `frontend` | `docker/node/Dockerfile` → `codedna-frontend:dev` | Next.js 16 dev server ([frontend.md](frontend.md)) | — | codedna | HTTP `GET /` on :3000 |
 | `backend` | `docker/php/Dockerfile` → `codedna-backend:dev` | Laravel 13 API on PHP-FPM 8.4 ([backend.md](backend.md)) | — | codedna, codedna-internal | Laravel `/up` over FastCGI (`codedna-healthcheck`) |
-| `queue` | `codedna-backend:dev` (same image, environment and bind mounts as `backend`) | Analysis and AI assessment queue worker (Phases 10, 15): `php artisan queue:listen analysis --queue=analysis,assessment --timeout=330` | — | codedna, codedna-internal | none (process) |
-| `scheduler` | `codedna-backend:dev` | Laravel scheduler (Phase 10): `php artisan schedule:work` (`analysis:fail-stale` and `assessment:fail-stale` every five minutes) | — | codedna | none (process) |
+| `queue` | `codedna-backend:dev` (same image, environment and bind mounts as `backend`) | Analysis, AI assessment and challenge queue worker (Phases 10, 15, 16): `php artisan queue:listen analysis --queue=analysis,assessment,challenge --timeout=330` | — | codedna, codedna-internal | none (process) |
+| `scheduler` | `codedna-backend:dev` | Laravel scheduler (Phase 10): `php artisan schedule:work` (`analysis:fail-stale`, `assessment:fail-stale` and `challenge:fail-stale` every five minutes) | — | codedna | none (process) |
 | `analyzer` | `docker/python/Dockerfile` → `codedna-analyzer:dev` | FastAPI analyzer (Phases 08–09): `GET /internal/v1/health`, HMAC-authenticated `POST /internal/v1/analyze` | — | codedna-internal | `GET /internal/v1/health` |
+| `evaluator` | `docker/evaluator/Dockerfile` → `codedna-evaluator:dev` | Challenge sandbox (Phase 16): runs submitted code as unprivileged slot users with resource limits ([challenge-evaluator.md](challenge-evaluator.md)) | — | **none** (`network_mode: none`) | heartbeat file younger than 15 s |
 | `postgres` | `postgres:16-alpine` | Primary database | `127.0.0.1:5432` | codedna | `pg_isready` |
 | `redis` | `redis:7.4-alpine` | Cache, queues, sessions | `127.0.0.1:6379` | codedna | `redis-cli ping` |
 | `minio` | `cgr.dev/chainguard/minio` (digest-pinned) | Local S3-compatible storage | `127.0.0.1:9000` (API), `127.0.0.1:9001` (console) | codedna, codedna-internal | `GET /minio/health/live` |
@@ -99,6 +108,7 @@ the analyzer, and the analyzer cannot reach the internet.
 | `codedna_redis_data` | `redis:/data` | Append-only file (queued jobs survive restarts) |
 | `codedna_minio_data` | `minio:/data` | Object storage |
 | `codedna_frontend_node_modules` | `frontend:/app/node_modules` | Linux-native npm packages, kept apart from the host |
+| `codedna_challenge-spool` | `evaluator:/spool`; `backend`, `queue`, `scheduler`: `/var/spool/codedna-challenges` | Challenge evaluation requests, results and the evaluator heartbeat. Directories are `root:10500` mode 2770, so only members of group 10500 (`group_add`) can use them; the sandbox users cannot |
 
 Source code is bind-mounted: `./backend` → `/var/www/backend` (also in
 `queue` and `scheduler`), `./frontend` → `/app`, `./analyzer` → `/app`
@@ -122,6 +132,12 @@ git-ignored.
   and 256 PID limits. It has no storage, database or queue credentials:
   sources arrive as pre-signed URLs. Its image contains no shell tools
   beyond the Debian slim base and runs no build tools at runtime.
+- The challenge evaluator (Phase 16) runs with `network_mode: none`, a
+  read-only root filesystem, tmpfs workspaces, `cap_drop: ALL` plus only
+  SETUID, SETGID and KILL, `no-new-privileges`, `init: true`, and limits of
+  768 MiB memory, 1 CPU and 128 PIDs. Its environment holds no credentials.
+  Its supervisor drops every job to a per-slot unprivileged user with
+  rlimits ([challenge-evaluator.md](challenge-evaluator.md#isolation)).
 - No container is privileged. No service mounts the Docker socket.
 - Interactive API docs (`/docs`, `/openapi.json`) are disabled in the
   analyzer.
@@ -155,6 +171,9 @@ credentials reach only `minio` and `minio-init`.
 | `ANALYZER_HMAC_SECRET_PREVIOUS` | empty | analyzer | Accepted in addition during secret rotation |
 | `ANALYZER_ALLOWED_SOURCE_HOSTS`, `ANALYZER_LOCAL_SOURCE_HOSTS` | `minio`, `minio` | analyzer | Source URL hosts; local ones may use http and private addresses ([analyzer.md](analyzer.md#source-access-ssrf-boundary)). Production: the R2 hostname, and no local hosts |
 | `ANALYZER_HARD_TIMEOUT_SECONDS`, `ANALYZER_MAX_CONCURRENCY`, `ANALYZER_MAX_ARCHIVE_BYTES`, `ANALYZER_MAX_EXTRACTED_BYTES`, `ANALYZER_MAX_FILES`, `ANALYZER_MAX_ENTRY_BYTES`, `ANALYZER_MAX_FILE_BYTES`, `ANALYZER_MAX_PATH_LENGTH`, `ANALYZER_PARSE_TIMEOUT_MS`, `ANALYZER_MAX_AST_NODES`, `ANALYZER_MAX_TOTAL_AST_NODES`, `ANALYZER_MAX_PARSED_FILES` | defaults | analyzer | [Limits](analyzer.md#limits); validated at startup |
+| `CHALLENGE_ENABLED`, `CHALLENGE_EVALUATOR` | defaults `true`, `spool` | backend | Coding challenges ([coding-challenges-v1.md](coding-challenges-v1.md)); `CHALLENGE_EVALUATOR=none` refuses submissions |
+| `CHALLENGE_MAX_SOURCE_BYTES`, `CHALLENGE_MAX_ATTEMPTS` | defaults 16384, 5 | backend, evaluator | Submission limits; validated at boot |
+| `CHALLENGE_EXECUTION_TIMEOUT`, `CHALLENGE_MAX_MEMORY_MB`, `CHALLENGE_MAX_PROCESSES`, `CHALLENGE_MAX_OUTPUT_BYTES` | defaults 5, 256, 16, 65536 | evaluator | Per-run sandbox limits; validated at startup |
 | `FRONTEND_WATCH_POLLING` | default `false` | frontend | Polling file watcher fallback |
 | `FRONTEND_URL` | default `http://localhost` | frontend (server only) | Origin presented to Sanctum for server-side session checks |
 
@@ -162,6 +181,7 @@ Fixed in `docker-compose.yml` (not configurable in `.env`, because they are
 properties of the Docker network): `DB_HOST=postgres`, `REDIS_HOST=redis`,
 `SOURCE_STORAGE_ENDPOINT=http://minio:9000`, `BACKEND_INTERNAL_URL=http://nginx` (frontend → API),
 `ANALYZER_URL=http://analyzer:8000`, `ANALYZER_WORKSPACE_ROOT=/tmp/codedna`,
+`CHALLENGE_EVALUATOR_SPOOL=/var/spool/codedna-challenges`, `CHALLENGE_MAX_CONCURRENT_EVALUATIONS=2`,
 `MAIL_MAILER=log`, plus the
 `pgsql`/`phpredis`/`redis` driver selections. The backend refuses to boot
 with an invalid configuration (see [backend.md](backend.md#configuration-and-logging)).
@@ -328,6 +348,14 @@ and prints no secrets:
     hostnames; an invalid result type is `422`; no analysis job is left in
     Redis; an archived project cannot start analyses (`409`). Runs and
     results are deleted with the probe.
+11. Challenge evaluator (Phase 16): the service is healthy; it has no
+    network interface but loopback; its root filesystem is read-only; its
+    effective capabilities are exactly SETUID, SETGID and KILL; and its
+    environment holds no database, Redis, storage, app-key or AI
+    credentials. Through the API, listing challenges returns `200`, and a
+    request that tries to supply a challenge definition is `422`. The
+    probe's challenge rows are deleted with it. The sandbox itself is tested
+    by `make test-evaluator`.
 
 ## Troubleshooting
 
@@ -343,11 +371,12 @@ and prints no secrets:
 | Analyzer dependency missing after editing requirements | `make build && make up` |
 | `minio-init` failed | `make logs s=minio-init`. Check that `MINIO_ROOT_PASSWORD` and `SOURCE_STORAGE_SECRET_ACCESS_KEY` are at least 8 characters |
 | Changed `MINIO_ROOT_*` or `DB_PASSWORD` after first start | The existing volume keeps the old credentials. Restore the old values, or reset data with `docker compose down -v` |
+| Submissions answer `409 CHALLENGE_EVALUATION_UNAVAILABLE` | The evaluator is down or its heartbeat is stale: `make logs s=evaluator`. Check that `CHALLENGE_EVALUATOR=spool` and that backend and queue have `group_add: 10500` |
 | Stale Next.js dependencies after switching branches | `docker compose down`, `docker volume rm codedna_frontend_node_modules`, then `make up` |
 
 ## Not included yet (later phases)
 
 Analyzer replay protection shared across instances (when the analyzer is
-scaled out), TLS and production images
+scaled out), a gVisor or microVM runtime for the challenge evaluator, TLS and production images
 (Phase 25), and the R2 bucket and credentials (Phase 25; the application
 side needs only `SOURCE_STORAGE_*`).

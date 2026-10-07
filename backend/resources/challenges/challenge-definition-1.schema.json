@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codedna.dev/schemas/challenge-definition-1.json",
+  "title": "CodeDNA challenge definition (challenge-definition/1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "key", "version", "category", "difficulty", "language", "runtime", "estimated_minutes", "title", "summary",
+    "instructions", "constraints", "entrypoint", "starter_code", "acceptance_criteria", "rules", "cases"],
+  "properties": {
+    "schema_version": { "const": "challenge-definition/1" },
+    "key": { "type": "string", "pattern": "^(COMPLEXITY_MANAGEMENT|FUNCTION_DESIGN|TYPE_STRUCTURE|CODE_HYGIENE)_[0-9]{3}$" },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "category": { "enum": ["COMPLEXITY_MANAGEMENT", "FUNCTION_DESIGN", "TYPE_STRUCTURE", "CODE_HYGIENE"] },
+    "difficulty": { "enum": ["BEGINNER", "INTERMEDIATE", "ADVANCED"] },
+    "language": { "const": "python" },
+    "runtime": { "const": "python3.11" },
+    "estimated_minutes": { "type": "integer", "minimum": 5, "maximum": 240 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 400 },
+    "instructions": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "maxLength": 600 } },
+    "constraints": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "maxLength": 300 } },
+    "entrypoint": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$" },
+    "starter_code": { "type": "string", "maxLength": 8000 },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "checks"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^AC[0-9]{1,2}$" },
+          "description": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "checks": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^(tests:(visible|hidden)|rule:[a-z_]+)$" } }
+        }
+      }
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["syntax_valid"],
+      "properties": {
+        "syntax_valid": { "const": true },
+        "max_function_complexity": { "type": "integer", "minimum": 1, "maximum": 50 },
+        "max_function_nesting": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "max_function_lines": { "type": "integer", "minimum": 1, "maximum": 500 },
+        "max_function_parameters": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "max_class_lines": { "type": "integer", "minimum": 1, "maximum": 2000 },
+        "max_class_methods": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "min_classes": { "type": "integer", "minimum": 1, "maximum": 20 }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "visibility", "args", "expected"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9_-]{1,32}$" },
+          "visibility": { "enum": ["VISIBLE", "HIDDEN"] },
+          "description": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "args": { "type": "array" },
+          "expected": {}
+        }
+      }
+    }
+  }
+}

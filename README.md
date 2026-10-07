@@ -24,11 +24,18 @@ ASSESS ─► ANALYZE ─► IDENTIFY GAPS ─► LEARN ─► PRACTICE ─► R
 | 06 | Authentication and developer profile | ✅ Done |
 | 07 | Projects and source management | ✅ Done |
 | 08 | Python analyzer foundation | ✅ Done |
-| 09 | AST and static analysis | ⏭ Next |
+| 09 | AST and static analysis | ✅ Done |
+| 10 | Analysis queue and pipeline | ✅ Done |
+| 11 | CodeDNA scoring engine | ✅ Done |
+| 12 | DNA dashboard | ✅ Done |
+| 13 | Competency matrix | ✅ Done |
+| 14 | Skill gap analysis | ✅ Done |
+| 15 | AI assessment and interpretation | ✅ Done |
+| 16 | Coding challenges | ✅ Done |
 
-**No analysis features exist yet.** The Docker environment runs every
-component: Nginx, Laravel 13, Next.js 16, the FastAPI analyzer, PostgreSQL
-16, Redis 7 and MinIO. You can register, sign in and sign out, edit your
+The Docker environment runs every component: Nginx, Laravel 13, Next.js 16,
+the FastAPI analyzer, the challenge evaluator, PostgreSQL 16, Redis 7 and
+MinIO. You can register, sign in and sign out, edit your
 developer profile, change your password, create projects and upload ZIP
 archives of their source (stored as immutable, versioned snapshots in
 MinIO; nothing is executed or analyzed) at
@@ -59,7 +66,15 @@ owner can request an AI-generated, non-authoritative interpretation of a
 skill gap analysis; every statement cites the stored evidence, and the AI
 never determines or changes a score
 ([ai-assessment-v1.md](docs/architecture/ai-assessment-v1.md); disabled
-unless `AI_ENABLED=true`). The full plan is in
+unless `AI_ENABLED=true`). Since Phase 16 the owner can practice on coding
+challenges selected deterministically from a project's skill gaps. Python
+submissions run only in a dedicated sandbox service with no network, no
+secrets and strict resource limits, and are graded by deterministic tests and
+code-structure rules. **Challenge completion ≠ CodeDNA improvement:** a
+passed challenge never changes a score, competency or skill gap; only a new
+analysis of new code does
+([coding-challenges-v1.md](docs/architecture/coding-challenges-v1.md),
+[challenge-evaluator.md](docs/architecture/challenge-evaluator.md)). The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance
@@ -69,20 +84,22 @@ unless `AI_ENABLED=true`). The full plan is in
 | Frontend | Next.js 16 (App Router), TypeScript, Tailwind CSS, shadcn/ui | [`frontend/`](frontend/README.md) |
 | Backend / product API | Laravel 13, PHP 8.4, PostgreSQL 16, Redis 7 | [`backend/`](backend/README.md) |
 | Analysis engine | Python 3.11, FastAPI, Tree-sitter (internal-only) | [`analyzer/`](analyzer/README.md) |
+| Challenge evaluator | Python 3.11, standard library only; no network, sandboxed | [`evaluator/`](evaluator/README.md) |
 | Source storage | S3-compatible API: MinIO locally, Cloudflare R2 in production | — |
 | Infrastructure | Docker, Docker Compose, Nginx, GitHub Actions | [`docker/`](docker/README.md), [`.github/`](.github/workflows/ci.yml) |
 | Shared contracts | OpenAPI / JSON Schema | [`packages/`](packages/README.md) |
 
 Core rules: Laravel never parses code; the analyzer never owns business data
 and is never publicly reachable; DNA scores are deterministic and versioned;
-AI only interprets stored results, never produces scores.
+AI only interprets stored results, never produces scores; submitted challenge
+code runs only in the network-less evaluator and never changes CodeDNA.
 
 ## Documentation
 
 - Product: [vision](docs/product/vision.md) · [MVP](docs/product/mvp.md)
-- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md)
+- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md) · [coding challenges](docs/architecture/coding-challenges-v1.md) · [challenge evaluator](docs/architecture/challenge-evaluator.md)
 - API: [public conventions](docs/api/README.md) · [internal analyzer contract](docs/api/internal-analyzer-contract.md)
-- Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md) · [ADR-007 AI interpretation](docs/decisions/ADR-007-ai-interpretation.md)
+- Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md) · [ADR-007 AI interpretation](docs/decisions/ADR-007-ai-interpretation.md) · [ADR-008 coding challenges](docs/decisions/ADR-008-coding-challenges.md)
 
 ## Repository layout
 
@@ -91,12 +108,13 @@ codedna/
 ├── backend/            Laravel 13 API (bootstrap; foundation in Phase 03)
 ├── frontend/           Next.js 16 UI (auth foundation)
 ├── analyzer/           Python analysis engine (foundation: signed intake, safe extraction, discovery)
+├── evaluator/          Challenge sandbox (Phase 16: no network, unprivileged slot users)
 ├── docker/             Dockerfiles, Nginx and MinIO configuration
 ├── docs/               Product, architecture, API, ADRs
 ├── packages/           Shared API contracts and types      (Phases 03/04/08)
 ├── scripts/            Repository helper scripts
 ├── .github/workflows/  CI
-├── docker-compose.yml  Development environment (7 services + minio-init)
+├── docker-compose.yml  Development environment (services + minio-init)
 ├── .env.example        Documented environment variables (no secrets)
 └── Makefile            Developer commands
 ```
@@ -129,7 +147,7 @@ marked `[required]` first. Compose refuses to start without them.
 ```bash
 make ps / make logs / make logs s=backend
 make shell-backend | shell-frontend | shell-analyzer
-make test      # analyzer pytest + backend PHPUnit (dedicated test DB) + frontend Vitest
+make test      # analyzer pytest + backend PHPUnit (dedicated test DB) + frontend Vitest + evaluator sandbox tests
 make lint-backend   # Laravel Pint style check
 make lint-frontend  # ESLint + TypeScript type check
 make verify    # runtime smoke test: routing, networking, isolation, S3
@@ -150,4 +168,7 @@ never logged or sent to AI providers. Never commit `.env` files or real
 credentials. `.env.example` must keep secret variables empty, and CI enforces
 this. Local services listen on 127.0.0.1 only. The analyzer runs on an
 internal network with no internet access and is never exposed through
-Nginx.
+Nginx. Code submitted for coding challenges is the one thing that is
+executed. It runs only in the evaluator, which has no network interface,
+no credentials, a read-only filesystem and per-run unprivileged users with
+resource limits ([challenge-evaluator.md](docs/architecture/challenge-evaluator.md)).

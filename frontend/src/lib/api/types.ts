@@ -1,7 +1,7 @@
 /**
  * TypeScript mirror of the Laravel API contract (docs/api/README.md).
  *
- * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary,SkillGapSnapshot,SkillGapSnapshotSummary,AiAssessment,AiAssessmentSummary}Resource.php,
+ * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary,SkillGapSnapshot,SkillGapSnapshotSummary,AiAssessment,AiAssessmentSummary,Challenge,ChallengeSummary,ChallengeSubmission,ChallengeSubmissionSummary}Resource.php,
  * backend/app/Http/Resources/PaginatedCollection.php,
  * backend/app/Enums/{SupportedLocale,ProgrammingLanguage}.php and
  * backend/app/Http/Errors/{ErrorCode,ApiExceptionRenderer}.php. When those
@@ -51,6 +51,12 @@ export const API_ERROR_CODES = [
   "AI_ASSESSMENT_DISABLED",
   "ASSESSMENT_EVIDENCE_UNAVAILABLE",
   "ASSESSMENT_INPUT_TOO_LARGE",
+  "CHALLENGES_DISABLED",
+  "CHALLENGE_NO_ELIGIBLE_GAP",
+  "CHALLENGE_NONE_AVAILABLE",
+  "CHALLENGE_EVALUATION_UNAVAILABLE",
+  "CHALLENGE_EVALUATION_PENDING",
+  "CHALLENGE_CLOSED",
   "INTERNAL_ERROR",
   "SERVICE_UNAVAILABLE",
 ] as const;
@@ -692,3 +698,174 @@ export interface AiAssessment {
 }
 
 export type AiAssessmentResponse = DataEnvelope<AiAssessment>;
+
+/* Coding challenges (Phase 16): a practice layer. Nothing here changes CodeDNA, competencies or skill gaps. */
+
+/** Competencies with challenges (the four of competency version 1.0.0). */
+export type CompetencyKey = "COMPLEXITY_MANAGEMENT" | "FUNCTION_DESIGN" | "TYPE_STRUCTURE" | "CODE_HYGIENE";
+
+export const CHALLENGE_STATUSES = ["ASSIGNED", "EVALUATING", "PASSED", "FAILED"] as const;
+export type ChallengeStatus = (typeof CHALLENGE_STATUSES)[number];
+export type ChallengeDifficulty = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+export type SubmissionStatus = "QUEUED" | "RUNNING" | "PASSED" | "FAILED" | "ERROR";
+export type ChallengeResultStatus = "PASSED" | "FAILED" | "ERROR";
+
+/** `ChallengeSummaryResource` — GET /api/v1/projects/{project}/challenges (newest first). */
+export interface ChallengeSummary {
+  id: string;
+  type: "challenge";
+  project_id: string;
+  skill_gap_snapshot_id: string;
+  competency_key: CompetencyKey;
+  definition: { key: string; version: string; title: string | null };
+  difficulty: ChallengeDifficulty;
+  language: string;
+  status: ChallengeStatus;
+  attempts_used: number;
+  max_attempts: number;
+  /** Result of the latest attempt; ERROR attempts consume no attempt. */
+  last_result: ChallengeResultStatus | null;
+  created_at: string | null;
+  closed_at: string | null;
+}
+
+export interface ChallengeExample {
+  id: string;
+  description: string | null;
+  args: unknown[];
+  expected: unknown;
+}
+
+/** The public view of a catalog definition: hidden cases are only counted. */
+export interface ChallengeDefinitionView {
+  key: string;
+  version: string;
+  category: CompetencyKey;
+  difficulty: ChallengeDifficulty;
+  language: string;
+  runtime: string;
+  estimated_minutes: number;
+  title: string;
+  summary: string;
+  instructions: string[];
+  constraints: string[];
+  entrypoint: string;
+  starter_code: string;
+  acceptance_criteria: { id: string; description: string; checks: string[] }[];
+  rules: Record<string, number | boolean>;
+  examples: ChallengeExample[];
+  hidden_case_count: number;
+}
+
+/** Why the challenge was selected (deterministic provenance, stored at assignment). */
+export interface ChallengeSelectionProvenance {
+  selection_version: string;
+  catalog_version: string;
+  rule: "TOP_PRIORITY_GAP" | "NEXT_ELIGIBLE_GAP" | "REQUESTED_COMPETENCY";
+  requested_competency: string | null;
+  eligible_gaps: string[];
+  gap_rank: number;
+  gap: ChallengeGap;
+  preferred_difficulty: ChallengeDifficulty;
+  selected_difficulty: ChallengeDifficulty;
+  challenge_definition: string;
+  challenge_version: string;
+  excluded_definitions: string[];
+  previously_passed: string[];
+}
+
+export interface ChallengeGap {
+  competency_key: CompetencyKey;
+  status: string;
+  priority: GapPriority | null;
+  priority_capped: boolean | null;
+  raw_gap: DecimalString | null;
+  current_score: DecimalString | null;
+  target_score: DecimalString | null;
+}
+
+/** `ChallengeResource` — GET/POST /api/v1/projects/{project}/challenges[/{challenge}]. */
+export interface Challenge extends ChallengeSummary {
+  notice: string;
+  evaluation_available: boolean;
+  challenge: ChallengeDefinitionView | null;
+  selection: ChallengeSelectionProvenance;
+  gap: ChallengeGap | null;
+  lineage: { skill_gap_snapshot_id: string; competency_snapshot_id: string; dna_snapshot_id: string; analysis_run_id: string; source_snapshot_id: string };
+  versions: { definition: string; catalog: string; selection: string; evaluation: string };
+  fingerprints: { catalog: string; definition: string | null; test_suite: string | null };
+  recent_attempts: ChallengeSubmissionSummary[];
+  updated_at: string | null;
+}
+
+export interface ChallengeTestCounts {
+  total: number;
+  passed: number;
+  failed: number;
+  visible: { total: number; passed: number };
+  hidden: { total: number; passed: number };
+}
+
+/** `ChallengeSubmissionSummaryResource`: one attempt without source or feedback. */
+export interface ChallengeSubmissionSummary {
+  id: string;
+  type: "challenge_submission";
+  challenge_id: string;
+  attempt_number: number;
+  language: string;
+  status: SubmissionStatus;
+  source_bytes: number;
+  source_sha256: string;
+  tests: ChallengeTestCounts | null;
+  execution_status: string | null;
+  failure: { code: string; message: string } | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface EvaluatedCase {
+  id: string;
+  visibility: "VISIBLE" | "HIDDEN";
+  status: "PASSED" | "FAILED" | "ERROR" | "NOT_RUN";
+  error?: string;
+  /** Visible cases only. */
+  description?: string | null;
+  args?: unknown[];
+  expected?: unknown;
+  observed?: unknown;
+}
+
+export interface EvaluatedRule {
+  rule: string;
+  limit: number | boolean;
+  status: "PASSED" | "FAILED";
+  observed?: number;
+  line?: number | null;
+  not_evaluated?: boolean;
+  violations?: { name: string; line: number; value: number }[];
+}
+
+/** The deterministic evaluation (challenge-evaluation/1.0.0). Never a CodeDNA score. */
+export interface ChallengeEvaluation {
+  evaluation_version: string;
+  verdict: "PASSED" | "FAILED";
+  execution: { status: string; load_error: string | null; message: string };
+  tests: ChallengeTestCounts;
+  criteria: { id: string; description: string; status: "PASSED" | "FAILED" }[];
+  rules: EvaluatedRule[];
+  cases: EvaluatedCase[];
+}
+
+/** `ChallengeSubmissionResource` — one attempt with its source and feedback (owner only). */
+export interface ChallengeSubmission extends ChallengeSubmissionSummary {
+  notice: string;
+  source: string;
+  evaluation: ChallengeEvaluation | null;
+  versions: { evaluation: string; evaluator: string | null; runtime: string | null };
+  fingerprints: { definition: string; test_suite: string; evaluation: string | null };
+  duration_ms: number | null;
+  started_at: string | null;
+}
+
+export type ChallengeResponse = DataEnvelope<Challenge>;
+export type ChallengeSubmissionResponse = DataEnvelope<ChallengeSubmission>;

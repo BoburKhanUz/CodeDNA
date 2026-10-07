@@ -790,6 +790,169 @@ The list never includes the input or output.
 - Responses never contain the prompt, the provider response, keys, headers
   or lease data.
 
+## Coding challenges
+
+Practice exercises selected from a skill gap analysis (Phase 16,
+[coding-challenges-v1.md](../architecture/coding-challenges-v1.md)). They are
+a **practice layer**: assigning, submitting or passing a challenge never
+changes a DNA score, competency, skill gap, priority, target or snapshot. No AI
+is involved. Submitted code runs only in the isolated evaluator
+([challenge-evaluator.md](../architecture/challenge-evaluator.md)), never in
+the API.
+
+- Owner-only: `404` for a missing project, another user's project, and a
+  challenge or submission of another project (no existence leaks).
+- Archived projects keep their challenges readable, but assignment and
+  submission answer `409 PROJECT_ARCHIVED`.
+- There is no update or delete (`405`). Challenges and attempts are
+  immutable records.
+
+### `POST /api/v1/projects/{project}/challenges`
+
+```json
+{}
+```
+
+or
+
+```json
+{ "skill_gap_snapshot_id": "<ULID>", "competency_key": "FUNCTION_DESIGN" }
+```
+
+The body only selects which stored gap to practice. The default is the
+newest skill gap snapshot and the selector's top gap. The challenge itself
+always comes from the server's catalog: a definition, test, command, image,
+runtime, difficulty or any other field answers `422 VALIDATION_FAILED`, and
+unknown field names are not echoed.
+
+| Response | When |
+|---|---|
+| `201` + challenge | A new challenge was selected and assigned |
+| `200` + challenge, `Idempotent-Replayed: true` | An active (`ASSIGNED` or `EVALUATING`) challenge exists for that snapshot and competency, or, without `competency_key`, for that snapshot |
+| `409 CHALLENGES_DISABLED` | `CHALLENGE_ENABLED=false` |
+| `409 CHALLENGE_NO_ELIGIBLE_GAP` | No skill gap snapshot, or no gap in a competency with challenges |
+| `409 CHALLENGE_NONE_AVAILABLE` | Every matching challenge was already assigned for this snapshot |
+| `409 PROJECT_ARCHIVED` | The project is archived |
+| `422 VALIDATION_FAILED` | Another field, an unknown competency, or a snapshot that is not this project's |
+| `429 RATE_LIMITED` | `challenge-assign` limit |
+
+### `GET /api/v1/projects/{project}/challenges`
+
+The list is ordered newest first and paginated (`?page`, `?per_page` ≤ 100).
+Each item has:
+
+- `id` and `type: "challenge"`;
+- `project_id`, `skill_gap_snapshot_id` and `competency_key`;
+- `definition`: `{key, version, title}`;
+- `difficulty` (`BEGINNER`, `INTERMEDIATE` or `ADVANCED`, describing the
+  exercise and never the developer) and `language`;
+- `status` (`ASSIGNED`, `EVALUATING`, `PASSED` or `FAILED`);
+- `attempts_used`, `max_attempts` and `last_result`;
+- `created_at` and `closed_at`.
+
+### `GET /api/v1/projects/{project}/challenges/{challenge}`
+
+```json
+{ "data": {
+  "id": "…", "type": "challenge", "status": "ASSIGNED", "competency_key": "FUNCTION_DESIGN", "difficulty": "BEGINNER",
+  "language": "python", "attempts_used": 0, "max_attempts": 5, "last_result": null,
+  "notice": "Completing this challenge does not immediately change your CodeDNA score or skill gap. Reassessment occurs from new code analysis.",
+  "evaluation_available": true,
+  "challenge": { "key": "FUNCTION_DESIGN_001", "version": "1.0.0", "category": "FUNCTION_DESIGN", "difficulty": "BEGINNER",
+                 "language": "python", "runtime": "python3.11", "estimated_minutes": 30, "title": "…", "summary": "…",
+                 "instructions": ["…"], "constraints": ["…"], "entrypoint": "summarize_order", "starter_code": "def …",
+                 "acceptance_criteria": [ { "id": "AC1", "description": "…", "checks": ["tests:visible"] } ],
+                 "rules": { "syntax_valid": true, "max_function_lines": 15, "max_function_parameters": 3 },
+                 "examples": [ { "id": "v1", "description": "…", "args": [ … ], "expected": … } ],
+                 "hidden_case_count": 4 },
+  "selection": { "selection_version": "challenge-selection/1.0.0", "rule": "TOP_PRIORITY_GAP", "eligible_gaps": ["FUNCTION_DESIGN"], "gap_rank": 1,
+                 "gap": { … }, "preferred_difficulty": "BEGINNER", "selected_difficulty": "BEGINNER", "excluded_definitions": [], "previously_passed": [], … },
+  "gap": { "competency_key": "FUNCTION_DESIGN", "status": "GAP", "priority": "HIGH", "raw_gap": "0.3000", "current_score": "…", "target_score": "…", "priority_capped": false },
+  "lineage": { "skill_gap_snapshot_id": "…", "competency_snapshot_id": "…", "dna_snapshot_id": "…", "analysis_run_id": "…", "source_snapshot_id": "…" },
+  "versions": { "definition": "1.0.0", "catalog": "1.0.0", "selection": "challenge-selection/1.0.0", "evaluation": "challenge-evaluation/1.0.0" },
+  "fingerprints": { "catalog": "<64 hex>", "definition": "<64 hex>", "test_suite": "<64 hex>" },
+  "recent_attempts": [ ],
+  "created_at": "…", "updated_at": "…", "closed_at": null } }
+```
+
+- `examples` are the visible test cases. Hidden cases are only counted:
+  their arguments and expected values are never returned.
+- `evaluation_available` is `false` when challenges are disabled or no
+  evaluator is reachable. Submissions are refused then.
+- `recent_attempts` holds the newest 20 attempts as list items. Use the
+  submissions list for older ones.
+
+### `POST /api/v1/projects/{project}/challenges/{challenge}/submissions`
+
+```http
+Idempotency-Key: <optional, 8–128 of A-Z a-z 0-9 . _ : ->
+
+{ "language": "python", "source": "def summarize_order(order):\n    …" }
+```
+
+The source is stored exactly as sent (no trimming). It must be:
+
+- UTF-8, with no NUL characters and not blank;
+- at most `CHALLENGE_MAX_SOURCE_BYTES` (16384) bytes and
+  `CHALLENGE_MAX_SOURCE_LINES` (400) lines.
+
+Any other field answers `422 VALIDATION_FAILED`. The request only records the
+attempt and queues its evaluation. Nothing is executed during the request.
+
+| Response | When |
+|---|---|
+| `202` + submission (`QUEUED`) | A new attempt was recorded and queued |
+| `200` + submission, `Idempotent-Replayed: true` | Same `Idempotency-Key` and same source as an earlier attempt |
+| `409 CHALLENGES_DISABLED` | `CHALLENGE_ENABLED=false` |
+| `409 CHALLENGE_EVALUATION_UNAVAILABLE` | No evaluator is configured or reachable. The code is not run anywhere else |
+| `409 CHALLENGE_EVALUATION_PENDING` | An earlier attempt is still being evaluated |
+| `409 CHALLENGE_CLOSED` | The challenge is `PASSED`, or `FAILED` with its attempts used up |
+| `409 PROJECT_ARCHIVED` | The project is archived |
+| `422 IDEMPOTENCY_KEY_REUSED` | The key was already used with different source |
+| `422 VALIDATION_FAILED` | Invalid source, a language other than the challenge's, or another field |
+| `429 RATE_LIMITED` | `challenge-submit` limit |
+
+### `GET /api/v1/projects/{project}/challenges/{challenge}/submissions`
+
+The list is ordered newest first and paginated. Each item has:
+
+- `id` and `type: "challenge_submission"`;
+- `challenge_id`, `attempt_number` and `language`;
+- `status` (`QUEUED`, `RUNNING`, `PASSED`, `FAILED` or `ERROR`);
+- `source_bytes` and `source_sha256`;
+- `tests`: `{passed, total, visible, hidden}` or `null`;
+- `execution_status`;
+- `failure`: `{code, message}` or `null`;
+- `created_at` and `completed_at`.
+
+The list never includes the source.
+
+### `GET /api/v1/projects/{project}/challenges/{challenge}/submissions/{submission}`
+
+The list fields, plus:
+
+- `notice`, `source`, `duration_ms` and `started_at`;
+- `versions`: `{evaluation, evaluator, runtime}`;
+- `fingerprints`: `{definition, test_suite, evaluation}`;
+- `evaluation`, once graded:
+  - `verdict`: `PASSED` or `FAILED`;
+  - `execution`: `{status, message, load_error}`;
+  - `tests`: counts;
+  - `criteria`: `[ {id, description, status} ]`;
+  - `rules`: `[ {rule, limit, status, observed?, violations?, line?, not_evaluated?} ]`;
+  - `cases`: visible cases with `args`, `expected` and `observed`; hidden
+    cases with `id`, `status` and `error` only.
+
+`ERROR` attempts (evaluator unavailable, timed out, interrupted, rejected,
+invalid result or changed definition, stuck and ended by the stale sweeper) have `evaluation: null` and a fixed
+`failure`. Their codes are `EVALUATOR_UNAVAILABLE`, `EVALUATION_TIMEOUT`,
+`EVALUATION_INTERRUPTED`, `EVALUATION_REJECTED`, `EVALUATION_INVALID`,
+`EVALUATION_STALE` and `EVALUATION_FAILED`. An `ERROR` attempt does not count
+against `max_attempts`.
+
+Responses never contain hidden test inputs or expected values, evaluator
+internals, lease data or the idempotency key.
+
 ## Authentication (browser, Sanctum SPA)
 
 Browsers authenticate with Laravel's **session cookie**. No token is ever
@@ -917,12 +1080,18 @@ Every error, on every API route, uses one envelope:
 | 409 | `AI_ASSESSMENT_DISABLED` | AI assessment is not enabled on the server |
 | 409 | `ASSESSMENT_EVIDENCE_UNAVAILABLE` | No skill gap analysis that can be interpreted |
 | 409 | `ASSESSMENT_INPUT_TOO_LARGE` | The evidence exceeds the AI input limit |
+| 409 | `CHALLENGES_DISABLED` | Coding challenges are disabled on the server |
+| 409 | `CHALLENGE_NO_ELIGIBLE_GAP` | No skill gap in a competency that has challenges |
+| 409 | `CHALLENGE_NONE_AVAILABLE` | Every matching challenge was already assigned for the snapshot |
+| 409 | `CHALLENGE_EVALUATION_UNAVAILABLE` | No challenge evaluator is available; submitted code is not run |
+| 409 | `CHALLENGE_EVALUATION_PENDING` | An earlier attempt is still being evaluated |
+| 409 | `CHALLENGE_CLOSED` | The challenge is passed or out of attempts |
 | 413 | `PAYLOAD_TOO_LARGE` | Body exceeds the Nginx/PHP limit |
 | 413 | `SOURCE_ARCHIVE_TOO_LARGE` | Archive over `SOURCE_MAX_ARCHIVE_BYTES` |
 | 419 | `CSRF_TOKEN_MISMATCH` | Missing or stale `X-XSRF-TOKEN` |
 | 422 | `VALIDATION_FAILED` | Input failed validation (`details.fields`) |
 | 422 | `INVALID_CREDENTIALS` | Login with a wrong email/password combination |
-| 422 | `IDEMPOTENCY_KEY_REUSED` | `Idempotency-Key` already used for a different archive |
+| 422 | `IDEMPOTENCY_KEY_REUSED` | `Idempotency-Key` already used for a different archive or challenge source |
 | 422 | `SOURCE_ARCHIVE_INVALID` | Not a valid, supported ZIP (wrong format, corrupt, encrypted, no files, ...) |
 | 422 | `SOURCE_ARCHIVE_UNSAFE` | Unsafe entry: path traversal, absolute or drive path, symlink, special file, zip bomb, ... |
 | 422 | `SOURCE_UNCOMPRESSED_SIZE_EXCEEDED` | Expands beyond `SOURCE_MAX_UNCOMPRESSED_BYTES` |
@@ -956,6 +1125,8 @@ queued jobs (Laravel Context).
 | `source-upload` | `POST /projects/{project}/source-snapshots` | 5 / minute **and** 60 / hour | user ID |
 | `analysis-create` | `POST /projects/{project}/analyses` | 10 / minute | user ID |
 | `assessment-create` | `POST /projects/{project}/assessments` | 5 / minute **and** 30 / hour | user ID |
+| `challenge-assign` | `POST /projects/{project}/challenges` | 10 / minute | user ID |
+| `challenge-submit` | `POST /projects/{project}/challenges/{challenge}/submissions` | 10 / minute **and** 60 / hour | user ID |
 
 Every attempt counts, successful or not. When a limit is exceeded the
 response is `429 RATE_LIMITED` with `Retry-After`. Throttled routes also

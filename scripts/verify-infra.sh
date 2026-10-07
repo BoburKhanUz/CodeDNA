@@ -31,7 +31,7 @@ check_not() { # check_not "description" command...  (passes when the command FAI
 in_service() { local service=$1; shift; "${compose[@]}" exec -T "$service" "$@"; }
 
 echo "Service health"
-for service in nginx frontend backend analyzer postgres redis minio; do
+for service in nginx frontend backend analyzer evaluator postgres redis minio; do
     status=$("${compose[@]}" ps --format '{{.Health}}' "$service" 2>/dev/null)
     if [[ "$status" == "healthy" ]]; then pass "$service is healthy"; else fail "$service is healthy (got: ${status:-not running})"; fi
 done
@@ -247,6 +247,18 @@ done
 check "static_analysis run has one skill gap snapshot (1.0.0, ENGINEERING_STANDARD, 4 results)" bash -c "[[ '$static_skill_gap' == '1.0.0 ENGINEERING_STANDARD 4' ]]"
 check "GET skill-gaps -> 200 with the snapshot; POST with a target -> 405 (read-only)" bash -c \
     "out=\$(api_json GET /api/v1/projects/$project_id/skill-gaps); [[ \$out == 200* && \$out == *'\"target_profile\":{\"key\":\"ENGINEERING_STANDARD\"'* && \$out != *storage* ]] && api_json POST /api/v1/projects/$project_id/skill-gaps '{\"target\":0.95}' | grep -q '^405 '"
+# Phase 16: coding challenges. The evaluator is isolated: no network at all,
+# read-only root, unprivileged sandbox users; the API never runs code.
+evaluator_offline() { [[ $(in_service evaluator ls /sys/class/net) == lo ]]; }
+evaluator_locked_down() {
+    ! in_service evaluator touch /probe &&
+        in_service evaluator grep -Eq '^CapEff:[[:space:]]+00000000000000e0$' /proc/1/status &&
+        ! in_service evaluator env | cut -d= -f1 | grep -Eq '^(DB_|REDIS_|AWS_|APP_KEY|AI_|MINIO_|POSTGRES_)|SECRET|PASSWORD|TOKEN'
+}
+check "evaluator has no network interface but loopback" evaluator_offline
+check "evaluator: read-only root, only SETUID/SETGID/KILL capabilities, no credentials in its environment" evaluator_locked_down
+check "GET challenges -> 200; POST with a definition -> 422 (server-owned catalog)" bash -c \
+    "api_json GET /api/v1/projects/$project_id/challenges | grep -q '^200 ' && api_json POST /api/v1/projects/$project_id/challenges '{\"challenge_definition\":{\"key\":\"X\"}}' | grep -q '^422 '"
 # Phase 15: AI assessment is opt-in (AI_ENABLED=false by default); the list is readable either way.
 check "GET assessments -> 200; POST -> 409 AI_ASSESSMENT_DISABLED unless AI is enabled" bash -c \
     "api_json GET /api/v1/projects/$project_id/assessments | grep -q '^200 ' && out=\$(api_json POST /api/v1/projects/$project_id/assessments '{}'); [[ \$out == 202* || \$out == *AI_ASSESSMENT_DISABLED* ]]"
@@ -273,8 +285,8 @@ rm -rf "$jar" "$upload_dir"
 if [[ -n "$project_id" ]]; then
     check "remove probe objects from MinIO" mc_app "mc rm --recursive --force \"app/\$SOURCE_STORAGE_BUCKET/projects/$project_id/\""
 fi
-check "remove probe rows (AI assessments, skill gaps, competencies, DNA, results, runs, snapshots, project, profile, user)" db \
-    "BEGIN; DELETE FROM ai_assessments WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM skill_gap_results WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM skill_gap_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM competency_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM dna_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM analysis_results WHERE analysis_run_id IN (SELECT r.id FROM analysis_runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM analysis_runs WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
+check "remove probe rows (challenges, AI assessments, skill gaps, competencies, DNA, results, runs, snapshots, project, profile, user)" db \
+    "BEGIN; DELETE FROM challenge_submissions WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM challenge_instances WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM ai_assessments WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM skill_gap_results WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM skill_gap_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM competency_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM dna_snapshots WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM analysis_results WHERE analysis_run_id IN (SELECT r.id FROM analysis_runs r JOIN projects p ON p.id = r.project_id JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM analysis_runs WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM source_snapshots WHERE project_id IN (SELECT p.id FROM projects p JOIN users u ON u.id = p.user_id WHERE u.email = '$probe_email'); DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;"
 
 echo "Analyzer service (Phases 08-09)"
 check "analyzer publishes no host port" bash -c \

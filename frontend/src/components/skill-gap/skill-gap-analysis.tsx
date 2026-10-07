@@ -236,6 +236,23 @@ function Report({ snapshot, projectId }: { snapshot: SkillGapSnapshot; projectId
         ))}
       </div>
 
+      <Card data-testid="challenge-link">
+        <CardHeader>
+          <CardTitle>
+            <h2>Coding Challenges</h2>
+          </CardTitle>
+          <CardDescription>
+            Practise on short exercises selected from these gaps, checked by deterministic tests. Completing a challenge does not
+            immediately change your CodeDNA score or skill gap. Reassessment occurs from new code analysis.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link href={`/app/projects/${projectId}/challenges`} className="text-sm font-medium underline underline-offset-4">
+            View Coding Challenges →
+          </Link>
+        </CardContent>
+      </Card>
+
       <Card data-testid="assessment-link">
         <CardHeader>
           <CardTitle>

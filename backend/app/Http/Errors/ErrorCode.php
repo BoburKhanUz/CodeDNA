@@ -38,6 +38,13 @@ enum ErrorCode: string
     case AiAssessmentDisabled = 'AI_ASSESSMENT_DISABLED';
     case AssessmentEvidenceUnavailable = 'ASSESSMENT_EVIDENCE_UNAVAILABLE';
     case AssessmentInputTooLarge = 'ASSESSMENT_INPUT_TOO_LARGE';
+    // Coding challenges (Phase 16).
+    case ChallengesDisabled = 'CHALLENGES_DISABLED';
+    case ChallengeNoEligibleGap = 'CHALLENGE_NO_ELIGIBLE_GAP';
+    case ChallengeNoneAvailable = 'CHALLENGE_NONE_AVAILABLE';
+    case ChallengeEvaluationUnavailable = 'CHALLENGE_EVALUATION_UNAVAILABLE';
+    case ChallengeEvaluationPending = 'CHALLENGE_EVALUATION_PENDING';
+    case ChallengeClosed = 'CHALLENGE_CLOSED';
     case InternalError = 'INTERNAL_ERROR';
     case ServiceUnavailable = 'SERVICE_UNAVAILABLE';
 
@@ -52,7 +59,9 @@ enum ErrorCode: string
             self::PayloadTooLarge, self::SourceArchiveTooLarge => 413,
             self::CsrfTokenMismatch => 419,
             self::ProjectArchived, self::InvalidSourceType, self::AnalysisNotCompleted,
-            self::AiAssessmentDisabled, self::AssessmentEvidenceUnavailable, self::AssessmentInputTooLarge => 409,
+            self::AiAssessmentDisabled, self::AssessmentEvidenceUnavailable, self::AssessmentInputTooLarge,
+            self::ChallengesDisabled, self::ChallengeNoEligibleGap, self::ChallengeNoneAvailable,
+            self::ChallengeEvaluationUnavailable, self::ChallengeEvaluationPending, self::ChallengeClosed => 409,
             self::ValidationFailed, self::InvalidCredentials, self::IdempotencyKeyReused,
             self::SourceArchiveInvalid, self::SourceArchiveUnsafe, self::SourceUncompressedSizeExceeded,
             self::SourceFileCountExceeded, self::SourceFileTooLarge => 422,
@@ -88,6 +97,12 @@ enum ErrorCode: string
             self::AiAssessmentDisabled => 'AI assessment is not enabled on this server.',
             self::AssessmentEvidenceUnavailable => 'There is no skill gap analysis that can be interpreted for this project.',
             self::AssessmentInputTooLarge => 'The evidence of this analysis exceeds the AI input limit.',
+            self::ChallengesDisabled => 'Coding challenges are not enabled on this server.',
+            self::ChallengeNoEligibleGap => 'There is no material skill gap with a supported challenge category.',
+            self::ChallengeNoneAvailable => 'Every challenge for this skill gap analysis has already been assigned.',
+            self::ChallengeEvaluationUnavailable => 'Challenge evaluation is not available right now. Nothing was submitted.',
+            self::ChallengeEvaluationPending => 'The previous attempt is still being evaluated.',
+            self::ChallengeClosed => 'This challenge is closed and accepts no further attempts.',
             self::InternalError => 'An unexpected error occurred.',
             self::ServiceUnavailable => 'The service is temporarily unavailable.',
         };

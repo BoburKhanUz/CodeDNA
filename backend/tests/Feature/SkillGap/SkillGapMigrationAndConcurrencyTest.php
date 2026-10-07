@@ -29,6 +29,8 @@ final class SkillGapMigrationAndConcurrencyTest extends TestCase
 {
     private const MIGRATION = 'database/migrations/2026_10_11_000001_create_skill_gap_tables.php';
 
+    private const CHALLENGE_MIGRATION = 'database/migrations/2026_10_13_000001_create_challenge_tables.php';
+
     private const ASSESSMENT_MIGRATION = 'database/migrations/2026_10_12_000001_create_ai_assessments_table.php';
 
     private ?CompetencySnapshot $competency = null;
@@ -143,6 +145,7 @@ final class SkillGapMigrationAndConcurrencyTest extends TestCase
         }
 
         $competency = $this->competency();
+        $this->artisan('migrate:rollback', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::ASSESSMENT_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION])->assertSuccessful();
         $this->assertFalse(Schema::hasTable('skill_gap_snapshots'));

@@ -35,7 +35,10 @@ into DNA snapshots with the deterministic engine in `App\Services\Dna`
 *archive structure* of uploads (without extracting them), stores them, and
 will hand them to the analyzer (ADR-005). Application code contains no
 process-execution or `eval` primitives, and a test enforces this
-(`NoCommandExecutionTest`).
+(`NoCommandExecutionTest`). This includes coding challenges (Phase 16):
+Laravel stores submitted challenge code and writes it to the spool for the
+isolated evaluator service. It never runs it
+([challenge-evaluator.md](challenge-evaluator.md)).
 
 ## Versions
 
@@ -75,8 +78,11 @@ backend/
 │   ├── Actions/Snapshots/         StoreUploadedSource (upload workflow), RecordSourceSnapshot (versioning)
 │   ├── Actions/Analysis/          StartAnalysis (idempotent start), PersistAnalysisResult
 │   ├── Actions/Assessment/        RequestAssessment (Phase 15: idempotent, queues only)
-│   ├── Console/Commands/          FailStaleAnalyses (analysis:fail-stale), FailStaleAssessments (assessment:fail-stale)
-│   ├── Jobs/                      AnalyzeSourceSnapshot (queue "analysis"), GenerateAssessment (queue "assessment")
+│   ├── Actions/Challenge/         AssignChallenge, SubmitChallengeSolution (Phase 16: idempotent, queues only)
+│   ├── Console/Commands/          FailStaleAnalyses (analysis:fail-stale), FailStaleAssessments (assessment:fail-stale),
+│   │                              FailStaleChallengeEvaluations (challenge:fail-stale)
+│   ├── Jobs/                      AnalyzeSourceSnapshot (queue "analysis"), GenerateAssessment (queue "assessment"),
+│   │                              EvaluateChallengeSubmission (queue "challenge")
 │   ├── Casts/JsonObject.php       JSONB object cast ({} for empty, lists rejected)
 │   ├── Enums/                     domain states, SupportedLocale, ProgrammingLanguage
 │   ├── Exceptions/                ApiException (client-facing, carries an ErrorCode),
@@ -100,6 +106,8 @@ backend/
 │   ├── Providers/AppServiceProvider.php   config validation, rate limiters, password rules, strict models
 │   ├── Services/SystemHealth.php          database/Redis readiness checks
 │   ├── Services/Analyzer/         AnalyzerClient, HmacSigner, CanonicalJson, JsonSchemaValidator, AnalyzerErrorMap
+│   ├── Services/Challenge/        ChallengeCatalog, ChallengeDefinitionData, ChallengeSelector, ChallengeGrader,
+│   │                              Evaluator/{SpoolChallengeEvaluator, UnavailableChallengeEvaluator} (Phase 16)
 │   ├── Support/ConfigurationValidator.php
 │   └── Support/Sources/           ZipArchiveInspector, SourceArchiveLimits, ArchiveSummary, LanguageGuesser
 ├── bootstrap/app.php              routing (api prefix), middleware, exception rendering
@@ -287,7 +295,13 @@ own `retry_after` of 360 s, above the 330 s job timeout), the
 worker service and the `scheduler` service (`analysis:fail-stale` every five
 minutes). Phase 15 adds the `GenerateAssessment` job on queue `assessment`
 of the same connection (90 s job timeout, provider timeout 60 s) and
-`assessment:fail-stale` ([ai-assessment-v1.md](ai-assessment-v1.md)). See
+`assessment:fail-stale` ([ai-assessment-v1.md](ai-assessment-v1.md)).
+Phase 16 adds the `EvaluateChallengeSubmission` job on queue `challenge` of
+the same connection. It has a 90 s job timeout and waits up to 45 s for the
+evaluator. It makes 3 attempts with backoff 10 s and 30 s, for an
+unavailable evaluator only; a retry never re-runs a submission. It also
+adds `challenge:fail-stale`
+([coding-challenges-v1.md](coding-challenges-v1.md#evaluation)). See
 [data-flow.md](data-flow.md#queue-workers) for worker commands and the
 timeout chain, which `ConfigurationValidator` checks at boot.
 
@@ -305,7 +319,9 @@ timeout chain, which `ConfigurationValidator` checks at boot.
   the `request_id` (Laravel Context). For JSON logs in production, set
   `LOG_STDERR_FORMATTER=Monolog\Formatter\JsonFormatter`.
 - **Never logged:** passwords (redacted parameters; Laravel never flashes
-  password fields), session cookies, CSRF tokens, secrets, source code.
+  password fields), session cookies, CSRF tokens, secrets, source code
+  (including submitted challenge code, hidden challenge tests and expected
+  values).
   Health-check failures log only the exception class.
 - **Version leakage:** PHP's `expose_php=Off` and Nginx's `server_tokens
   off` mean no `X-Powered-By` header or server version is sent. Error

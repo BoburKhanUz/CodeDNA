@@ -83,6 +83,15 @@ describe("SkillGapAnalysis", () => {
     expect(within(complexity).getByTestId("skill-gap-gap")).toHaveTextContent("Gap: 0.00 points (below the material-gap threshold)");
   });
 
+  it("links to the coding challenges and says they do not change the gaps", async () => {
+    respondWith(gapsSnapshot);
+    render(<SkillGapAnalysis projectId={project.id} />);
+
+    const card = await screen.findByTestId("challenge-link");
+    expect(within(card).getByRole("link", { name: "View Coding Challenges →" })).toHaveAttribute("href", `/app/projects/${project.id}/challenges`);
+    expect(card).toHaveTextContent("Completing a challenge does not immediately change your CodeDNA score or skill gap. Reassessment occurs from new code analysis.");
+  });
+
   it("links to the AI assessment", async () => {
     respondWith(gapsSnapshot);
     render(<SkillGapAnalysis projectId={project.id} />);

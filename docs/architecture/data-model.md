@@ -34,6 +34,10 @@ users ──1:n──► projects ──1:n──► source_snapshots ──1:n�
 | `competency_snapshots` | Immutable competency matrix of one DNA snapshot, one per competency version (Phase 13) | **never** |
 | `skill_gap_snapshots` | Immutable skill gap analysis of one competency snapshot, one per skill gap version and target profile (Phase 14) | **never** |
 | `skill_gap_results` | One immutable gap per competency of a skill gap snapshot (Phase 14) | **never** |
+| `ai_assessments` | Non-authoritative AI interpretation of a skill gap snapshot (Phase 15) | only until a terminal state |
+| `challenge_definitions` | Stored copy of a published catalog challenge, one per key and version (Phase 16) | **never** |
+| `challenge_instances` | A challenge assigned for one gap of a skill gap snapshot, with its selection provenance (Phase 16) | lifecycle columns only, until `PASSED` or `FAILED` |
+| `challenge_submissions` | One immutable attempt: source, versions, evaluation (Phase 16) | lifecycle columns only, until a terminal state |
 
 There is deliberately no separate `repositories` or `analyses` table. A
 project carries its source origin (`source_type`, `repository_url`). A
@@ -46,13 +50,16 @@ integrations (Phase 19) will add their own tables when they exist.
 |---|---|
 | `User` | `developerProfile()` hasOne; `projects()` hasMany |
 | `DeveloperProfile` | `user()` belongsTo |
-| `Project` | `user()` belongsTo; `sourceSnapshots()`, `analysisRuns()`, `dnaSnapshots()` hasMany |
+| `Project` | `user()` belongsTo; `sourceSnapshots()`, `analysisRuns()`, `dnaSnapshots()`, `challengeInstances()` hasMany |
 | `SourceSnapshot` | `project()` belongsTo; `analysisRuns()` hasMany |
 | `AnalysisRun` | `project()`, `sourceSnapshot()` belongsTo; `result()` hasOne; `dnaSnapshots()` hasMany (one per scoring version), `dnaSnapshot()` hasOne |
 | `DnaSnapshot` | `user()`, `project()`, `analysisRun()`, `sourceSnapshot()` belongsTo; `competencySnapshots()` hasMany |
 | `CompetencySnapshot` | `dnaSnapshot()`, `project()`, `analysisRun()`, `sourceSnapshot()` belongsTo; `skillGapSnapshots()` hasMany |
 | `SkillGapSnapshot` | `competencySnapshot()`, `project()`, `sourceSnapshot()` belongsTo; `results()` hasMany (ordered) |
 | `SkillGapResult` | `snapshot()` belongsTo |
+| `ChallengeDefinition` | none (read through instances and submissions) |
+| `ChallengeInstance` | `project()`, `definition()`, `skillGapSnapshot()` belongsTo; `submissions()` hasMany (newest attempt first), `challengeSubmissions()` hasMany (unordered) |
+| `ChallengeSubmission` | `instance()`, `definition()` belongsTo |
 
 All relationships carry generic return types (`BelongsTo<Project, $this>`).
 Outside production, strict mode makes lazy loading throw, so callers must
@@ -339,6 +346,84 @@ is stored here or read from here.
 - **What is never stored:** API keys, headers, prompt text and raw
   responses.
 
+### challenge_definitions, challenge_instances, challenge_submissions
+
+Phase 16 ([coding-challenges-v1.md](coding-challenges-v1.md)). A practice
+layer: nothing here is read by, or writes to, any DNA, competency or skill
+gap table. The skill gap snapshot is referenced, never changed.
+
+**`challenge_definitions`** is the stored copy of a catalog definition:
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `key`, `version`, `catalog_version` | varchar | unique `(key, version)`; key format `<CATEGORY>_NNN` (CHECK) |
+| `category`, `difficulty` | varchar | the four measurable competencies; `BEGINNER` \| `INTERMEDIATE` \| `ADVANCED` |
+| `language`, `runtime` | varchar | `python`, `python3.11` (CHECK: the only executable language) |
+| `title` | varchar(120) | |
+| `definition_fingerprint`, `test_suite_fingerprint` | char(64) | SHA-256 hex |
+| `document` | jsonb | the full definition, hidden cases included; ≤ 256 KiB; never returned whole |
+| `created_at` | timestamp | no `updated_at` |
+
+Trigger `challenge_definitions_immutable` refuses every update.
+
+**`challenge_instances`** holds one row per assigned challenge:
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `user_id`, `project_id`, `skill_gap_snapshot_id`, `competency_snapshot_id`, `dna_snapshot_id`, `analysis_run_id`, `source_snapshot_id` | ulid | one composite FK onto `skill_gap_snapshots`' lineage index, `RESTRICT` |
+| `challenge_definition_id`, `definition_key`, `definition_version` | ulid, varchar | composite FK onto `challenge_definitions (id, key, version)` |
+| `competency_key`, `difficulty`, `language` | varchar | the definition key must belong to the competency (CHECK) |
+| `selection_version`, `catalog_version`, `catalog_fingerprint` | varchar, char(64) | |
+| `selection` | jsonb | the selection provenance: rule, eligible gaps, the gap's values at selection, preferred and selected difficulty, exclusions; ≤ 16 KiB |
+| `status` | varchar(16) | `ASSIGNED` \| `EVALUATING` \| `PASSED` \| `FAILED` |
+| `max_attempts`, `attempts_used` | smallint | `0 ≤ used ≤ max ≤ 20`; `FAILED` ⇔ attempts exhausted |
+| `last_result` | varchar null | `PASSED` \| `FAILED` \| `ERROR` |
+| `closed_at` | timestamp null | present ⇔ `PASSED` or `FAILED` |
+| `created_at`, `updated_at` | timestamp | |
+
+- **Unique keys:**
+  - `challenge_instances_definition_per_snapshot_unique` on
+    `(skill_gap_snapshot_id, definition_key)`;
+  - `challenge_instances_owner_unique` on `(id, project_id, user_id)`, the
+    target of the submissions' FK;
+  - the partial `challenge_instances_active_per_gap_unique` on
+    `(project_id, skill_gap_snapshot_id, competency_key)`
+    `WHERE status IN ('ASSIGNED', 'EVALUATING')`.
+- **Trigger:** `challenge_instances_guarded` refuses any update of a
+  `PASSED` or `FAILED` row and any change to identity, lineage, definition
+  or selection. It also refuses a decrease of `attempts_used`.
+
+**`challenge_submissions`** holds one row per attempt:
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `challenge_instance_id`, `project_id`, `user_id` | ulid | composite FK onto `challenge_instances (id, project_id, user_id)` |
+| `challenge_definition_id` | ulid | FK |
+| `attempt_number` | smallint | unique per challenge |
+| `language`, `source` | varchar, text | the submitted file, exactly as sent |
+| `source_sha256`, `source_bytes` | char(64), int | CHECK recomputes both from `source`; ≤ 64 KiB |
+| `idempotency_key_hash` | char(64) null | SHA-256 of the `Idempotency-Key`; unique per challenge |
+| `status` | varchar(16) | `QUEUED` \| `RUNNING` \| `PASSED` \| `FAILED` \| `ERROR` |
+| `definition_fingerprint`, `test_suite_fingerprint`, `evaluation_version` | char(64), varchar | what the attempt is graded against |
+| `evaluator`, `evaluator_version`, `runtime`, `execution_status`, `duration_ms` | | |
+| `evaluation`, `evaluation_fingerprint` | jsonb, char(64) null | present ⇔ `PASSED` or `FAILED`; ≤ 128 KiB |
+| `failure_code`, `failure_detail` | varchar null | present ⇔ `ERROR`; fixed codes only |
+| `job_attempts`, `claim_token`, `lease_expires_at` | | claim token and lease present ⇔ `RUNNING` |
+| `started_at`, `completed_at`, `created_at`, `updated_at` | timestamp | `completed_at` present ⇔ terminal |
+
+- **Partial unique index:** `challenge_submissions_one_pending_unique` on
+  `(challenge_instance_id)` `WHERE status IN ('QUEUED', 'RUNNING')`.
+- **Trigger:** `challenge_submissions_guarded` checks two things.
+  - On insert, the challenge must be `ASSIGNED`, have attempts left, and
+    have the same definition and language.
+  - On update, the source, identity and fingerprints never change, and a
+    terminal row never changes at all.
+- **Nothing is deleted.** All FKs are `RESTRICT`, and the models refuse
+  deletes.
+
 ## States
 
 States are **VARCHAR columns with CHECK constraints**, mirrored by PHP backed
@@ -353,6 +438,9 @@ enums (`app/Enums`) through Eloquent enum casts:
 | `CompetencySnapshotStatus` | `ASSESSED`, `INSUFFICIENT_DATA` (competency statuses and levels live in the JSONB) |
 | `SkillGapSnapshotStatus`, `SkillGapStatus`, `GapPriority` | see `skill_gap_snapshots` and `skill_gap_results` |
 | `AssessmentStatus` | `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED` (see `ai_assessments`) |
+| `ChallengeStatus` | `ASSIGNED`, `EVALUATING`, `PASSED`, `FAILED` (see `challenge_instances`) |
+| `SubmissionStatus` | `QUEUED`, `RUNNING`, `PASSED`, `FAILED`, `ERROR` (see `challenge_submissions`) |
+| `ChallengeDifficulty` | `BEGINNER`, `INTERMEDIATE`, `ADVANCED` |
 
 **Why not PostgreSQL `ENUM` types?** Adding or renaming a value then needs
 `ALTER TYPE`, which has transaction restrictions and couples deployments to
@@ -399,7 +487,9 @@ DNA snapshot:     created (READY or INSUFFICIENT_DATA) from a SUCCEEDED run ─�
 
 Historical records (`source_snapshots`, terminal `analysis_runs`,
 `analysis_results`, `dna_snapshots`, `competency_snapshots`,
-`skill_gap_snapshots`, `skill_gap_results`) are append-only. This is an architectural invariant.
+`skill_gap_snapshots`, `skill_gap_results`, `challenge_definitions`) are
+append-only. Challenge instances and submissions change only their
+lifecycle columns, and their database triggers enforce that (Phase 16). This is an architectural invariant.
 
 | Layer | Mechanism |
 |---|---|

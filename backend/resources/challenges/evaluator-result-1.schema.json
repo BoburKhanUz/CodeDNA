@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codedna.dev/schemas/evaluator-result-1.json",
+  "title": "Challenge evaluator result (codedna-evaluator/1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol", "id", "evaluator_version", "runtime", "status", "load_error", "inspection", "cases", "duration_ms"],
+  "properties": {
+    "protocol": { "const": "codedna-evaluator/1" },
+    "id": { "type": "string", "pattern": "^[0-9a-z]{26}$" },
+    "evaluator_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "runtime": { "const": "python3.11" },
+    "status": { "enum": ["COMPLETED", "SYNTAX_ERROR", "LOAD_ERROR", "TIMEOUT", "OUTPUT_LIMIT", "CRASHED", "INTERRUPTED", "REJECTED"] },
+    "load_error": { "type": ["string", "null"], "maxLength": 64 },
+    "inspection": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["syntax_valid", "syntax_error_line", "functions", "classes"],
+      "properties": {
+        "syntax_valid": { "type": "boolean" },
+        "syntax_error_line": { "type": ["integer", "null"], "minimum": 0 },
+        "functions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "line", "lines", "parameters", "complexity", "nesting"],
+            "properties": {
+              "name": { "type": "string", "maxLength": 64 },
+              "line": { "type": "integer", "minimum": 0 },
+              "lines": { "type": "integer", "minimum": 0 },
+              "parameters": { "type": "integer", "minimum": 0 },
+              "complexity": { "type": "integer", "minimum": 0 },
+              "nesting": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "classes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "line", "lines", "methods"],
+            "properties": {
+              "name": { "type": "string", "maxLength": 64 },
+              "line": { "type": "integer", "minimum": 0 },
+              "lines": { "type": "integer", "minimum": 0 },
+              "methods": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9_-]{1,32}$" },
+          "status": { "enum": ["OK", "ERROR", "MISSING"] },
+          "error": { "type": "string", "maxLength": 64 },
+          "value": {}
+        }
+      }
+    },
+    "duration_ms": { "type": "integer", "minimum": 0 }
+  }
+}

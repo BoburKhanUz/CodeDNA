@@ -45,6 +45,11 @@ final class ProjectPolicy
         return $this->owner($actor, $project);
     }
 
+    public function practice(User $actor, Project $project): Response
+    {
+        return $this->owner($actor, $project);
+    }
+
     private function owner(User $actor, Project $project): Response
     {
         return $actor->getKey() === $project->user_id ? Response::allow() : Response::denyAsNotFound();

@@ -8,6 +8,10 @@ use App\Exceptions\InvalidConfigurationException;
 use App\Services\Assessment\Provider\AiProvider;
 use App\Services\Assessment\Provider\FakeAiProvider;
 use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
+use App\Services\Challenge\ChallengeCatalog;
+use App\Services\Challenge\Evaluator\ChallengeEvaluator;
+use App\Services\Challenge\Evaluator\SpoolChallengeEvaluator;
+use App\Services\Challenge\Evaluator\UnavailableChallengeEvaluator;
 use App\Support\ConfigurationValidator;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +35,19 @@ class AppServiceProvider extends ServiceProvider
             return ($config['provider'] ?? null) === FakeAiProvider::NAME
                 ? new FakeAiProvider
                 : new OpenAiCompatibleProvider($app->make(Http::class), $config);
+        });
+
+        // Coding challenges (Phase 16): the server-owned catalog, and the only
+        // path to code execution, the isolated evaluator. Never AI.
+        $this->app->singleton(ChallengeCatalog::class, static fn ($app): ChallengeCatalog => ChallengeCatalog::forVersion(
+            (string) $app['config']->get('codedna.challenges.catalog_version'),
+        ));
+        $this->app->bind(ChallengeEvaluator::class, static function ($app): ChallengeEvaluator {
+            $config = (array) $app['config']->get('codedna.challenges');
+
+            return ($config['evaluator'] ?? null) === 'spool'
+                ? new SpoolChallengeEvaluator((string) $config['spool_path'], (int) $config['wait_seconds'], (int) $config['heartbeat_max_age_seconds'])
+                : new UnavailableChallengeEvaluator;
         });
     }
 
@@ -112,6 +129,19 @@ class AppServiceProvider extends ServiceProvider
             return [
                 Limit::perMinute($limits['assessment_create_per_minute'])->by($key.'|minute'),
                 Limit::perHour($limits['assessment_create_per_hour'])->by($key.'|hour'),
+            ];
+        });
+
+        RateLimiter::for('challenge-assign', static fn (Request $request): Limit => Limit::perMinute($limits['challenge_assign_per_minute'])
+            ->by('challenge-assign:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        // Every submission is executed in the evaluator: strict.
+        RateLimiter::for('challenge-submit', static function (Request $request) use ($limits): array {
+            $key = 'challenge-submit:'.($request->user()?->getAuthIdentifier() ?? $request->ip());
+
+            return [
+                Limit::perMinute($limits['challenge_submit_per_minute'])->by($key.'|minute'),
+                Limit::perHour($limits['challenge_submit_per_hour'])->by($key.'|hour'),
             ];
         });
 

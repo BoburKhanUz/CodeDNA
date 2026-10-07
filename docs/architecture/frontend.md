@@ -39,12 +39,14 @@ frontend/src/
 │   ├── app/projects/page.tsx         /app/projects: project list
 │   ├── app/projects/new/page.tsx     /app/projects/new: create a project
 │   ├── app/projects/[project]/page.tsx  /app/projects/{id}: details, upload, snapshots, archive
+│   ├── app/projects/[project]/challenges/page.tsx, [challenge]/page.tsx   coding challenges (Phase 16)
 │   ├── error.tsx, not-found.tsx
 ├── components/
 │   ├── ui/                           shadcn/ui: button, input, label, card, alert, textarea, native-select
 │   ├── auth/                         login/register forms, logout button, AuthProvider, error alert
 │   ├── profile/                      ProfileSettings (loader), ProfileForm, PasswordForm, field + validation
 │   ├── projects/                     ProjectList, ProjectForm, ProjectDetail, UploadSource, StatusBadge
+│   ├── challenge/                    ChallengeList, ChallengeDetail, CodeEditor, EvaluationFeedback (Phase 16)
 │   ├── app/app-shell.tsx             sidebar navigation (Home, Projects, Profile) + header with the signed-in user
 │   └── brand/logo.tsx
 ├── lib/
@@ -58,6 +60,7 @@ frontend/src/
 │   ├── profile/options.ts            labels for locales and languages; time zone suggestions
 │   ├── projects/client.ts            list/get/create/archive projects, list snapshots, uploadSource()
 │   ├── projects/format.ts            sizes, UTC dates, labels, slugify (plain text only)
+│   ├── challenge/client.ts, format.ts   challenge API calls; labels and value formatting (Phase 16)
 │   ├── config.server.ts              server-only env (BACKEND_INTERNAL_URL, FRONTEND_URL)
 │   └── utils.ts                      shadcn `cn` helper
 └── test/                             test helpers (API response builders, router mock)
@@ -84,6 +87,8 @@ description is introduced, they move to `packages/types` and are generated.
 | `/app/projects/[project]/competencies` | dynamic | Same gate. Competency Matrix of the newest competency snapshot, or an empty state. |
 | `/app/projects/[project]/skill-gaps` | dynamic | Same gate. Skill gaps of the newest skill gap snapshot against the target profile, or an empty state. |
 | `/app/projects/[project]/assessment` | dynamic | Same gate. The newest AI assessment (AI-generated, non-authoritative), its request button, or an empty state. |
+| `/app/projects/[project]/challenges` | dynamic | Same gate. The project's coding challenges and the button that assigns the next one, or an empty state. |
+| `/app/projects/[project]/challenges/[challenge]` | dynamic | Same gate. One challenge: the exercise, why it was selected, the editor, attempts and deterministic feedback. Unknown or foreign IDs show "Challenge not found" / "Project not found". |
 | anything else | — | Not-found page. |
 
 There is no `?next=` return-URL parameter, so there is no open-redirect
@@ -348,6 +353,57 @@ the Skill Gaps.
   input, prompt, model choice, chat, editing or regeneration of existing
   text. Nothing is computed in the browser.
 
+## Coding challenges (`/app/projects/[project]/challenges`)
+
+Phase 16. The pages present the [coding challenges API](../api/README.md#coding-challenges)
+(`lib/challenge/client.ts`). They are reached from the Skill Gaps page's
+"Coding Challenges" card.
+
+- **Notice.** Both pages, and the Skill Gaps card, state: "Completing this
+  challenge does not immediately change your CodeDNA score or skill gap.
+  Reassessment occurs from new code analysis." The detail page shows the
+  API's `notice`. Nothing on these pages computes or displays a changed
+  score.
+- **List.** Each challenge shows its title, competency, difficulty (a label
+  for the exercise, never for the person), language, status, attempts and
+  last result. "Get a challenge" / "Get the next challenge" sends `{}`; the
+  server selects the exercise. Archived projects show no button.
+- **Detail.** It shows:
+  - the title, summary, instructions, constraints and acceptance criteria;
+  - the structural rules, the visible examples, and the number of hidden
+    tests;
+  - the linked skill gap and why the challenge was selected (rule, gap
+    priority, difficulty);
+  - the attempts list;
+  - the feedback of the selected attempt.
+- **Editor** (`CodeEditor`). It is a `<textarea>` under a highlighted
+  overlay that renders the same text, so it stays accessible and needs no
+  editor dependency. Python keywords, strings, numbers and comments are
+  highlighted. Tab inserts four spaces. Escape followed by Tab moves focus
+  out of the editor, so there is no keyboard trap; a screen-reader hint says
+  so. "Reset to starter code" restores the starter.
+- **What the editor does not have.** There is no terminal, shell, package
+  installation, file tree, run button or AI hint. The only action is
+  "Submit attempt", which sends `{language, source}`.
+- **States.**
+  - Pending attempts are polled every 2 seconds, with fixed text and no
+    fake progress.
+  - Passed and failed attempts show the deterministic feedback
+    (`EvaluationFeedback`): verdict, criteria, rules, and cases. Visible
+    cases show arguments, expected and observed values; hidden cases show
+    status only.
+  - Error attempts show the fixed failure message, which says that the
+    attempt was not counted.
+  - When `evaluation_available` is false, the submit button is disabled
+    and the page says that evaluation is unavailable.
+  - Closed challenges (passed, or out of attempts) are read-only.
+  - The pages also show a loading skeleton, an error with retry, 401 →
+    `/login`, and 404 → "not found".
+- **Double submits.** The button is disabled while sending. The server
+  allows one pending attempt per challenge, so a repeated click or a
+  replayed request answers `409 CHALLENGE_EVALUATION_PENDING`. It never
+  creates a second attempt.
+
 ## API client (`lib/api`)
 
 - **Same-origin only.** Paths must be absolute paths like `/api/v1/...`.
@@ -442,6 +498,11 @@ The tests cover:
   detail (plain-text rendering, archive confirmation, repository and
   not-found states) and the upload panel (client checks, progress, success
   text, rejected archives, idempotent retry, new key per file, 401)
+
+- the challenge list and detail (notice, assignment, editor input and
+  highlighting, submission, polling, feedback for visible and hidden
+  cases, error attempts, unavailable evaluation, closed and archived
+  states, 401 and 404)
 
 Browser end-to-end checks are not yet part of the repository. Phases 04, 06
 and 07 verified the full browser flows with Playwright and Chromium against

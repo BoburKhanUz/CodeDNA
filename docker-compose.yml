@@ -94,11 +94,20 @@ x-backend-environment: &backend-environment
   AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
   AI_JOB_TIMEOUT_SECONDS: ${AI_JOB_TIMEOUT_SECONDS:-90}
   AI_MAX_ATTEMPTS: ${AI_MAX_ATTEMPTS:-3}
+  # Coding challenges (Phase 16). Evaluation runs in the isolated evaluator
+  # service, reached only through the spool volume.
+  CHALLENGE_ENABLED: ${CHALLENGE_ENABLED:-true}
+  CHALLENGE_EVALUATOR: ${CHALLENGE_EVALUATOR:-spool}
+  CHALLENGE_EVALUATOR_SPOOL: /var/spool/codedna-challenges
+  CHALLENGE_MAX_SOURCE_BYTES: ${CHALLENGE_MAX_SOURCE_BYTES:-16384}
+  CHALLENGE_MAX_ATTEMPTS: ${CHALLENGE_MAX_ATTEMPTS:-5}
 
 x-backend-volumes: &backend-volumes
   - ./backend:/var/www/backend
   # Analyzer response JSON Schemas, checked by the analyzer client.
   - ./packages/api-contracts:/var/www/contracts:ro
+  # Challenge evaluator spool (Phase 16): private, group 10500 only.
+  - challenge-spool:/var/spool/codedna-challenges
 
 services:
   nginx:
@@ -171,6 +180,9 @@ services:
     image: codedna-backend:dev
     environment: *backend-environment
     volumes: *backend-volumes
+    # Member of the challenge spool group (Phase 16).
+    group_add:
+      - "10500"
     depends_on:
       postgres:
         condition: service_healthy
@@ -190,8 +202,8 @@ services:
       start_period: 300s
       start_interval: 5s
 
-  # Queue worker for analysis jobs (Phase 10) and AI assessment jobs
-  # (Phase 15, lower priority): same image, code and environment as the
+  # Queue worker for analysis jobs (Phase 10), AI assessment jobs (Phase 15)
+  # and challenge evaluations (Phase 16), in that priority: same image, code and environment as the
   # backend. `queue:listen` reloads the bind-mounted code for every job
   # (development); production runs `queue:work` with the same options. The
   # worker timeout is ANALYSIS_JOB_TIMEOUT_SECONDS; assessment jobs carry
@@ -200,6 +212,9 @@ services:
     image: codedna-backend:dev
     environment: *backend-environment
     volumes: *backend-volumes
+    # Member of the challenge spool group (Phase 16).
+    group_add:
+      - "10500"
     networks:
       - codedna
       - codedna-internal
@@ -208,7 +223,7 @@ services:
       - artisan
       - queue:listen
       - analysis
-      - --queue=analysis,assessment
+      - --queue=analysis,assessment,challenge
       - --timeout=${ANALYSIS_JOB_TIMEOUT_SECONDS:-330}
       - --sleep=3
       - --tries=0
@@ -225,6 +240,9 @@ services:
     image: codedna-backend:dev
     environment: *backend-environment
     volumes: *backend-volumes
+    # Member of the challenge spool group (Phase 16).
+    group_add:
+      - "10500"
     networks:
       - codedna
     command: ["php", "artisan", "schedule:work"]
@@ -294,6 +312,63 @@ services:
       retries: 5
       start_period: 30s
       start_interval: 2s
+
+  # Challenge evaluator (Phase 16): runs submitted code in a sandbox
+  # (docs/architecture/challenge-evaluator.md). NO network at all, not even
+  # the internal one: it exchanges files with the queue worker through the
+  # challenge-spool volume. No secrets, read-only root filesystem, only the
+  # capabilities needed to drop each job to an unprivileged slot user.
+  evaluator:
+    build:
+      context: ./evaluator
+      dockerfile: ../docker/evaluator/Dockerfile
+    image: codedna-evaluator:dev
+    # tini as PID 1 reaps killed sandbox processes (zombies would count
+    # against the slot's process limit).
+    init: true
+    environment:
+      CHALLENGE_EXECUTION_TIMEOUT: ${CHALLENGE_EXECUTION_TIMEOUT:-5}
+      CHALLENGE_MAX_MEMORY_MB: ${CHALLENGE_MAX_MEMORY_MB:-256}
+      CHALLENGE_MAX_PROCESSES: ${CHALLENGE_MAX_PROCESSES:-16}
+      CHALLENGE_MAX_OUTPUT_BYTES: ${CHALLENGE_MAX_OUTPUT_BYTES:-65536}
+      CHALLENGE_MAX_SOURCE_BYTES: ${CHALLENGE_MAX_SOURCE_BYTES:-16384}
+      # Must match the /sandbox/N tmpfs mounts below (one per slot).
+      CHALLENGE_MAX_CONCURRENT_EVALUATIONS: "2"
+    network_mode: none
+    read_only: true
+    tmpfs:
+      # Supervisor scratch space (tests): root only.
+      - /tmp:size=8m,mode=0700
+      # One private, size-limited working directory per sandbox slot user.
+      - /sandbox/0:size=16m,mode=0700,uid=10002,gid=10002
+      - /sandbox/1:size=16m,mode=0700,uid=10003,gid=10003
+    volumes:
+      - challenge-spool:/spool
+    group_add:
+      - "10500"
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+      - KILL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 768m
+    cpus: 1
+    pids_limit: 128
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import json,time; assert time.time() - json.load(open('/spool/heartbeat'))['at'] < 15"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+      start_interval: 2s
+    restart: unless-stopped
 
   postgres:
     image: postgres:16-alpine
@@ -389,6 +464,8 @@ networks:
     internal: true
 
 volumes:
+  # Challenge evaluator spool (Phase 16): requests, claimed work and results.
+  challenge-spool:
   postgres_data:
   redis_data:
   minio_data:

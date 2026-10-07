@@ -23,6 +23,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->statefulApi();
         $middleware->throttleApi('api');
 
+        // Challenge submissions keep their source byte for byte (Phase 16):
+        // whitespace is part of the code and of its hash.
+        $middleware->trimStrings(except: [
+            static fn (Request $request): bool => $request->is('api/v1/projects/*/challenges/*/submissions'),
+        ]);
+
         // API clients get a 401 JSON error, never a redirect to a login page.
         $middleware->redirectGuestsTo(static fn (): ?string => null);
     })

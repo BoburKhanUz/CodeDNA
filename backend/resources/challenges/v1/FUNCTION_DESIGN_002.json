@@ -1,0 +1,129 @@
+{
+  "schema_version": "challenge-definition/1",
+  "key": "FUNCTION_DESIGN_002",
+  "version": "1.0.0",
+  "category": "FUNCTION_DESIGN",
+  "difficulty": "INTERMEDIATE",
+  "language": "python",
+  "runtime": "python3.11",
+  "estimated_minutes": 25,
+  "title": "Narrow the formatting interface",
+  "summary": "Replace a seven-parameter helper with small functions that take few, meaningful arguments.",
+  "instructions": [
+    "format_line(line) formats an invoice line as 'description | qty x unit = total', with amounts as '12.34 EUR'.",
+    "line has description, qty, unit_cents and currency; total is qty x unit_cents.",
+    "Amounts always show two decimal places, for example 5 cents is '0.05 EUR'.",
+    "The starter code is correct but passes seven parameters to its helper; give every function a narrow interface."
+  ],
+  "constraints": [
+    "Python 3.11 standard library only.",
+    "Every function takes at most 2 parameters.",
+    "Every function is at most 12 lines long."
+  ],
+  "entrypoint": "format_line",
+  "starter_code": "def render(description, qty, unit_cents, total_cents, currency, decimals, separator):\n    unit = str(unit_cents // 100) + separator + str(unit_cents % 100).zfill(decimals) + \" \" + currency\n    total = str(total_cents // 100) + separator + str(total_cents % 100).zfill(decimals) + \" \" + currency\n    return description + \" | \" + str(qty) + \" x \" + unit + \" = \" + total\n\n\ndef format_line(line):\n    return render(line[\"description\"], line[\"qty\"], line[\"unit_cents\"], line[\"qty\"] * line[\"unit_cents\"], line[\"currency\"], 2, \".\")\n",
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "description": "The examples are formatted as expected.",
+      "checks": [
+        "tests:visible"
+      ]
+    },
+    {
+      "id": "AC2",
+      "description": "All further lines are formatted as expected.",
+      "checks": [
+        "tests:hidden"
+      ]
+    },
+    {
+      "id": "AC3",
+      "description": "Every function takes at most 2 parameters.",
+      "checks": [
+        "rule:max_function_parameters"
+      ]
+    },
+    {
+      "id": "AC4",
+      "description": "Every function is at most 12 lines long.",
+      "checks": [
+        "rule:max_function_lines"
+      ]
+    }
+  ],
+  "rules": {
+    "syntax_valid": true,
+    "max_function_parameters": 2,
+    "max_function_lines": 12
+  },
+  "cases": [
+    {
+      "id": "v1",
+      "visibility": "VISIBLE",
+      "args": [
+        {
+          "description": "Widget",
+          "qty": 3,
+          "unit_cents": 1250,
+          "currency": "EUR"
+        }
+      ],
+      "description": "several units",
+      "expected": "Widget | 3 x 12.50 EUR = 37.50 EUR"
+    },
+    {
+      "id": "v2",
+      "visibility": "VISIBLE",
+      "args": [
+        {
+          "description": "Screw",
+          "qty": 100,
+          "unit_cents": 5,
+          "currency": "USD"
+        }
+      ],
+      "description": "cents below ten",
+      "expected": "Screw | 100 x 0.05 USD = 5.00 USD"
+    },
+    {
+      "id": "h1",
+      "visibility": "HIDDEN",
+      "args": [
+        {
+          "description": "Free sample",
+          "qty": 1,
+          "unit_cents": 0,
+          "currency": "EUR"
+        }
+      ],
+      "expected": "Free sample | 1 x 0.00 EUR = 0.00 EUR"
+    },
+    {
+      "id": "h2",
+      "visibility": "HIDDEN",
+      "args": [
+        {
+          "description": "Licence",
+          "qty": 2,
+          "unit_cents": 49999,
+          "currency": "USD"
+        }
+      ],
+      "expected": "Licence | 2 x 499.99 USD = 999.98 USD"
+    },
+    {
+      "id": "h3",
+      "visibility": "HIDDEN",
+      "args": [
+        {
+          "description": "Cable",
+          "qty": 0,
+          "unit_cents": 350,
+          "currency": "EUR"
+        }
+      ],
+      "expected": "Cable | 0 x 3.50 EUR = 0.00 EUR"
+    }
+  ]
+}

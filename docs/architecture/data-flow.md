@@ -306,6 +306,49 @@ on request:
 AI failures never change the run or any snapshot. Details:
 [ai-assessment-v1.md](ai-assessment-v1.md).
 
+### Coding challenges (Phase 16)
+
+Challenges read skill gaps and never write analysis data. There is **no
+arrow from an evaluation result to CodeDNA**: passing a challenge changes no
+DNA score, competency, skill gap or snapshot. Only a new analysis of new
+source code can change them.
+
+1. `POST /api/v1/projects/{project}/challenges` runs
+   `App\Actions\Challenge\AssignChallenge`. It reads the stored skill gap
+   results, lets `ChallengeSelector` pick a catalog definition
+   deterministically (no AI, no randomness), and records a
+   `challenge_instances` row with its lineage and selection provenance.
+2. `POST …/challenges/{challenge}/submissions` runs
+   `SubmitChallengeSolution`. It validates the source, records an immutable
+   QUEUED `challenge_submissions` row, sets the challenge to EVALUATING, and
+   dispatches `App\Jobs\EvaluateChallengeSubmission` after commit to queue
+   `challenge` on the `analysis` connection. The worker listens to
+   `analysis,assessment,challenge`.
+3. The job claims the submission with a lease and checks the definition
+   fingerprints. It writes a request file (source, entrypoint and case
+   arguments; **no expected values**) to the spool volume and waits for the
+   result file.
+4. The evaluator service has no network. It runs the code as an
+   unprivileged sandbox user with resource limits
+   ([challenge-evaluator.md](challenge-evaluator.md)) and writes back only
+   observations: returned values, exception types and structural metrics.
+5. The job validates and grades the result (`ChallengeGrader`), then stores
+   the submission as PASSED, FAILED or ERROR and moves the challenge, only
+   while it still holds its claim token.
+6. `challenge:fail-stale` (every five minutes) ends submissions stuck in
+   QUEUED or RUNNING as ERROR, and returns their challenge to ASSIGNED.
+
+```text
+skill_gap_results ──read──► ChallengeSelector ──► challenge_instances
+                                                    │
+     source ──► challenge_submissions ──► queue `challenge` ──► spool ──► evaluator (no network)
+                                                    ▲                          │
+                          ChallengeGrader ◄── result file ◄────────────────────┘
+          (no arrow back to dna_snapshots, competency_snapshots or skill_gap_*)
+```
+
+Details: [coding-challenges-v1.md](coding-challenges-v1.md).
+
 ## Run state machine
 
 ```text
@@ -439,6 +482,12 @@ frees the logical analysis for a new run.
   `http_status`, `analyzer_code` and `result_hash` (IDs and codes only).
 - Run timestamps (`created_at`, `started_at`, `completed_at`) support
   duration and queue-latency metrics.
+- Challenges log `challenge.assigned`, `challenge.submitted`,
+  `challenge.evaluation_started`, `challenge.evaluated`,
+  `challenge.evaluation_retrying`, `challenge.evaluation_failed` and
+  `challenge.result_ignored`, with IDs, statuses, durations and failure
+  codes only. Submitted source, hidden tests, expected values and evaluator
+  internals are never logged.
 - **Never logged:** source code, file contents, archive entry names, secret
   values, pre-signed URLs, HMAC secrets or signatures, session cookies, or
   tokens.
@@ -457,3 +506,5 @@ frees the logical analysis for a new run.
 | Metrics, features, scores | PostgreSQL | Medium |
 | Secret findings | PostgreSQL | Medium. Locations only, never values |
 | AI inputs (Phase 15) | Sent to the LLM provider | Derived metrics only; no source, no secrets |
+| Challenge submissions (Phase 16) | PostgreSQL; spool volume while evaluated | Medium. Code written for an exercise, executed only in the evaluator; never logged |
+| Hidden challenge tests | Repository catalog, PostgreSQL | Low. Never returned by the API and never sent to the evaluator with expected values |

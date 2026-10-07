@@ -161,6 +161,41 @@ return [
         'version' => (string) env('CODEDNA_ASSESSMENT_VERSION', '1.0.0'),
     ],
 
+    /*
+    | Coding challenges (docs/architecture/coding-challenges-v1.md). A
+    | practice layer: challenges never change CodeDNA, competencies or skill
+    | gaps, and they never use AI. Submitted code runs only in the isolated
+    | evaluator service (docs/architecture/challenge-evaluator.md), reached
+    | through the spool volume; "none" disables execution (submissions are
+    | refused) and nothing ever falls back to running code anywhere else.
+    | Timeouts keep wait < job timeout < queue retry_after (validated at boot).
+    */
+    'challenges' => [
+        'enabled' => (bool) env('CHALLENGE_ENABLED', true),
+        'catalog_version' => (string) env('CODEDNA_CHALLENGE_CATALOG_VERSION', '1.0.0'),
+        // "spool" (the evaluator service) or "none".
+        'evaluator' => (string) env('CHALLENGE_EVALUATOR', 'none'),
+        'spool_path' => (string) env('CHALLENGE_EVALUATOR_SPOOL', '/var/spool/codedna-challenges'),
+        // How long one job waits for the evaluator's result, and how old the
+        // evaluator's heartbeat may be before it counts as unavailable.
+        'wait_seconds' => (int) env('CHALLENGE_EVALUATOR_WAIT_SECONDS', 45),
+        'heartbeat_max_age_seconds' => 30,
+        // Submission limits, enforced before anything is stored or evaluated.
+        'max_source_bytes' => (int) env('CHALLENGE_MAX_SOURCE_BYTES', 16384),
+        'max_source_lines' => (int) env('CHALLENGE_MAX_SOURCE_LINES', 400),
+        // Graded attempts per challenge (evaluation errors do not count).
+        'max_attempts' => (int) env('CHALLENGE_MAX_ATTEMPTS', 5),
+        // Evaluation jobs: attempts (transient evaluator failures only) and
+        // the delay before each retry. A retry never re-executes a submission.
+        'max_job_attempts' => 3,
+        'backoff_seconds' => [10, 30],
+        'job_timeout_seconds' => (int) env('CHALLENGE_JOB_TIMEOUT_SECONDS', 90),
+        'stale_after_seconds' => 600,
+        'queued_stale_after_seconds' => 3600,
+        'queue_connection' => 'analysis',
+        'queue' => 'challenge',
+    ],
+
     'rate_limits' => [
         // Every /api/v1 route, per authenticated user or per IP.
         'api_per_minute' => 120,
@@ -185,6 +220,10 @@ return [
         // POST /api/v1/projects/{project}/assessments, per user (provider calls cost money).
         'assessment_create_per_minute' => 5,
         'assessment_create_per_hour' => 30,
+        // POST .../challenges and POST .../challenges/{challenge}/submissions, per user.
+        'challenge_assign_per_minute' => 10,
+        'challenge_submit_per_minute' => 10,
+        'challenge_submit_per_hour' => 60,
     ],
 
 ];
