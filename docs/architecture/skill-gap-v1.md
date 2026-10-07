@@ -233,5 +233,7 @@ threshold and each priority bound, and the evidence-quality cap.
 
 - Further target profiles: role, team or custom. They must stay neutral,
   never seniority labels.
-- Learning recommendations (Phase 17) and AI explanations (Phase 15).
+- AI explanations are Phase 15; learning recommendations are the Phase 17
+  [learning roadmap](learning-roadmap-v1.md), which reads these gaps and
+  never changes them.
 - Growth over time (Phase 18). The history list is available in the API.

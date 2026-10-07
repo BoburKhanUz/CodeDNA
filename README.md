@@ -32,6 +32,7 @@ ASSESS ─► ANALYZE ─► IDENTIFY GAPS ─► LEARN ─► PRACTICE ─► R
 | 14 | Skill gap analysis | ✅ Done |
 | 15 | AI assessment and interpretation | ✅ Done |
 | 16 | Coding challenges | ✅ Done |
+| 17 | Learning roadmap | ✅ Done |
 
 The Docker environment runs every component: Nginx, Laravel 13, Next.js 16,
 the FastAPI analyzer, the challenge evaluator, PostgreSQL 16, Redis 7 and
@@ -74,7 +75,13 @@ code-structure rules. **Challenge completion ≠ CodeDNA improvement:** a
 passed challenge never changes a score, competency or skill gap; only a new
 analysis of new code does
 ([coding-challenges-v1.md](docs/architecture/coding-challenges-v1.md),
-[challenge-evaluator.md](docs/architecture/challenge-evaluator.md)). The full plan is in
+[challenge-evaluator.md](docs/architecture/challenge-evaluator.md)). Since Phase 17 a
+learning roadmap, generated deterministically (no AI) from the newest skill gap
+analysis, sets a development focus and short, ordered learning steps per
+competency, linked to the coding challenges. **Roadmap ≠ assessment:**
+completing learning steps never changes a score or gap; improvement is measured
+only through new code analysis
+([learning-roadmap-v1.md](docs/architecture/learning-roadmap-v1.md)). The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance
@@ -97,9 +104,9 @@ code runs only in the network-less evaluator and never changes CodeDNA.
 ## Documentation
 
 - Product: [vision](docs/product/vision.md) · [MVP](docs/product/mvp.md)
-- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md) · [coding challenges](docs/architecture/coding-challenges-v1.md) · [challenge evaluator](docs/architecture/challenge-evaluator.md)
+- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md) · [coding challenges](docs/architecture/coding-challenges-v1.md) · [challenge evaluator](docs/architecture/challenge-evaluator.md) · [learning roadmap](docs/architecture/learning-roadmap-v1.md)
 - API: [public conventions](docs/api/README.md) · [internal analyzer contract](docs/api/internal-analyzer-contract.md)
-- Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md) · [ADR-007 AI interpretation](docs/decisions/ADR-007-ai-interpretation.md) · [ADR-008 coding challenges](docs/decisions/ADR-008-coding-challenges.md)
+- Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md) · [ADR-007 AI interpretation](docs/decisions/ADR-007-ai-interpretation.md) · [ADR-008 coding challenges](docs/decisions/ADR-008-coding-challenges.md) · [ADR-009 learning roadmap](docs/decisions/ADR-009-learning-roadmap.md)
 
 ## Repository layout
 

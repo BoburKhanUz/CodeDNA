@@ -40,7 +40,12 @@ selected deterministically from a project's skill gaps let developers
 practice. Submissions run only in a network-less sandbox, and challenge
 completion never changes CodeDNA
 ([coding-challenges-v1.md](coding-challenges-v1.md),
-[ADR-008](../decisions/ADR-008-coding-challenges.md)). Everything below is
+[ADR-008](../decisions/ADR-008-coding-challenges.md)). A learning roadmap,
+generated deterministically from the newest skill gap analysis, sets the
+development focus and ordered learning steps. Completing steps is learning
+progress, never an assessment
+([learning-roadmap-v1.md](learning-roadmap-v1.md),
+[ADR-009](../decisions/ADR-009-learning-roadmap.md)). Everything below is
 the target architecture.
 
 ## System context
@@ -91,6 +96,9 @@ the target architecture.
    network, no secrets and no data. Challenge completion ≠ CodeDNA
    improvement: no evaluation result changes a score, competency, skill gap
    or snapshot ([ADR-008](../decisions/ADR-008-coding-challenges.md)).
+7. **Roadmap ≠ assessment.** Completing learning steps never changes a
+   score, competency, gap or priority; only a new analysis of new code
+   does ([ADR-009](../decisions/ADR-009-learning-roadmap.md)).
 
 ## Data flow
 
@@ -117,6 +125,7 @@ machine, timeouts and retries, and data classification.
 | [ADR-006](../decisions/ADR-006-authentication.md) | Authentication (Sanctum SPA cookies, tokens later) |
 | [ADR-007](../decisions/ADR-007-ai-interpretation.md) | AI interpretation: non-authoritative, provider-neutral, evidence-bound |
 | [ADR-008](../decisions/ADR-008-coding-challenges.md) | Coding challenges: a practice layer with an isolated evaluator |
+| [ADR-009](../decisions/ADR-009-learning-roadmap.md) | Learning roadmap: a deterministic planning layer, generated on request |
 
 New ADRs use the next free number and follow the same format: Status, Date,
 Context, Decision, Consequences, Alternatives considered, and Open questions
@@ -147,4 +156,5 @@ at a time:
 | 14 | Skill gap analysis | Done (skill gap version 1.0.0, ENGINEERING_STANDARD; [skill-gap-v1.md](skill-gap-v1.md)) |
 | 15 | AI assessment and interpretation | Done (assessment version 1.0.0, non-authoritative, on request; [ai-assessment-v1.md](ai-assessment-v1.md)) |
 | 16 | Coding challenges | Done (catalog 1.0.0, Python, deterministic selection, sandboxed evaluator; [coding-challenges-v1.md](coding-challenges-v1.md)) |
-| 17–25 | Learning, growth, GitHub, history, hardening, QA, billing, teams, production | — |
+| 17 | Learning roadmap | Done (roadmap catalog and rules 1.0.0, deterministic, on request; [learning-roadmap-v1.md](learning-roadmap-v1.md)) |
+| 18–25 | Growth, GitHub, history, hardening, QA, billing, teams, production | — |

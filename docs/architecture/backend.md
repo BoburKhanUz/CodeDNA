@@ -35,7 +35,11 @@ into DNA snapshots with the deterministic engine in `App\Services\Dna`
 *archive structure* of uploads (without extracting them), stores them, and
 will hand them to the analyzer (ADR-005). Application code contains no
 process-execution or `eval` primitives, and a test enforces this
-(`NoCommandExecutionTest`). This includes coding challenges (Phase 16):
+(`NoCommandExecutionTest`). Learning roadmaps (Phase 17) are generated
+deterministically from stored skill gaps by `App\Services\Roadmap` and
+never change a score, competency or gap
+([learning-roadmap-v1.md](learning-roadmap-v1.md)). This includes coding
+challenges (Phase 16):
 Laravel stores submitted challenge code and writes it to the spool for the
 isolated evaluator service. It never runs it
 ([challenge-evaluator.md](challenge-evaluator.md)).
@@ -79,6 +83,7 @@ backend/
 │   ├── Actions/Analysis/          StartAnalysis (idempotent start), PersistAnalysisResult
 │   ├── Actions/Assessment/        RequestAssessment (Phase 15: idempotent, queues only)
 │   ├── Actions/Challenge/         AssignChallenge, SubmitChallengeSolution (Phase 16: idempotent, queues only)
+│   ├── Actions/Roadmap/           GenerateRoadmap, CompleteRoadmapStep (Phase 17: idempotent, no queue)
 │   ├── Console/Commands/          FailStaleAnalyses (analysis:fail-stale), FailStaleAssessments (assessment:fail-stale),
 │   │                              FailStaleChallengeEvaluations (challenge:fail-stale)
 │   ├── Jobs/                      AnalyzeSourceSnapshot (queue "analysis"), GenerateAssessment (queue "assessment"),
@@ -108,6 +113,7 @@ backend/
 │   ├── Services/Analyzer/         AnalyzerClient, HmacSigner, CanonicalJson, JsonSchemaValidator, AnalyzerErrorMap
 │   ├── Services/Challenge/        ChallengeCatalog, ChallengeDefinitionData, ChallengeSelector, ChallengeGrader,
 │   │                              Evaluator/{SpoolChallengeEvaluator, UnavailableChallengeEvaluator} (Phase 16)
+│   ├── Services/Roadmap/          RoadmapCatalog, RoadmapRules, DevelopmentFocusResolver, RoadmapGenerator (Phase 17)
 │   ├── Support/ConfigurationValidator.php
 │   └── Support/Sources/           ZipArchiveInspector, SourceArchiveLimits, ArchiveSummary, LanguageGuesser
 ├── bootstrap/app.php              routing (api prefix), middleware, exception rendering

@@ -1,0 +1,93 @@
+{
+  "schema_version": "roadmap-track/1",
+  "key": "COMPLEXITY_MANAGEMENT",
+  "version": "1.0.0",
+  "competency": "COMPLEXITY_MANAGEMENT",
+  "title": "Manage branching complexity",
+  "description": "Reduce the number of decision paths per function, so that each function is easier to read, test and change. CodeDNA measures the average cyclomatic complexity of functions and the share of functions above the complexity threshold of 10.",
+  "objective": "Fewer functions above a cyclomatic complexity of 10, and a lower average complexity per function.",
+  "estimated_minutes": 230,
+  "steps": [
+    {
+      "key": "cm-understand-complexity",
+      "type": "READ",
+      "title": "Understand cyclomatic complexity",
+      "description": "Cyclomatic complexity counts the independent paths through a function: 1, plus one for every if, elif, loop, case, except and boolean operator. Each path is something a reader must follow and a test must cover. CodeDNA reports a finding for every function above 10.",
+      "objective": "Explain how a function's complexity is counted and why paths, not lines, are measured.",
+      "estimated_minutes": 15,
+      "prerequisites": []
+    },
+    {
+      "key": "cm-find-hotspots",
+      "type": "PRACTICE",
+      "title": "Find the branching-heavy functions",
+      "description": "Use the structural findings of your latest analysis to list the functions with a complexity above 10. Start with the ones that change most often or contain the most important rules.",
+      "objective": "A short list of the functions to simplify first.",
+      "estimated_minutes": 20,
+      "prerequisites": [
+        "cm-understand-complexity"
+      ]
+    },
+    {
+      "key": "cm-guard-clauses",
+      "type": "PRACTICE",
+      "title": "Flatten conditionals with guard clauses",
+      "description": "Handle invalid input and edge cases first and return early, instead of wrapping the main logic in nested else branches. Merge conditions that lead to the same outcome.",
+      "objective": "Functions whose main path reads top to bottom without nested branches.",
+      "estimated_minutes": 45,
+      "prerequisites": [
+        "cm-find-hotspots"
+      ]
+    },
+    {
+      "key": "cm-table-driven",
+      "type": "PRACTICE",
+      "title": "Replace branch chains with data",
+      "description": "Long if/elif or switch chains that map a value to a result can often become a lookup table, a dictionary of handlers or a small polymorphic type. The decision moves into data, and the function keeps one path.",
+      "objective": "Selection logic expressed as data instead of as a chain of branches.",
+      "estimated_minutes": 45,
+      "prerequisites": [
+        "cm-find-hotspots"
+      ]
+    },
+    {
+      "key": "cm-decompose",
+      "type": "PRACTICE",
+      "title": "Extract decisions into named functions",
+      "description": "Move independent decisions into small functions whose names state the rule they check. Each extracted function has few paths, and the caller reads as a sequence of steps.",
+      "objective": "No function that mixes several independent decisions.",
+      "estimated_minutes": 60,
+      "prerequisites": [
+        "cm-find-hotspots"
+      ]
+    },
+    {
+      "key": "cm-challenge",
+      "type": "CHALLENGE",
+      "title": "Complete a complexity challenge",
+      "description": "Practise on a short coding challenge for this competency. It is checked by deterministic tests and structural rules in an isolated sandbox.",
+      "objective": "Apply the techniques of this track to a small, self-contained exercise.",
+      "estimated_minutes": 30,
+      "prerequisites": [
+        "cm-guard-clauses",
+        "cm-table-driven"
+      ]
+    },
+    {
+      "key": "cm-reassess",
+      "type": "REASSESS",
+      "title": "Re-assess with a new analysis",
+      "description": "Apply these techniques to your own code, upload the changed source and run a new CodeDNA analysis. Only a new analysis can show whether the measured complexity changed.",
+      "objective": "A new analysis of the improved code.",
+      "estimated_minutes": 15,
+      "prerequisites": [
+        "cm-understand-complexity",
+        "cm-find-hotspots",
+        "cm-guard-clauses",
+        "cm-table-driven",
+        "cm-decompose",
+        "cm-challenge"
+      ]
+    }
+  ]
+}

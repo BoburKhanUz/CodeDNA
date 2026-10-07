@@ -1,0 +1,80 @@
+{
+  "schema_version": "roadmap-track/1",
+  "key": "CODE_HYGIENE",
+  "version": "1.0.0",
+  "competency": "CODE_HYGIENE",
+  "title": "Keep source code parseable",
+  "description": "Make sure every analyzed file is valid source code. CodeDNA measures the share of files that cannot be parsed because of syntax errors; such files cannot be measured at all.",
+  "objective": "No files with syntax errors in the analyzed source.",
+  "estimated_minutes": 110,
+  "steps": [
+    {
+      "key": "ch-syntax",
+      "type": "READ",
+      "title": "Understand why syntax errors matter",
+      "description": "A file that does not parse cannot be compiled, run or measured. Syntax errors in a repository often come from unfinished edits, merge conflict markers, or files that are not really source code, such as templates or generated fragments.",
+      "objective": "Know the common sources of unparseable files.",
+      "estimated_minutes": 10,
+      "prerequisites": []
+    },
+    {
+      "key": "ch-find-errors",
+      "type": "PRACTICE",
+      "title": "Find the files that do not parse",
+      "description": "Use the syntax error findings of your latest analysis, which name the file and line, to list every file that failed to parse.",
+      "objective": "A complete list of unparseable files.",
+      "estimated_minutes": 15,
+      "prerequisites": [
+        "ch-syntax"
+      ]
+    },
+    {
+      "key": "ch-fix",
+      "type": "PRACTICE",
+      "title": "Fix invalid syntax",
+      "description": "Fix each error at the reported line. Remove conflict markers and dead fragments, and exclude files that are not source code from the archive you upload.",
+      "objective": "Every listed file parses, or is no longer uploaded.",
+      "estimated_minutes": 30,
+      "prerequisites": [
+        "ch-find-errors"
+      ]
+    },
+    {
+      "key": "ch-validate",
+      "type": "PRACTICE",
+      "title": "Validate before you upload",
+      "description": "Run your language's parser, compiler or linter over the whole project, locally or in CI, so that syntax errors are caught before an analysis.",
+      "objective": "An automatic syntax check for the whole project.",
+      "estimated_minutes": 30,
+      "prerequisites": [
+        "ch-fix"
+      ]
+    },
+    {
+      "key": "ch-challenge",
+      "type": "CHALLENGE",
+      "title": "Complete a code hygiene challenge",
+      "description": "Practise on a short coding challenge for this competency. It is checked by deterministic tests and structural rules in an isolated sandbox.",
+      "objective": "Repair a small file so that it parses and behaves as specified.",
+      "estimated_minutes": 15,
+      "prerequisites": [
+        "ch-fix"
+      ]
+    },
+    {
+      "key": "ch-reassess",
+      "type": "REASSESS",
+      "title": "Re-assess with a new analysis",
+      "description": "Upload the fixed source and run a new CodeDNA analysis. Only a new analysis can show whether the measured code hygiene changed.",
+      "objective": "A new analysis of the fixed code.",
+      "estimated_minutes": 10,
+      "prerequisites": [
+        "ch-syntax",
+        "ch-find-errors",
+        "ch-fix",
+        "ch-validate",
+        "ch-challenge"
+      ]
+    }
+  ]
+}

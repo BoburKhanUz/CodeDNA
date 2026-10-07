@@ -45,6 +45,12 @@ enum ErrorCode: string
     case ChallengeEvaluationUnavailable = 'CHALLENGE_EVALUATION_UNAVAILABLE';
     case ChallengeEvaluationPending = 'CHALLENGE_EVALUATION_PENDING';
     case ChallengeClosed = 'CHALLENGE_CLOSED';
+    // Learning roadmaps (Phase 17).
+    case RoadmapNoSkillGaps = 'ROADMAP_NO_SKILL_GAPS';
+    case RoadmapNoActionableGaps = 'ROADMAP_NO_ACTIONABLE_GAPS';
+    case RoadmapEvidenceInvalid = 'ROADMAP_EVIDENCE_INVALID';
+    case RoadmapNotActive = 'ROADMAP_NOT_ACTIVE';
+    case RoadmapStepPrerequisitesIncomplete = 'ROADMAP_STEP_PREREQUISITES_INCOMPLETE';
     case InternalError = 'INTERNAL_ERROR';
     case ServiceUnavailable = 'SERVICE_UNAVAILABLE';
 
@@ -61,7 +67,9 @@ enum ErrorCode: string
             self::ProjectArchived, self::InvalidSourceType, self::AnalysisNotCompleted,
             self::AiAssessmentDisabled, self::AssessmentEvidenceUnavailable, self::AssessmentInputTooLarge,
             self::ChallengesDisabled, self::ChallengeNoEligibleGap, self::ChallengeNoneAvailable,
-            self::ChallengeEvaluationUnavailable, self::ChallengeEvaluationPending, self::ChallengeClosed => 409,
+            self::ChallengeEvaluationUnavailable, self::ChallengeEvaluationPending, self::ChallengeClosed,
+            self::RoadmapNoSkillGaps, self::RoadmapNoActionableGaps, self::RoadmapEvidenceInvalid,
+            self::RoadmapNotActive, self::RoadmapStepPrerequisitesIncomplete => 409,
             self::ValidationFailed, self::InvalidCredentials, self::IdempotencyKeyReused,
             self::SourceArchiveInvalid, self::SourceArchiveUnsafe, self::SourceUncompressedSizeExceeded,
             self::SourceFileCountExceeded, self::SourceFileTooLarge => 422,
@@ -103,6 +111,11 @@ enum ErrorCode: string
             self::ChallengeEvaluationUnavailable => 'Challenge evaluation is not available right now. Nothing was submitted.',
             self::ChallengeEvaluationPending => 'The previous attempt is still being evaluated.',
             self::ChallengeClosed => 'This challenge is closed and accepts no further attempts.',
+            self::RoadmapNoSkillGaps => 'This project has no skill gap analysis yet.',
+            self::RoadmapNoActionableGaps => 'The newest skill gap analysis has no measurable gap with a learning track.',
+            self::RoadmapEvidenceInvalid => 'The newest skill gap analysis does not match its specification and cannot be used.',
+            self::RoadmapNotActive => 'This roadmap is no longer active and cannot be changed.',
+            self::RoadmapStepPrerequisitesIncomplete => 'Complete the earlier steps this step depends on first.',
             self::InternalError => 'An unexpected error occurred.',
             self::ServiceUnavailable => 'The service is temporarily unavailable.',
         };

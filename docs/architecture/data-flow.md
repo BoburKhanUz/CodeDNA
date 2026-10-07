@@ -349,6 +349,40 @@ skill_gap_results ──read──► ChallengeSelector ──► challenge_inst
 
 Details: [coding-challenges-v1.md](coding-challenges-v1.md).
 
+### Learning roadmaps (Phase 17)
+
+Roadmaps read skill gaps and never write analysis data. **Roadmap ≠
+assessment:** completing learning steps changes no DNA score, competency,
+skill gap or snapshot. Only a new analysis of new source code can change
+them.
+
+1. `POST /api/v1/projects/{project}/roadmaps` (empty body) runs
+   `App\Actions\Roadmap\GenerateRoadmap` in one transaction, holding a
+   lock on the project row:
+   1. It takes the project's newest skill gap snapshot and checks it
+      against its skill gap specification.
+   2. It lets `RoadmapGenerator` derive the development focus and the
+      ordered steps deterministically (no AI, no randomness, no clock).
+   3. It stores the roadmap with its lineage, versions and fingerprints,
+      and marks the previous active roadmap `SUPERSEDED`.
+
+   A repeat returns the existing roadmap.
+2. `POST …/roadmaps/{roadmap}/steps/{step}/complete` runs
+   `CompleteRoadmapStep`. It inserts a completion row (self-reported
+   progress), checking the step's prerequisites, and marks the roadmap
+   `COMPLETED` after its last step.
+3. There is no queue, no job and no scheduled command. The analysis
+   pipeline is unchanged and never generates roadmaps.
+
+```text
+skill_gap_results ──read──► DevelopmentFocusResolver ──► RoadmapGenerator ──► roadmap_snapshots + roadmap_steps
+                                                                                    │
+                       developer marks a step done ──► roadmap_step_completions ────┘
+          (no arrow back to dna_snapshots, competency_snapshots or skill_gap_*)
+```
+
+Details: [learning-roadmap-v1.md](learning-roadmap-v1.md).
+
 ## Run state machine
 
 ```text
@@ -488,6 +522,9 @@ frees the logical analysis for a new run.
   `challenge.result_ignored`, with IDs, statuses, durations and failure
   codes only. Submitted source, hidden tests, expected values and evaluator
   internals are never logged.
+- Roadmaps log `roadmap.generated` (focus competencies, step count,
+  superseded IDs, versions) and `roadmap.step_completed` (step key,
+  roadmap status), with IDs only.
 - **Never logged:** source code, file contents, archive entry names, secret
   values, pre-signed URLs, HMAC secrets or signatures, session cookies, or
   tokens.

@@ -35,6 +35,8 @@ final class AssessmentMigrationAndConcurrencyTest extends TestCase
 
     private const CHALLENGE_MIGRATION = 'database/migrations/2026_10_13_000001_create_challenge_tables.php';
 
+    private const ROADMAP_MIGRATION = 'database/migrations/2026_10_14_000001_create_roadmap_tables.php';
+
     private ?SkillGapSnapshot $gaps = null;
 
     private string $resultDir;
@@ -222,6 +224,8 @@ final class AssessmentMigrationAndConcurrencyTest extends TestCase
         $this->assertSame(1, (int) DB::scalar("select count(*) from pg_trigger where tgname = 'ai_assessments_terminal_immutable'"));
 
         $gaps = $this->gaps();
+        // reset, not rollback: it reverts the roadmap migration whatever batch it is in.
+        $this->artisan('migrate:reset', ['--path' => self::ROADMAP_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION])->assertSuccessful();
         $this->assertFalse(Schema::hasTable('ai_assessments'));

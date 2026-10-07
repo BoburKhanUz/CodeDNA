@@ -1,7 +1,7 @@
 /**
  * TypeScript mirror of the Laravel API contract (docs/api/README.md).
  *
- * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary,SkillGapSnapshot,SkillGapSnapshotSummary,AiAssessment,AiAssessmentSummary,Challenge,ChallengeSummary,ChallengeSubmission,ChallengeSubmissionSummary}Resource.php,
+ * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary,SkillGapSnapshot,SkillGapSnapshotSummary,AiAssessment,AiAssessmentSummary,Challenge,ChallengeSummary,ChallengeSubmission,ChallengeSubmissionSummary,Roadmap,RoadmapSummary}Resource.php,
  * backend/app/Http/Resources/PaginatedCollection.php,
  * backend/app/Enums/{SupportedLocale,ProgrammingLanguage}.php and
  * backend/app/Http/Errors/{ErrorCode,ApiExceptionRenderer}.php. When those
@@ -57,6 +57,11 @@ export const API_ERROR_CODES = [
   "CHALLENGE_EVALUATION_UNAVAILABLE",
   "CHALLENGE_EVALUATION_PENDING",
   "CHALLENGE_CLOSED",
+  "ROADMAP_NO_SKILL_GAPS",
+  "ROADMAP_NO_ACTIONABLE_GAPS",
+  "ROADMAP_EVIDENCE_INVALID",
+  "ROADMAP_NOT_ACTIVE",
+  "ROADMAP_STEP_PREREQUISITES_INCOMPLETE",
   "INTERNAL_ERROR",
   "SERVICE_UNAVAILABLE",
 ] as const;
@@ -869,3 +874,103 @@ export interface ChallengeSubmission extends ChallengeSubmissionSummary {
 
 export type ChallengeResponse = DataEnvelope<Challenge>;
 export type ChallengeSubmissionResponse = DataEnvelope<ChallengeSubmission>;
+
+/*
+ * Learning roadmaps (Phase 17; docs/architecture/learning-roadmap-v1.md). A
+ * planning layer generated deterministically from a skill gap snapshot.
+ * Completing steps is self-reported learning progress: it never changes a
+ * score, competency, gap or priority.
+ */
+
+export type RoadmapStatus = "ACTIVE" | "COMPLETED" | "SUPERSEDED";
+export type RoadmapStepType = "READ" | "PRACTICE" | "CHALLENGE" | "REASSESS";
+export type FocusExclusion = "NO_GAP" | "INSUFFICIENT_EVIDENCE" | "UNSUPPORTED" | "MISSING" | "NOT_TARGETED" | "NO_TRACK" | "TRACK_LIMIT";
+export type FocusCriterion = "PRIORITY" | "RAW_GAP" | "EVIDENCE_QUALITY" | "COMPETENCY_KEY";
+
+export interface RoadmapProgress {
+  completed: number;
+  total: number;
+}
+
+/** `RoadmapSummaryResource` — GET /api/v1/projects/{project}/roadmaps (newest first). */
+export interface RoadmapSummary {
+  id: string;
+  type: "learning_roadmap";
+  project_id: string;
+  skill_gap_snapshot_id: string;
+  status: RoadmapStatus;
+  focus: string[];
+  progress: RoadmapProgress;
+  estimated_minutes: number;
+  versions: { roadmap: string; rules: string };
+  created_at: string | null;
+  superseded_at: string | null;
+  completed_at: string | null;
+}
+
+/** A competency of the skill gap snapshot, as stored when the roadmap was generated. */
+export interface FocusEntry {
+  competency_key: string;
+  status: SkillGapStatus;
+  priority: GapPriority | null;
+  priority_capped: boolean | null;
+  current_score: DecimalString | null;
+  target_score: DecimalString | null;
+  raw_gap: DecimalString | null;
+  evidence_quality: DecimalString | null;
+  current_level: string | null;
+  rank?: number;
+  ranked_above?: string | null;
+  deciding_criterion?: FocusCriterion | null;
+  reason?: FocusExclusion;
+}
+
+export interface RoadmapStep {
+  key: string;
+  position: number;
+  type: RoadmapStepType;
+  title: string;
+  description: string;
+  objective: string;
+  estimated_minutes: number;
+  prerequisites: string[];
+  completed_at: string | null;
+  can_complete: boolean;
+  challenge: { key: string; version: string; title: string; difficulty: ChallengeDifficulty; in_catalog: boolean } | null;
+  practice: { challenge_id: string; definition_key: string; status: ChallengeStatus } | null;
+}
+
+export interface RoadmapTrack {
+  position: number;
+  key: string;
+  version: string;
+  competency_key: string;
+  title: string;
+  description: string;
+  objective: string;
+  estimated_minutes: number;
+  focus: FocusEntry | null;
+  progress: RoadmapProgress;
+  steps: RoadmapStep[];
+}
+
+/** `RoadmapResource` — one learning roadmap (owner only). */
+export interface Roadmap extends RoadmapSummary {
+  notice: string;
+  development_focus: { selected: FocusEntry[]; excluded: FocusEntry[] };
+  tracks: RoadmapTrack[];
+  lineage: {
+    skill_gap_snapshot_id: string;
+    competency_snapshot_id: string;
+    dna_snapshot_id: string;
+    analysis_run_id: string;
+    source_snapshot_id: string;
+  };
+  versions: { roadmap: string; rules: string; skill_gap: string; target_profile: TargetProfileRef; challenge_catalog: string };
+  fingerprints: { roadmap: string; catalog: string; rules: string; skill_gap_specification: string; challenge_catalog: string };
+  current: { catalog: boolean; rules: boolean };
+  superseded_by: string | null;
+  updated_at: string | null;
+}
+
+export type RoadmapResponse = DataEnvelope<Roadmap>;

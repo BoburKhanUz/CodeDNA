@@ -31,6 +31,8 @@ final class SkillGapMigrationAndConcurrencyTest extends TestCase
 
     private const CHALLENGE_MIGRATION = 'database/migrations/2026_10_13_000001_create_challenge_tables.php';
 
+    private const ROADMAP_MIGRATION = 'database/migrations/2026_10_14_000001_create_roadmap_tables.php';
+
     private const ASSESSMENT_MIGRATION = 'database/migrations/2026_10_12_000001_create_ai_assessments_table.php';
 
     private ?CompetencySnapshot $competency = null;
@@ -145,6 +147,8 @@ final class SkillGapMigrationAndConcurrencyTest extends TestCase
         }
 
         $competency = $this->competency();
+        // reset, not rollback: it reverts the roadmap migration whatever batch it is in.
+        $this->artisan('migrate:reset', ['--path' => self::ROADMAP_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::ASSESSMENT_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:rollback', ['--path' => self::MIGRATION])->assertSuccessful();

@@ -236,6 +236,23 @@ function Report({ snapshot, projectId }: { snapshot: SkillGapSnapshot; projectId
         ))}
       </div>
 
+      <Card data-testid="roadmap-link">
+        <CardHeader>
+          <CardTitle>
+            <h2>Learning Roadmap</h2>
+          </CardTitle>
+          <CardDescription>
+            What to work on next: a development focus and ordered learning steps for these gaps. Completing learning steps does not change
+            your CodeDNA score or skill gap. Improvement is measured through new code analysis.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link href={`/app/projects/${projectId}/roadmap`} className="text-sm font-medium underline underline-offset-4">
+            View Learning Roadmap →
+          </Link>
+        </CardContent>
+      </Card>
+
       <Card data-testid="challenge-link">
         <CardHeader>
           <CardTitle>

@@ -120,6 +120,18 @@ return [
     ],
 
     /*
+    | Learning roadmaps (docs/architecture/learning-roadmap-v1.md). A planning
+    | layer: generated deterministically from a skill gap snapshot, never by
+    | AI, and never changing CodeDNA, competencies or skill gaps. The catalog
+    | version selects the server-owned tracks, the rules version the
+    | selection and ordering rules.
+    */
+    'roadmap' => [
+        'catalog_version' => (string) env('CODEDNA_ROADMAP_VERSION', '1.0.0'),
+        'rules_version' => (string) env('CODEDNA_ROADMAP_RULES_VERSION', '1.0.0'),
+    ],
+
+    /*
     | AI assessment and interpretation (docs/architecture/ai-assessment-v1.md).
     | Non-authoritative: the AI explains stored deterministic results and
     | never changes them. Disabled by default; generation runs only when a
@@ -224,6 +236,9 @@ return [
         'challenge_assign_per_minute' => 10,
         'challenge_submit_per_minute' => 10,
         'challenge_submit_per_hour' => 60,
+        // POST .../roadmaps and POST .../roadmaps/{roadmap}/steps/{step}/complete, per user.
+        'roadmap_generate_per_minute' => 10,
+        'roadmap_progress_per_minute' => 60,
     ],
 
 ];

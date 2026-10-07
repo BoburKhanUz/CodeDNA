@@ -953,6 +953,122 @@ against `max_attempts`.
 Responses never contain hidden test inputs or expected values, evaluator
 internals, lease data or the idempotency key.
 
+## Learning roadmaps
+
+What to work on next, generated deterministically from the newest skill gap
+analysis (Phase 17,
+[learning-roadmap-v1.md](../architecture/learning-roadmap-v1.md)). It is a
+**planning layer**: generating a roadmap or completing its steps never
+changes a DNA score, competency, skill gap, priority, target or snapshot,
+and never starts an analysis. No AI is involved.
+
+- Owner-only: `404` for a missing project, another user's project, a
+  roadmap of another project, and an unknown step.
+- Archived projects keep their roadmaps readable, but generation and step
+  completion answer `409 PROJECT_ARCHIVED`.
+- There is no update or delete (`405`).
+
+### `POST /api/v1/projects/{project}/roadmaps`
+
+```json
+{}
+```
+
+The body must be empty. Tracks, steps, targets, gaps, priorities, versions
+and URLs are all server-owned, so any field answers `422 VALIDATION_FAILED`
+(field names are not echoed). The roadmap is generated from the project's
+newest skill gap snapshot.
+
+| Response | When |
+|---|---|
+| `201` + roadmap | A new roadmap was generated. The project's previous `ACTIVE` roadmap became `SUPERSEDED` |
+| `200` + roadmap, `Idempotent-Replayed: true` | A roadmap for the newest snapshot and the current versions already exists, whatever its status |
+| `409 ROADMAP_NO_SKILL_GAPS` | The project has no skill gap analysis |
+| `409 ROADMAP_NO_ACTIONABLE_GAPS` | The newest analysis has no measured, material gap with a track. An existing roadmap is left as it is |
+| `409 ROADMAP_EVIDENCE_INVALID` | The newest analysis does not match its skill gap specification |
+| `409 PROJECT_ARCHIVED` | The project is archived |
+| `422 VALIDATION_FAILED` | The body was not empty |
+| `429 RATE_LIMITED` | `roadmap-generate` limit |
+
+### `GET /api/v1/projects/{project}/roadmaps`
+
+The list is ordered newest first and paginated (`?page`, `?per_page` ≤ 100).
+Each item has:
+
+- `id` and `type: "learning_roadmap"`;
+- `project_id` and `skill_gap_snapshot_id`;
+- `status`: `ACTIVE`, `COMPLETED` or `SUPERSEDED`;
+- `focus`: the focus competencies, in order;
+- `progress`: `{completed, total}` steps;
+- `estimated_minutes`;
+- `versions`: `{roadmap, rules}`;
+- `created_at`, `superseded_at` and `completed_at`.
+
+### `GET /api/v1/projects/{project}/roadmaps/{roadmap}`
+
+```json
+{ "data": {
+  "id": "…", "type": "learning_roadmap", "status": "ACTIVE", "focus": ["TYPE_STRUCTURE", "COMPLEXITY_MANAGEMENT", "FUNCTION_DESIGN"],
+  "progress": { "completed": 1, "total": 21 }, "estimated_minutes": 720,
+  "notice": "Completing learning steps does not change your CodeDNA score or skill gap. Improvement is measured through new code analysis.",
+  "development_focus": {
+    "selected": [ { "competency_key": "TYPE_STRUCTURE", "status": "GAP", "priority": "HIGH", "priority_capped": false,
+                    "current_score": "0.0000", "target_score": "0.7500", "raw_gap": "0.7500", "evidence_quality": "0.9000",
+                    "current_level": "NOT_ESTABLISHED", "rank": 1, "ranked_above": "COMPLEXITY_MANAGEMENT", "deciding_criterion": "RAW_GAP" }, … ],
+    "excluded": [ { "competency_key": "CODE_HYGIENE", "status": "GAP", …, "rank": 4, "reason": "TRACK_LIMIT" } ] },
+  "tracks": [ { "position": 1, "key": "TYPE_STRUCTURE", "version": "1.0.0", "competency_key": "TYPE_STRUCTURE",
+                "title": "Structure types around one responsibility", "description": "…", "objective": "…", "estimated_minutes": 230,
+                "focus": { … }, "progress": { "completed": 1, "total": 6 },
+                "steps": [ { "key": "ts-responsibility", "position": 1, "type": "READ", "title": "…", "description": "…", "objective": "…",
+                             "estimated_minutes": 15, "prerequisites": [], "completed_at": "…", "can_complete": false,
+                             "challenge": null, "practice": null },
+                           { "key": "ts-challenge", "position": 5, "type": "CHALLENGE", …,
+                             "challenge": { "key": "TYPE_STRUCTURE_001", "version": "1.0.0", "title": "Split the inventory type",
+                                            "difficulty": "INTERMEDIATE", "in_catalog": true },
+                             "practice": { "challenge_id": "…", "definition_key": "TYPE_STRUCTURE_001", "status": "ASSIGNED" } }, … ] }, … ],
+  "lineage": { "skill_gap_snapshot_id": "…", "competency_snapshot_id": "…", "dna_snapshot_id": "…", "analysis_run_id": "…", "source_snapshot_id": "…" },
+  "versions": { "roadmap": "1.0.0", "rules": "1.0.0", "skill_gap": "1.0.0", "target_profile": { "key": "ENGINEERING_STANDARD", "version": "1.0.0" },
+                "challenge_catalog": "1.0.0" },
+  "fingerprints": { "roadmap": "<64 hex>", "catalog": "<64 hex>", "rules": "<64 hex>", "skill_gap_specification": "<64 hex>", "challenge_catalog": "<64 hex>" },
+  "current": { "catalog": true, "rules": true },
+  "superseded_by": null, "created_at": "…", "superseded_at": null, "completed_at": null, "updated_at": "…" } }
+```
+
+- **Focus values** are the skill gap snapshot's values as stored when the
+  roadmap was generated.
+- **`deciding_criterion`** names the first criterion (`PRIORITY`,
+  `RAW_GAP`, `EVIDENCE_QUALITY` or `COMPETENCY_KEY`) that ranks the entry
+  above `ranked_above`.
+- **`reason`** on an excluded entry is one of `NO_GAP`,
+  `INSUFFICIENT_EVIDENCE`, `UNSUPPORTED`, `MISSING`, `NOT_TARGETED`,
+  `NO_TRACK` or `TRACK_LIMIT`.
+- **`can_complete`** is true for an `ACTIVE` roadmap's uncompleted step
+  whose prerequisites are completed.
+- **`challenge`** is the recommended Phase 16 challenge of a `CHALLENGE`
+  step, or `null` when none was available.
+- **`practice`** is the developer's newest challenge for this snapshot and
+  competency, if one was assigned.
+- **`current`** says whether the server still uses the catalog and rules
+  this roadmap was generated with. A roadmap never changes either way.
+- **Never exposed:** owner IDs, storage keys, URLs and analyzer payloads.
+
+### `POST /api/v1/projects/{project}/roadmaps/{roadmap}/steps/{step}/complete`
+
+The step key comes from the roadmap, for example `fd-reduce-length`. The
+body must be empty: no completion date, score or status can be sent. This
+records learning progress only.
+
+| Response | When |
+|---|---|
+| `200` + roadmap | The step was completed. Completing the last step makes the roadmap `COMPLETED` |
+| `200` + roadmap, `Idempotent-Replayed: true` | The step was already completed |
+| `404 RESOURCE_NOT_FOUND` | Unknown step, or a roadmap of another project or user |
+| `409 ROADMAP_NOT_ACTIVE` | The roadmap is `SUPERSEDED` or `COMPLETED` |
+| `409 ROADMAP_STEP_PREREQUISITES_INCOMPLETE` | A step this one depends on is not completed |
+| `409 PROJECT_ARCHIVED` | The project is archived |
+| `422 VALIDATION_FAILED` | The body was not empty |
+| `429 RATE_LIMITED` | `roadmap-progress` limit |
+
 ## Authentication (browser, Sanctum SPA)
 
 Browsers authenticate with Laravel's **session cookie**. No token is ever
@@ -1086,6 +1202,11 @@ Every error, on every API route, uses one envelope:
 | 409 | `CHALLENGE_EVALUATION_UNAVAILABLE` | No challenge evaluator is available; submitted code is not run |
 | 409 | `CHALLENGE_EVALUATION_PENDING` | An earlier attempt is still being evaluated |
 | 409 | `CHALLENGE_CLOSED` | The challenge is passed or out of attempts |
+| 409 | `ROADMAP_NO_SKILL_GAPS` | The project has no skill gap analysis for a roadmap |
+| 409 | `ROADMAP_NO_ACTIONABLE_GAPS` | The newest skill gap analysis has no measurable gap with a learning track |
+| 409 | `ROADMAP_EVIDENCE_INVALID` | The newest skill gap analysis does not match its specification |
+| 409 | `ROADMAP_NOT_ACTIVE` | The roadmap is superseded or completed; its progress cannot change |
+| 409 | `ROADMAP_STEP_PREREQUISITES_INCOMPLETE` | A step this step depends on is not completed |
 | 413 | `PAYLOAD_TOO_LARGE` | Body exceeds the Nginx/PHP limit |
 | 413 | `SOURCE_ARCHIVE_TOO_LARGE` | Archive over `SOURCE_MAX_ARCHIVE_BYTES` |
 | 419 | `CSRF_TOKEN_MISMATCH` | Missing or stale `X-XSRF-TOKEN` |
@@ -1127,6 +1248,8 @@ queued jobs (Laravel Context).
 | `assessment-create` | `POST /projects/{project}/assessments` | 5 / minute **and** 30 / hour | user ID |
 | `challenge-assign` | `POST /projects/{project}/challenges` | 10 / minute | user ID |
 | `challenge-submit` | `POST /projects/{project}/challenges/{challenge}/submissions` | 10 / minute **and** 60 / hour | user ID |
+| `roadmap-generate` | `POST /projects/{project}/roadmaps` | 10 / minute | user ID |
+| `roadmap-progress` | `POST /projects/{project}/roadmaps/{roadmap}/steps/{step}/complete` | 60 / minute | user ID |
 
 Every attempt counts, successful or not. When a limit is exceeded the
 response is `429 RATE_LIMITED` with `Retry-After`. Throttled routes also

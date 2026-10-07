@@ -356,6 +356,11 @@ and prints no secrets:
     request that tries to supply a challenge definition is `422`. The
     probe's challenge rows are deleted with it. The sandbox itself is tested
     by `make test-evaluator`.
+12. Learning roadmaps (Phase 17): listing roadmaps returns `200`; a request
+    with content is `422` (server-owned catalog); an empty request is `201`
+    and then idempotent (`200`), or `409 ROADMAP_NO_ACTIONABLE_GAPS` when the
+    probe's analysis has no actionable gap. The probe's roadmap rows are
+    deleted with it.
 
 ## Troubleshooting
 

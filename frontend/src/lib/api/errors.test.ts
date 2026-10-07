@@ -26,6 +26,9 @@ describe("describeApiError", () => {
     [error({ status: 409, code: "CHALLENGE_EVALUATION_PENDING" }), "Your previous attempt is still being evaluated."],
     [error({ status: 409, code: "CHALLENGE_CLOSED" }), "This challenge is closed and accepts no further attempts."],
     [error({ status: 409, code: "CHALLENGE_EVALUATION_UNAVAILABLE" }), "Challenge evaluation is not available right now. Nothing was submitted."],
+    [error({ status: 409, code: "ROADMAP_NOT_ACTIVE" }), "This roadmap is no longer active, so its progress cannot change."],
+    [error({ status: 409, code: "ROADMAP_STEP_PREREQUISITES_INCOMPLETE" }), "Complete the earlier steps this step depends on first."],
+    [error({ status: 409, code: "ROADMAP_NO_ACTIONABLE_GAPS" }), "The newest skill gap analysis has no measurable gap with a learning track, so there is no roadmap to create."],
     [error({ status: 404, code: "RESOURCE_NOT_FOUND" }), "The request could not be completed."],
     [new Error("boom"), "Something went wrong. Please try again."],
   ])("describes %o", (input, expected) => {

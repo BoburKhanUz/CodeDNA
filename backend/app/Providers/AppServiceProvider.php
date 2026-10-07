@@ -12,6 +12,8 @@ use App\Services\Challenge\ChallengeCatalog;
 use App\Services\Challenge\Evaluator\ChallengeEvaluator;
 use App\Services\Challenge\Evaluator\SpoolChallengeEvaluator;
 use App\Services\Challenge\Evaluator\UnavailableChallengeEvaluator;
+use App\Services\Roadmap\RoadmapCatalog;
+use App\Services\Roadmap\RoadmapRules;
 use App\Support\ConfigurationValidator;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -49,6 +51,17 @@ class AppServiceProvider extends ServiceProvider
                 ? new SpoolChallengeEvaluator((string) $config['spool_path'], (int) $config['wait_seconds'], (int) $config['heartbeat_max_age_seconds'])
                 : new UnavailableChallengeEvaluator;
         });
+
+        // Learning roadmaps (Phase 17): the server-owned track catalog and the
+        // deterministic rules. No AI, no network.
+        $this->app->singleton(RoadmapCatalog::class, static fn ($app): RoadmapCatalog => RoadmapCatalog::forVersion(
+            (string) $app['config']->get('codedna.roadmap.catalog_version'),
+            $app->make(ChallengeCatalog::class),
+            $app->make(RoadmapRules::class),
+        ));
+        $this->app->singleton(RoadmapRules::class, static fn ($app): RoadmapRules => RoadmapRules::forVersion(
+            (string) $app['config']->get('codedna.roadmap.rules_version'),
+        ));
     }
 
     public function boot(): void
@@ -144,6 +157,12 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perHour($limits['challenge_submit_per_hour'])->by($key.'|hour'),
             ];
         });
+
+        RateLimiter::for('roadmap-generate', static fn (Request $request): Limit => Limit::perMinute($limits['roadmap_generate_per_minute'])
+            ->by('roadmap-generate:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        RateLimiter::for('roadmap-progress', static fn (Request $request): Limit => Limit::perMinute($limits['roadmap_progress_per_minute'])
+            ->by('roadmap-progress:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
 
         RateLimiter::for('password-change', static function (Request $request) use ($limits): array {
             $key = 'password-change:'.($request->user()?->getAuthIdentifier() ?? $request->ip());

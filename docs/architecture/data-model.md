@@ -38,6 +38,9 @@ users ──1:n──► projects ──1:n──► source_snapshots ──1:n�
 | `challenge_definitions` | Stored copy of a published catalog challenge, one per key and version (Phase 16) | **never** |
 | `challenge_instances` | A challenge assigned for one gap of a skill gap snapshot, with its selection provenance (Phase 16) | lifecycle columns only, until `PASSED` or `FAILED` |
 | `challenge_submissions` | One immutable attempt: source, versions, evaluation (Phase 16) | lifecycle columns only, until a terminal state |
+| `roadmap_snapshots` | A learning roadmap generated from one skill gap snapshot: focus, tracks, versions, fingerprints, lineage (Phase 17) | status only, once: ACTIVE → COMPLETED or SUPERSEDED |
+| `roadmap_steps` | The roadmap's steps, copied from the catalog (Phase 17) | **never** |
+| `roadmap_step_completions` | Self-reported learning progress, one row per completed step (Phase 17) | **never** (insert-only) |
 
 There is deliberately no separate `repositories` or `analyses` table. A
 project carries its source origin (`source_type`, `repository_url`). A
@@ -50,7 +53,7 @@ integrations (Phase 19) will add their own tables when they exist.
 |---|---|
 | `User` | `developerProfile()` hasOne; `projects()` hasMany |
 | `DeveloperProfile` | `user()` belongsTo |
-| `Project` | `user()` belongsTo; `sourceSnapshots()`, `analysisRuns()`, `dnaSnapshots()`, `challengeInstances()` hasMany |
+| `Project` | `user()` belongsTo; `sourceSnapshots()`, `analysisRuns()`, `dnaSnapshots()`, `challengeInstances()`, `roadmapSnapshots()` hasMany |
 | `SourceSnapshot` | `project()` belongsTo; `analysisRuns()` hasMany |
 | `AnalysisRun` | `project()`, `sourceSnapshot()` belongsTo; `result()` hasOne; `dnaSnapshots()` hasMany (one per scoring version), `dnaSnapshot()` hasOne |
 | `DnaSnapshot` | `user()`, `project()`, `analysisRun()`, `sourceSnapshot()` belongsTo; `competencySnapshots()` hasMany |
@@ -60,6 +63,9 @@ integrations (Phase 19) will add their own tables when they exist.
 | `ChallengeDefinition` | none (read through instances and submissions) |
 | `ChallengeInstance` | `project()`, `definition()`, `skillGapSnapshot()` belongsTo; `submissions()` hasMany (newest attempt first), `challengeSubmissions()` hasMany (unordered) |
 | `ChallengeSubmission` | `instance()`, `definition()` belongsTo |
+| `RoadmapSnapshot` | `project()`, `skillGapSnapshot()` belongsTo; `steps()` hasMany (learning order), `completions()` hasMany |
+| `RoadmapStep` | `roadmap()` belongsTo |
+| `RoadmapStepCompletion` | none |
 
 All relationships carry generic return types (`BelongsTo<Project, $this>`).
 Outside production, strict mode makes lazy loading throw, so callers must
@@ -424,6 +430,67 @@ Trigger `challenge_definitions_immutable` refuses every update.
 - **Nothing is deleted.** All FKs are `RESTRICT`, and the models refuse
   deletes.
 
+### roadmap_snapshots, roadmap_steps, roadmap_step_completions
+
+Phase 17 ([learning-roadmap-v1.md](learning-roadmap-v1.md)). A planning
+layer: nothing here is read by, or writes to, any DNA, competency or skill
+gap table. Completing steps is self-reported progress, never evidence.
+
+**`roadmap_snapshots`** holds one roadmap per (skill gap snapshot, roadmap
+version, rules version):
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `user_id`, `project_id`, `skill_gap_snapshot_id`, `competency_snapshot_id`, `dna_snapshot_id`, `analysis_run_id`, `source_snapshot_id` | ulid | one composite FK onto `skill_gap_snapshots`' lineage index, `RESTRICT` |
+| `roadmap_version`, `rules_version` | varchar(32) | |
+| `catalog_fingerprint`, `rules_fingerprint`, `roadmap_fingerprint` | char(64) | SHA-256 hex; the roadmap fingerprint covers the generated content |
+| `skill_gap_version`, `skill_gap_specification_fingerprint`, `target_profile`, `target_profile_version` | | the gaps' specification, as checked |
+| `challenge_catalog_version`, `challenge_catalog_fingerprint` | | the challenge catalog used for recommendations |
+| `focus` | jsonb | `{selected, excluded}`: the gaps as stored, rank, deciding criterion, exclusion reasons; ≤ 32 KiB |
+| `tracks` | jsonb | the selected tracks (key, version, title, description, objective, estimate, fingerprint); ≤ 32 KiB |
+| `step_count`, `estimated_minutes` | int | |
+| `status` | varchar(16) | `ACTIVE` \| `COMPLETED` \| `SUPERSEDED` |
+| `superseded_by_id`, `superseded_at` | ulid, timestamp null | present ⇔ `SUPERSEDED`; successor FK `(superseded_by_id, project_id)`, deferred to commit |
+| `completed_at` | timestamp null | present ⇔ `COMPLETED` |
+| `created_at`, `updated_at` | timestamp | |
+
+- **Unique keys:** `roadmap_snapshots_identity_unique` on
+  `(skill_gap_snapshot_id, roadmap_version, rules_version)`;
+  `roadmap_snapshots_owner_unique` on `(id, project_id, user_id)`; and the
+  partial `roadmap_snapshots_one_active_unique` on `(project_id)`
+  `WHERE status = 'ACTIVE'`.
+- **Trigger:** `roadmap_snapshots_guarded` refuses any change to content,
+  versions, fingerprints, lineage or creation time, and any update of a
+  `COMPLETED` or `SUPERSEDED` roadmap.
+
+**`roadmap_steps`** holds one immutable row per step:
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `roadmap_snapshot_id`, `project_id`, `user_id` | ulid | composite FK onto `roadmap_snapshots (id, project_id, user_id)` |
+| `position`, `track_position`, `step_position` | smallint | learning order; unique per roadmap |
+| `track_key`, `competency_key`, `step_key` | varchar | step key unique per roadmap, format `^(cm\|fd\|ts\|ch)-…` (CHECK) |
+| `type` | varchar(16) | `READ` \| `PRACTICE` \| `CHALLENGE` \| `REASSESS` |
+| `title`, `description`, `objective`, `estimated_minutes`, `prerequisites` | | copied from the catalog |
+| `challenge_key`, `challenge_version`, `challenge_title`, `challenge_difficulty` | varchar null | all or none, and only for `CHALLENGE` steps (CHECK); a reference to the Phase 16 catalog |
+| `created_at` | timestamp | no `updated_at` |
+
+**`roadmap_step_completions`** holds one insert-only row per completed
+step:
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `roadmap_snapshot_id`, `roadmap_step_id`, `project_id`, `user_id` | ulid | FK `(roadmap_step_id, roadmap_snapshot_id)` onto the step; FK onto the roadmap's owner key |
+| `completed_at` | timestamp | set by the server |
+
+- **Unique:** `roadmap_step_completions_step_unique` on
+  `(roadmap_step_id)`.
+- **Nothing is deleted.** All FKs are `RESTRICT`, and the models refuse
+  updates and deletes.
+
 ## States
 
 States are **VARCHAR columns with CHECK constraints**, mirrored by PHP backed
@@ -441,6 +508,8 @@ enums (`app/Enums`) through Eloquent enum casts:
 | `ChallengeStatus` | `ASSIGNED`, `EVALUATING`, `PASSED`, `FAILED` (see `challenge_instances`) |
 | `SubmissionStatus` | `QUEUED`, `RUNNING`, `PASSED`, `FAILED`, `ERROR` (see `challenge_submissions`) |
 | `ChallengeDifficulty` | `BEGINNER`, `INTERMEDIATE`, `ADVANCED` |
+| `RoadmapStatus` | `ACTIVE`, `COMPLETED`, `SUPERSEDED` (see `roadmap_snapshots`) |
+| `RoadmapStepType` | `READ`, `PRACTICE`, `CHALLENGE`, `REASSESS` |
 
 **Why not PostgreSQL `ENUM` types?** Adding or renaming a value then needs
 `ALTER TYPE`, which has transaction restrictions and couples deployments to
@@ -487,9 +556,10 @@ DNA snapshot:     created (READY or INSUFFICIENT_DATA) from a SUCCEEDED run ─�
 
 Historical records (`source_snapshots`, terminal `analysis_runs`,
 `analysis_results`, `dna_snapshots`, `competency_snapshots`,
-`skill_gap_snapshots`, `skill_gap_results`, `challenge_definitions`) are
-append-only. Challenge instances and submissions change only their
-lifecycle columns, and their database triggers enforce that (Phase 16). This is an architectural invariant.
+`skill_gap_snapshots`, `skill_gap_results`, `challenge_definitions`,
+`roadmap_steps`, `roadmap_step_completions`) are append-only. Challenge instances and submissions change only their
+lifecycle columns, and their database triggers enforce that (Phase 16).
+Roadmap snapshots change only their status, once (Phase 17, trigger). This is an architectural invariant.
 
 | Layer | Mechanism |
 |---|---|

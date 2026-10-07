@@ -102,6 +102,16 @@ export function describeApiError(error: unknown): string {
       return "Your previous attempt is still being evaluated.";
     case "CHALLENGE_CLOSED":
       return "This challenge is closed and accepts no further attempts.";
+    case "ROADMAP_NO_SKILL_GAPS":
+      return "A roadmap needs a skill gap analysis. Run a static analysis first.";
+    case "ROADMAP_NO_ACTIONABLE_GAPS":
+      return "The newest skill gap analysis has no measurable gap with a learning track, so there is no roadmap to create.";
+    case "ROADMAP_EVIDENCE_INVALID":
+      return "The newest skill gap analysis cannot be used for a roadmap.";
+    case "ROADMAP_NOT_ACTIVE":
+      return "This roadmap is no longer active, so its progress cannot change.";
+    case "ROADMAP_STEP_PREREQUISITES_INCOMPLETE":
+      return "Complete the earlier steps this step depends on first.";
   }
 
   if (error.status !== null && error.status >= 500) {

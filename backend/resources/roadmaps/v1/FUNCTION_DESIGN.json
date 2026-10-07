@@ -1,0 +1,106 @@
+{
+  "schema_version": "roadmap-track/1",
+  "key": "FUNCTION_DESIGN",
+  "version": "1.0.0",
+  "competency": "FUNCTION_DESIGN",
+  "title": "Design focused functions",
+  "description": "Keep functions short, with few parameters and shallow nesting, so that each one does one thing. CodeDNA measures the share of functions longer than 100 lines, with more than 5 parameters, or nested more than 4 levels deep.",
+  "objective": "Fewer long functions, wide parameter lists and deeply nested functions.",
+  "estimated_minutes": 260,
+  "steps": [
+    {
+      "key": "fd-responsibility",
+      "type": "READ",
+      "title": "Understand single responsibility for functions",
+      "description": "A function should do one thing at one level of abstraction, and its name should say what that thing is. Length, many parameters and deep nesting are usually symptoms of a function doing several things.",
+      "objective": "Recognise when a function has more than one responsibility.",
+      "estimated_minutes": 15,
+      "prerequisites": []
+    },
+    {
+      "key": "fd-find-oversized",
+      "type": "PRACTICE",
+      "title": "Identify oversized functions",
+      "description": "Use the structural findings of your latest analysis (function length, parameter count and nesting depth) to list the functions that exceed the thresholds. Note which symptom each one shows.",
+      "objective": "A short list of functions to split, with the symptom of each.",
+      "estimated_minutes": 20,
+      "prerequisites": [
+        "fd-responsibility"
+      ]
+    },
+    {
+      "key": "fd-reduce-length",
+      "type": "PRACTICE",
+      "title": "Reduce function length",
+      "description": "Extract cohesive blocks (a loop body, a validation, a calculation) into well-named functions. Keep the extracted pieces free of hidden shared state, so that each can be read on its own.",
+      "objective": "Functions short enough to read without scrolling.",
+      "estimated_minutes": 60,
+      "prerequisites": [
+        "fd-find-oversized"
+      ]
+    },
+    {
+      "key": "fd-reduce-parameters",
+      "type": "PRACTICE",
+      "title": "Reduce long parameter lists",
+      "description": "Group parameters that always travel together into one value object, replace boolean flags with separate functions, and pass only what the function uses.",
+      "objective": "Functions with at most five parameters.",
+      "estimated_minutes": 45,
+      "prerequisites": [
+        "fd-find-oversized"
+      ]
+    },
+    {
+      "key": "fd-reduce-nesting",
+      "type": "PRACTICE",
+      "title": "Reduce deep nesting",
+      "description": "Return early for edge cases, invert conditions, and move the body of a nested loop into its own function. Deep nesting hides which condition a line depends on.",
+      "objective": "Functions nested at most four levels deep.",
+      "estimated_minutes": 45,
+      "prerequisites": [
+        "fd-find-oversized"
+      ]
+    },
+    {
+      "key": "fd-boundaries",
+      "type": "PRACTICE",
+      "title": "Review function boundaries",
+      "description": "Check that each function's name describes everything it does, and separate computation from side effects such as I/O, so that the computation can be tested on its own.",
+      "objective": "Function names that match what the functions do.",
+      "estimated_minutes": 30,
+      "prerequisites": [
+        "fd-reduce-length",
+        "fd-reduce-parameters",
+        "fd-reduce-nesting"
+      ]
+    },
+    {
+      "key": "fd-challenge",
+      "type": "CHALLENGE",
+      "title": "Complete a function design challenge",
+      "description": "Practise on a short coding challenge for this competency. It is checked by deterministic tests and structural rules in an isolated sandbox.",
+      "objective": "Apply the techniques of this track to a small, self-contained exercise.",
+      "estimated_minutes": 30,
+      "prerequisites": [
+        "fd-reduce-length"
+      ]
+    },
+    {
+      "key": "fd-reassess",
+      "type": "REASSESS",
+      "title": "Re-assess with a new analysis",
+      "description": "Apply these techniques to your own code, upload the changed source and run a new CodeDNA analysis. Only a new analysis can show whether the measured function design changed.",
+      "objective": "A new analysis of the improved code.",
+      "estimated_minutes": 15,
+      "prerequisites": [
+        "fd-responsibility",
+        "fd-find-oversized",
+        "fd-reduce-length",
+        "fd-reduce-parameters",
+        "fd-reduce-nesting",
+        "fd-boundaries",
+        "fd-challenge"
+      ]
+    }
+  ]
+}

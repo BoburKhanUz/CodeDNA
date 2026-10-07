@@ -15,6 +15,8 @@ use App\Http\Controllers\Api\V1\Projects\ChallengeSubmissionController;
 use App\Http\Controllers\Api\V1\Projects\CompetencySnapshotController;
 use App\Http\Controllers\Api\V1\Projects\DnaSnapshotController;
 use App\Http\Controllers\Api\V1\Projects\ProjectController;
+use App\Http\Controllers\Api\V1\Projects\RoadmapController;
+use App\Http\Controllers\Api\V1\Projects\RoadmapStepController;
 use App\Http\Controllers\Api\V1\Projects\SkillGapSnapshotController;
 use App\Http\Controllers\Api\V1\Projects\SourceSnapshotController;
 use App\Http\Middleware\RequireSession;
@@ -173,4 +175,25 @@ Route::middleware('auth:sanctum')->prefix('projects')->name('projects.')->group(
         ->whereUlid(['project', 'challengeInstance', 'challengeSubmission'])
         ->scopeBindings()
         ->name('challenges.submissions.show');
+
+    // Learning roadmaps (Phase 17): a planning layer generated from the newest
+    // skill gap analysis. Generating and completing steps change only roadmap
+    // records, never CodeDNA, competencies or gaps. No update or delete routes.
+    Route::get('{project}/roadmaps', [RoadmapController::class, 'index'])
+        ->whereUlid('project')
+        ->name('roadmaps.index');
+    Route::post('{project}/roadmaps', [RoadmapController::class, 'store'])
+        ->whereUlid('project')
+        ->middleware('throttle:roadmap-generate')
+        ->name('roadmaps.store');
+    Route::get('{project}/roadmaps/{roadmapSnapshot}', [RoadmapController::class, 'show'])
+        ->whereUlid(['project', 'roadmapSnapshot'])
+        ->scopeBindings()
+        ->name('roadmaps.show');
+    Route::post('{project}/roadmaps/{roadmapSnapshot}/steps/{step}/complete', [RoadmapStepController::class, 'complete'])
+        ->whereUlid(['project', 'roadmapSnapshot'])
+        ->where('step', '(cm|fd|ts|ch)-[a-z0-9]+(-[a-z0-9]+)*')
+        ->scopeBindings()
+        ->middleware('throttle:roadmap-progress')
+        ->name('roadmaps.steps.complete');
 });

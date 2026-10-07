@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codedna.dev/schemas/roadmap-track-1.json",
+  "title": "CodeDNA learning roadmap track (roadmap-track/1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "key", "version", "competency", "title", "description", "objective", "estimated_minutes", "steps"],
+  "properties": {
+    "schema_version": { "const": "roadmap-track/1" },
+    "key": { "enum": ["COMPLEXITY_MANAGEMENT", "FUNCTION_DESIGN", "TYPE_STRUCTURE", "CODE_HYGIENE"] },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "competency": { "enum": ["COMPLEXITY_MANAGEMENT", "FUNCTION_DESIGN", "TYPE_STRUCTURE", "CODE_HYGIENE"] },
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "description": { "type": "string", "minLength": 1, "maxLength": 600 },
+    "objective": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "estimated_minutes": { "type": "integer", "minimum": 5, "maximum": 2400 },
+    "steps": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "type", "title", "description", "objective", "estimated_minutes", "prerequisites"],
+        "properties": {
+          "key": { "type": "string", "pattern": "^(cm|fd|ts|ch)-[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 48 },
+          "type": { "enum": ["READ", "PRACTICE", "CHALLENGE", "REASSESS"] },
+          "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": { "type": "string", "minLength": 1, "maxLength": 600 },
+          "objective": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "estimated_minutes": { "type": "integer", "minimum": 5, "maximum": 480 },
+          "prerequisites": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^(cm|fd|ts|ch)-[a-z0-9]+(-[a-z0-9]+)*$" }
+          }
+        }
+      }
+    }
+  }
+}

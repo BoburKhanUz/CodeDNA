@@ -143,4 +143,14 @@ class Project extends Model
         $this->status = ProjectStatus::Archived;
         $this->save();
     }
+
+    /**
+     * Learning roadmaps (Phase 17): planning records, never part of scoring.
+     *
+     * @return HasMany<RoadmapSnapshot, $this>
+     */
+    public function roadmapSnapshots(): HasMany
+    {
+        return $this->hasMany(RoadmapSnapshot::class);
+    }
 }

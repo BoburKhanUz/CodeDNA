@@ -92,6 +92,15 @@ describe("SkillGapAnalysis", () => {
     expect(card).toHaveTextContent("Completing a challenge does not immediately change your CodeDNA score or skill gap. Reassessment occurs from new code analysis.");
   });
 
+  it("links to the learning roadmap and says it does not change the gaps", async () => {
+    respondWith(gapsSnapshot);
+    render(<SkillGapAnalysis projectId={project.id} />);
+
+    const card = await screen.findByTestId("roadmap-link");
+    expect(within(card).getByRole("link", { name: "View Learning Roadmap →" })).toHaveAttribute("href", `/app/projects/${project.id}/roadmap`);
+    expect(card).toHaveTextContent("Completing learning steps does not change your CodeDNA score or skill gap. Improvement is measured through new code analysis.");
+  });
+
   it("links to the AI assessment", async () => {
     respondWith(gapsSnapshot);
     render(<SkillGapAnalysis projectId={project.id} />);

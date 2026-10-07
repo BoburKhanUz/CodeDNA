@@ -1,0 +1,80 @@
+{
+  "schema_version": "roadmap-track/1",
+  "key": "TYPE_STRUCTURE",
+  "version": "1.0.0",
+  "competency": "TYPE_STRUCTURE",
+  "title": "Structure types around one responsibility",
+  "description": "Keep classes and other types small enough to have one clear purpose. CodeDNA measures the share of types longer than 500 lines.",
+  "objective": "Fewer types above the length threshold.",
+  "estimated_minutes": 230,
+  "steps": [
+    {
+      "key": "ts-responsibility",
+      "type": "READ",
+      "title": "Understand type responsibility",
+      "description": "A class or type should model one concept and change for one reason. Very long types usually combine several concepts, such as data, persistence, formatting and workflow.",
+      "objective": "Recognise the separate responsibilities inside a large type.",
+      "estimated_minutes": 15,
+      "prerequisites": []
+    },
+    {
+      "key": "ts-find-oversized",
+      "type": "PRACTICE",
+      "title": "Identify oversized types",
+      "description": "Use the structural findings of your latest analysis to list the types longer than 500 lines. For each one, write down the groups of methods that work on the same data.",
+      "objective": "A list of large types with their candidate responsibilities.",
+      "estimated_minutes": 20,
+      "prerequisites": [
+        "ts-responsibility"
+      ]
+    },
+    {
+      "key": "ts-separate",
+      "type": "PRACTICE",
+      "title": "Separate responsibilities",
+      "description": "Move each group of methods and the data it uses into its own type, and let the original type delegate to it. Prefer composition over adding layers of inheritance.",
+      "objective": "Smaller types, each with one purpose.",
+      "estimated_minutes": 90,
+      "prerequisites": [
+        "ts-find-oversized"
+      ]
+    },
+    {
+      "key": "ts-boundaries",
+      "type": "PRACTICE",
+      "title": "Improve type boundaries",
+      "description": "Keep the public surface of each type small, hide internal state, and let collaborators depend on what a type does rather than on its internals.",
+      "objective": "Types that interact through small, explicit interfaces.",
+      "estimated_minutes": 45,
+      "prerequisites": [
+        "ts-separate"
+      ]
+    },
+    {
+      "key": "ts-challenge",
+      "type": "CHALLENGE",
+      "title": "Complete a type structure challenge",
+      "description": "Practise on a short coding challenge for this competency. It is checked by deterministic tests and structural rules in an isolated sandbox.",
+      "objective": "Apply the techniques of this track to a small, self-contained exercise.",
+      "estimated_minutes": 45,
+      "prerequisites": [
+        "ts-separate"
+      ]
+    },
+    {
+      "key": "ts-reassess",
+      "type": "REASSESS",
+      "title": "Re-assess with a new analysis",
+      "description": "Apply these techniques to your own code, upload the changed source and run a new CodeDNA analysis. Only a new analysis can show whether the measured type structure changed.",
+      "objective": "A new analysis of the improved code.",
+      "estimated_minutes": 15,
+      "prerequisites": [
+        "ts-responsibility",
+        "ts-find-oversized",
+        "ts-separate",
+        "ts-boundaries",
+        "ts-challenge"
+      ]
+    }
+  ]
+}

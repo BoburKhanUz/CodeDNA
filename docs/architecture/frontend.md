@@ -47,6 +47,7 @@ frontend/src/
 │   ├── profile/                      ProfileSettings (loader), ProfileForm, PasswordForm, field + validation
 │   ├── projects/                     ProjectList, ProjectForm, ProjectDetail, UploadSource, StatusBadge
 │   ├── challenge/                    ChallengeList, ChallengeDetail, CodeEditor, EvaluationFeedback (Phase 16)
+│   ├── roadmap/                      RoadmapView (Phase 17)
 │   ├── app/app-shell.tsx             sidebar navigation (Home, Projects, Profile) + header with the signed-in user
 │   └── brand/logo.tsx
 ├── lib/
@@ -61,6 +62,7 @@ frontend/src/
 │   ├── projects/client.ts            list/get/create/archive projects, list snapshots, uploadSource()
 │   ├── projects/format.ts            sizes, UTC dates, labels, slugify (plain text only)
 │   ├── challenge/client.ts, format.ts   challenge API calls; labels and value formatting (Phase 16)
+│   ├── roadmap/client.ts, format.ts     roadmap API calls; labels, durations, rank explanations (Phase 17)
 │   ├── config.server.ts              server-only env (BACKEND_INTERNAL_URL, FRONTEND_URL)
 │   └── utils.ts                      shadcn `cn` helper
 └── test/                             test helpers (API response builders, router mock)
@@ -87,6 +89,7 @@ description is introduced, they move to `packages/types` and are generated.
 | `/app/projects/[project]/competencies` | dynamic | Same gate. Competency Matrix of the newest competency snapshot, or an empty state. |
 | `/app/projects/[project]/skill-gaps` | dynamic | Same gate. Skill gaps of the newest skill gap snapshot against the target profile, or an empty state. |
 | `/app/projects/[project]/assessment` | dynamic | Same gate. The newest AI assessment (AI-generated, non-authoritative), its request button, or an empty state. |
+| `/app/projects/[project]/roadmap` | dynamic | Same gate. The newest learning roadmap (development focus, tracks, steps, progress), or the empty states; `?roadmap=<id>` shows an earlier one. Unknown or foreign IDs show "Roadmap not found" / "Project not found". |
 | `/app/projects/[project]/challenges` | dynamic | Same gate. The project's coding challenges and the button that assigns the next one, or an empty state. |
 | `/app/projects/[project]/challenges/[challenge]` | dynamic | Same gate. One challenge: the exercise, why it was selected, the editor, attempts and deterministic feedback. Unknown or foreign IDs show "Challenge not found" / "Project not found". |
 | anything else | — | Not-found page. |
@@ -404,6 +407,51 @@ Phase 16. The pages present the [coding challenges API](../api/README.md#coding-
   replayed request answers `409 CHALLENGE_EVALUATION_PENDING`. It never
   creates a second attempt.
 
+## Learning roadmap (`/app/projects/[project]/roadmap`)
+
+Phase 17. The page presents the [learning roadmap API](../api/README.md#learning-roadmaps)
+(`lib/roadmap/client.ts`). It is reached from the Skill Gaps page's
+"Learning Roadmap" card and from the Competency Matrix and Coding
+Challenges navigation.
+
+- **Notice.** The page and the Skill Gaps card state: "Completing learning
+  steps does not change your CodeDNA score or skill gap. Improvement is
+  measured through new code analysis." The progress card is titled
+  "Learning progress" and says it is self-reported, not a CodeDNA
+  assessment and not evidence of skill.
+- **Development focus.** For each focus competency it shows:
+  - rank and priority;
+  - current and target scores out of 100, the gap in points, evidence
+    quality and level;
+  - why it ranks there, from the stored deciding criterion.
+
+  Competencies that are not in the roadmap are listed with their reason.
+- **Tracks.** Each track shows its title, competency, objective, estimate,
+  progress and ordered steps. Each step shows its type, title, what to do,
+  its goal and its estimate. A step is either done (with its date), "Mark
+  as done" when it can be completed, or "Complete the earlier steps it
+  depends on first".
+  - **Challenge steps** show the recommended challenge and link to the
+    developer's challenge, or to Coding Challenges. They say that passing
+    a challenge does not close the gap.
+  - **Re-assessment steps** link to the project page to run a new
+    analysis; nothing is started automatically.
+- **States:**
+  - no skill gap analysis: "No roadmap available";
+  - insufficient data: "Not enough evidence";
+  - no material gaps: "No active development focus";
+  - gaps but no roadmap: "Create learning roadmap", which sends `{}`;
+  - a newer analysis exists: "Update roadmap", or an explanation when the
+    newer analysis has no actionable gap;
+  - superseded roadmap: read-only, with a link to the current one;
+  - earlier catalog or rules version: a note;
+  - archived project: read-only;
+  - loading, error with retry, 401 → `/login`, and 404 → "not found".
+- **History.** Earlier roadmaps are listed with their status and progress,
+  and each opens with `?roadmap=<id>`.
+- **What it never does.** It sends no content. It has no AI, chat, hints,
+  courses or external links, and computes no score.
+
 ## API client (`lib/api`)
 
 - **Same-origin only.** Paths must be absolute paths like `/api/v1/...`.
@@ -499,6 +547,10 @@ The tests cover:
   not-found states) and the upload panel (client checks, progress, success
   text, rejected archives, idempotent retry, new key per file, 401)
 
+- the learning roadmap (notice, development focus and rank explanation,
+  ordered tracks and steps, step completion and refusals, challenge and
+  re-assessment links, empty, newer-analysis, superseded, archived and
+  version states, 401 and 404, no AI)
 - the challenge list and detail (notice, assignment, editor input and
   highlighting, submission, polling, feedback for visible and hidden
   cases, error attempts, unavailable evaluation, closed and archived
