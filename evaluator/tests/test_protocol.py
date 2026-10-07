@@ -93,3 +93,41 @@ class RunnerOutputTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Phase21HardeningTest(unittest.TestCase):
+    def test_error_names_are_builtin_or_generic(self) -> None:
+        self.assertEqual("ZeroDivisionError", protocol.error_name("ZeroDivisionError"))
+        self.assertEqual("MissingEntrypoint", protocol.error_name("MissingEntrypoint"))
+        for leaked in ("[{'price_cents': 1999}]", "Hidden_args_1_2_3", "", None, 42):
+            with self.subTest(leaked):
+                self.assertEqual("Error", protocol.error_name(leaked))
+
+    def test_case_errors_never_carry_submitted_names(self) -> None:
+        records = [
+            {"type": "case", "id": "h1", "ok": False, "error": "args_are_1_2_3"},
+            {"type": "case", "id": "h2", "ok": False, "error": "KeyError"},
+        ]
+        self.assertEqual(
+            [{"id": "h1", "status": "ERROR", "error": "Error"}, {"id": "h2", "status": "ERROR", "error": "KeyError"}],
+            protocol.case_results(["h1", "h2"], records),
+        )
+
+    def test_deeply_nested_values_are_errors_not_crashes(self) -> None:
+        deep: object = 1
+        for _ in range(protocol.MAX_VALUE_DEPTH + 1):
+            deep = [deep]
+        ok: object = 1
+        for _ in range(protocol.MAX_VALUE_DEPTH - 1):
+            ok = {"k": ok}
+        self.assertEqual(
+            [{"id": "a", "status": "ERROR", "error": "ValueTooDeep"}, {"id": "b", "status": "OK", "value": ok}],
+            protocol.case_results(
+                ["a", "b"], [{"type": "case", "id": "a", "ok": True, "value": deep}, {"type": "case", "id": "b", "ok": True, "value": ok}]
+            ),
+        )
+        # Far beyond Python's recursion limit: still a plain error result.
+        very: object = 1
+        for _ in range(5000):
+            very = [very]
+        self.assertEqual("ValueTooDeep", protocol.case_results(["a"], [{"type": "case", "id": "a", "ok": True, "value": very}])[0]["error"])

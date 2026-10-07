@@ -8,6 +8,7 @@ interpreted (there is no command, image, runtime or dependency field).
 
 from __future__ import annotations
 
+import builtins
 import json
 import re
 from typing import Any
@@ -21,7 +22,23 @@ CASE_ID = re.compile(r"^[a-z0-9_-]{1,32}$")
 REQUEST_KEYS = {"protocol", "id", "language", "entrypoint", "source", "cases"}
 MAX_ARGS_BYTES = 16384
 MAX_VALUE_BYTES = 4096
+# Deepest nesting of a returned value. Deeper values are an error result
+# (Phase 21): they could otherwise exceed json's recursion limit here or
+# Laravel's decoder depth and turn a graded run into an ungraded one.
+MAX_VALUE_DEPTH = 32
 RUNTIME = "python3.11"
+
+# Error names that may be reported (Phase 21). The runner reports
+# type(error).__name__, and submitted code chooses that name freely: a class
+# named after a hidden test's arguments would carry them out. Only builtin
+# exception names and the runner's own markers pass; anything else is "Error".
+ERROR_NAMES = frozenset(name for name, value in vars(builtins).items() if isinstance(value, type) and issubclass(value, BaseException)) | {
+    "MissingEntrypoint",
+    "UnserializableResult",
+    "ValueTooLarge",
+    "ValueTooDeep",
+    "Error",
+}
 
 
 class RejectedRequestError(ValueError):
@@ -76,6 +93,24 @@ def parse_records(lines: list[str]) -> list[dict[str, Any]]:
         if isinstance(record, dict) and isinstance(record.get("type"), str):
             records.append(record)
     return records
+
+
+def error_name(value: Any) -> str:
+    """A reportable error name: a known one, or "Error"."""
+    return value if isinstance(value, str) and value in ERROR_NAMES else "Error"
+
+
+def _depth_exceeds(value: Any, limit: int) -> bool:
+    """Whether value nests deeper than limit (iterative: no recursion)."""
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    while stack:
+        item, depth = stack.pop()
+        if isinstance(item, (dict, list)):
+            if depth > limit:
+                return True
+            children = item.values() if isinstance(item, dict) else item
+            stack.extend((child, depth + 1) for child in children)
+    return False
 
 
 def _int(value: Any) -> int:
@@ -134,11 +169,12 @@ def case_results(case_ids: list[str], records: list[dict[str, Any]]) -> list[dic
             continue
         if record.get("ok") is True:
             value = record.get("value")
-            if len(json.dumps(value).encode()) > MAX_VALUE_BYTES:
+            if _depth_exceeds(value, MAX_VALUE_DEPTH):
+                found[case_id] = {"id": case_id, "status": "ERROR", "error": "ValueTooDeep"}
+            elif len(json.dumps(value).encode()) > MAX_VALUE_BYTES:
                 found[case_id] = {"id": case_id, "status": "ERROR", "error": "ValueTooLarge"}
             else:
                 found[case_id] = {"id": case_id, "status": "OK", "value": value}
         else:
-            error = record.get("error")
-            found[case_id] = {"id": case_id, "status": "ERROR", "error": error[:64] if isinstance(error, str) else "Error"}
+            found[case_id] = {"id": case_id, "status": "ERROR", "error": error_name(record.get("error"))}
     return [found.get(case_id, {"id": case_id, "status": "MISSING"}) for case_id in case_ids]

@@ -8,11 +8,16 @@ use App\Exceptions\ApiException;
 use App\Http\Errors\ErrorCode;
 use App\Models\Project;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
  * Applies validated changes to a project's descriptive fields. Archived
  * projects are read-only; status changes only through ArchiveProject.
+ *
+ * The status is checked on the locked row (Phase 21): an edit racing an
+ * archive either completes before it or is refused after it, never lands
+ * on an archived project.
  */
 final readonly class UpdateProject
 {
@@ -21,16 +26,20 @@ final readonly class UpdateProject
      */
     public function handle(Project $project, array $changes): Project
     {
-        if (! $project->isActive()) {
-            throw new ApiException(ErrorCode::ProjectArchived);
-        }
-
         try {
-            $project->fill($changes)->save();
+            $locked = DB::transaction(static function () use ($project, $changes): Project {
+                $locked = Project::query()->whereKey($project->getKey())->lockForUpdate()->firstOrFail();
+                if (! $locked->isActive()) {
+                    throw new ApiException(ErrorCode::ProjectArchived);
+                }
+                $locked->fill($changes)->save();
+
+                return $locked;
+            });
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages(['slug' => ['You already have a project with this slug.']]);
         }
 
-        return $project;
+        return $project->setRawAttributes($locked->getAttributes(), true);
     }
 }

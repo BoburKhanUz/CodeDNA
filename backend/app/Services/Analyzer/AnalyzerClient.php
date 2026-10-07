@@ -93,7 +93,7 @@ final class AnalyzerClient
             throw AnalyzerException::retryable(AnalysisFailure::AnalyzerUnavailable, 'transport_error');
         }
 
-        return $this->verify($response, $run, $requestId, $signer);
+        return $this->verify($response, $run, $snapshot, $requestId, $signer);
     }
 
     private function requestBody(AnalysisRun $run, SourceSnapshot $snapshot, int $attempt): string
@@ -142,7 +142,7 @@ final class AnalyzerClient
         }
     }
 
-    private function verify(Response $response, AnalysisRun $run, string $requestId, HmacSigner $signer): AnalyzerResult
+    private function verify(Response $response, AnalysisRun $run, SourceSnapshot $snapshot, string $requestId, HmacSigner $signer): AnalyzerResult
     {
         $status = $response->status();
         $raw = $response->body();
@@ -187,6 +187,13 @@ final class AnalyzerClient
         }
         if ($decoded->request_id !== $requestId) {
             throw AnalyzerException::permanent(AnalysisFailure::AnalyzerResultInvalid, 'request_id_mismatch', $status);
+        }
+        // The result must describe exactly the bytes of this snapshot (Phase
+        // 21): a correctly signed result computed over other bytes, from an
+        // analyzer bug or a stale cache entry, is never stored or scored.
+        if (! hash_equals($snapshot->source_hash, (string) $decoded->source->sha256)
+            || (int) $decoded->source->size_bytes !== $snapshot->size_bytes) {
+            throw AnalyzerException::permanent(AnalysisFailure::AnalyzerResultInvalid, 'source_mismatch', $status);
         }
         if (explode('.', (string) $decoded->contract_version)[0] !== explode('.', self::CONTRACT_VERSION)[0]) {
             throw AnalyzerException::permanent(AnalysisFailure::AnalyzerResultInvalid, 'contract_major_mismatch', $status);

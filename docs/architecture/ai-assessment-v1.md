@@ -305,8 +305,13 @@ vLLM, llama.cpp or Ollama.
 
 A deterministic template built from the evidence statuses, for local
 development and end-to-end tests. It makes no network call and has no
-cost. The configuration validator refuses it in production. Its output
-passes through the same validator.
+cost. The configuration validator refuses it in every environment except
+`local` and `testing` (Phase 21). Its output passes through the same
+validator.
+
+The OpenAI-compatible provider reads the response as a stream and refuses
+it once it exceeds `AI_MAX_OUTPUT_BYTES` plus 16 KiB of envelope, or when
+`Content-Length` already says so (Phase 21).
 
 ### Tests
 

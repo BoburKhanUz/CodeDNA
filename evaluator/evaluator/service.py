@@ -87,8 +87,7 @@ def evaluate(slot: Slot, conf: Config, request: dict[str, Any]) -> dict[str, Any
         status = "OUTPUT_LIMIT"
     elif load is not None and load.get("ok") is not True:
         status = "LOAD_ERROR"
-        error = load.get("error")
-        load_error = error[:64] if isinstance(error, str) else "Error"
+        load_error = protocol.error_name(load.get("error"))
     elif not finished:
         status = "CRASHED"
     else:
@@ -112,9 +111,18 @@ def process(claimed: Path, slot: Slot, conf: Config) -> str:
             if request["id"] != request_id:
                 raise protocol.RejectedRequestError("id_mismatch")
             record = evaluate(slot, conf, request)
+        except sandbox.SlotUnusableError:
+            write_result(conf.spool, protocol.result(request_id, "CRASHED"))
+            raise
         except protocol.RejectedRequestError as rejected:
             log.warning("evaluation.rejected id=%s reason=%s", request_id, rejected)
             record = protocol.result(request_id, "REJECTED", load_error=str(rejected)[:64])
+        except Exception as error:  # noqa: BLE001 - every claimed request gets a result
+            # Phase 21: without a result Laravel would time out and submit the
+            # same code again. Whatever the runner's output provoked, the run
+            # happened: it is reported as CRASHED, never retried.
+            log.error("evaluation.failed id=%s slot=%s error=%s", request_id, slot.index, type(error).__name__)
+            record = protocol.result(request_id, "CRASHED")
         write_result(conf.spool, record)
         log.info(
             "evaluation.completed id=%s slot=%s status=%s duration_ms=%s", request_id, slot.index, record["status"], record["duration_ms"]
@@ -147,9 +155,18 @@ def serve(conf: Config) -> None:
         while not stopping["flag"]:
             heartbeat(conf.spool)
             for future in [f for f in running if f.done()]:
-                free.append(running.pop(future))
-                if future.exception() is not None:
-                    log.error("evaluation.crashed error=%s", type(future.exception()).__name__)
+                slot = running.pop(future)
+                error = future.exception()
+                if isinstance(error, sandbox.SlotUnusableError):
+                    # Taken out of rotation (Phase 21). With no slot left the
+                    # service exits; the restarted container gets fresh tmpfs.
+                    log.critical("evaluator.slot_unusable slot=%s", slot.index)
+                    if not free and not running:
+                        raise SystemExit("no usable sandbox slot")
+                    continue
+                free.append(slot)
+                if error is not None:
+                    log.error("evaluation.crashed error=%s", type(error).__name__)
             for request in sorted((conf.spool / "requests").glob("*.json")):
                 if not free:
                     break

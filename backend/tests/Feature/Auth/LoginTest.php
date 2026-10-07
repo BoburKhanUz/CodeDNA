@@ -95,4 +95,39 @@ final class LoginTest extends TestCase
             ->assertHeader('Retry-After');
         $this->assertGuest('web');
     }
+
+    /**
+     * Phase 21: one account is bounded however many addresses the guesser
+     * uses (the per email+IP and per IP limits alone would not).
+     */
+    public function test_is_rate_limited_per_account_across_ips(): void
+    {
+        User::factory()->create(['email' => 'grace@example.com']);
+        $limit = config('codedna.rate_limits.login_per_hour_per_email');
+
+        for ($i = 0; $i < $limit; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.'.($i + 1)])
+                ->fromBrowser()->postJson(self::URL, ['email' => 'Grace@Example.com ', 'password' => 'wrong-password'])
+                ->assertUnprocessable();
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.7'])
+            ->fromBrowser()->postJson(self::URL, ['email' => 'grace@example.com', 'password' => 'password'])
+            ->assertTooManyRequests()
+            ->assertJsonPath('error.code', 'RATE_LIMITED');
+        $this->assertGuest('web');
+        // Other accounts are unaffected.
+        User::factory()->create(['email' => 'ada@example.com']);
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.8'])
+            ->fromBrowser()->postJson(self::URL, ['email' => 'ada@example.com', 'password' => 'password'])
+            ->assertOk();
+    }
+
+    /** A non-string email is a validation error, not a 500 from the rate limiter. */
+    public function test_a_non_string_email_is_rejected_cleanly(): void
+    {
+        $this->fromBrowser()->postJson(self::URL, ['email' => ['grace@example.com'], 'password' => 'password'])
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_FAILED');
+    }
 }

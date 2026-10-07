@@ -98,12 +98,41 @@ check "cross-site PATCH /api/v1/profile without X-XSRF-TOKEN -> 419" bash -c \
 check "cross-site PATCH /api/v1/auth/password without X-XSRF-TOKEN -> 419" bash -c \
     "[[ \$(curl -s -o /dev/null -w '%{http_code}' -b '$jar' -X PATCH -H '$origin' -H 'Sec-Fetch-Site: cross-site' -H 'Accept: application/json' '$base/api/v1/auth/password') == 419 ]]"
 rm -f "$jar"
+
+echo "Security boundaries (Phase 21)"
+# Login attempts with a different spoofed X-Forwarded-For each time must
+# still share one rate-limit bucket: Nginx passes Laravel the TCP peer only.
+spoofed_login_is_limited() {
+    local spoof_jar codes="" xsrf i
+    spoof_jar=$(mktemp)
+    curl -s -o /dev/null -c "$spoof_jar" -H "$origin" "$base/sanctum/csrf-cookie"
+    xsrf=$(awk '$6 == "XSRF-TOKEN" {print $7}' "$spoof_jar" | python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.stdin.read().strip()))')
+    for i in 1 2 3 4 5 6 7 8; do
+        codes+=" $(curl -s -o /dev/null -w '%{http_code}' -b "$spoof_jar" -c "$spoof_jar" -X POST -H "$origin" \
+            -H 'Accept: application/json' -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $xsrf" \
+            -H "X-Forwarded-For: 198.51.100.$i" -d "{\"email\":\"spoof-$$@example.invalid\",\"password\":\"not-the-password\"}" \
+            "$base/api/v1/auth/login")"
+    done
+    rm -f "$spoof_jar"
+    [[ "$codes" == *429* ]]
+}
+check "spoofed X-Forwarded-For does not escape the login rate limit" spoofed_login_is_limited
+security_headers_present() {
+    local h
+    h=$(curl -sS -o /dev/null -D - "$base/$1")
+    grep -qi '^x-frame-options: DENY' <<<"$h" && grep -qi "^content-security-policy: .*frame-ancestors 'none'" <<<"$h" \
+        && grep -qi '^x-content-type-options: nosniff' <<<"$h" && grep -qi '^permissions-policy:' <<<"$h"
+}
+check "security headers on pages (frame-ancestors, nosniff, Permissions-Policy)" security_headers_present login
+check "security headers on API responses" security_headers_present api/v1/health
+check "authenticated API responses are not stored (Cache-Control: no-store)" bash -c \
+    "curl -sS -o /dev/null -D - '$base/api/v1/health' | grep -qi '^cache-control:.*no-store'"
 # developer_profiles references users with RESTRICT: remove the profile first.
 check "remove probe user and profile" "${compose[@]}" exec -T postgres sh -c \
     "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v ON_ERROR_STOP=1 -qc \"BEGIN; DELETE FROM developer_profiles WHERE user_id IN (SELECT id FROM users WHERE email = '$probe_email'); DELETE FROM users WHERE email = '$probe_email'; COMMIT;\""
 
 echo "Internal networking"
-check "backend -> analyzer:8000 health" in_service backend curl -fsS http://analyzer:8000/internal/v1/health
+check "queue worker -> analyzer:8000 health" in_service queue curl -fsS http://analyzer:8000/internal/v1/health
 check "backend -> minio:9000 health" in_service backend curl -fsS http://minio:9000/minio/health/live
 check "Laravel -> PostgreSQL (artisan db:show)" in_service backend php artisan db:show
 laravel_cache_roundtrip() {
@@ -116,6 +145,24 @@ check_not "frontend cannot reach analyzer (network isolation)" in_service fronte
     "fetch('http://analyzer:8000/internal/v1/health').then(() => process.exit(0)).catch(() => process.exit(1))"
 check_not "analyzer has no internet access" in_service analyzer python -c \
     "import urllib.request; urllib.request.urlopen('https://pypi.org', timeout=5)"
+# Network segmentation (Phase 21): only Nginx and the Laravel containers
+# reach PHP-FPM and the data services; the analyzer and the frontend do not.
+tcp_from_analyzer() { in_service analyzer python -c "import socket; socket.create_connection(('$1', $2), timeout=3)"; }
+tcp_from_frontend() {
+    in_service frontend node -e "const s=require('net').connect($2,'$1',()=>process.exit(0));s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),3000)"
+}
+check_not "backend (HTTP) cannot reach analyzer" in_service backend curl -fsS -m 3 http://analyzer:8000/internal/v1/health
+check_not "analyzer cannot reach PHP-FPM (backend:9000)" tcp_from_analyzer backend 9000
+check_not "analyzer cannot reach Redis" tcp_from_analyzer redis 6379
+check_not "analyzer cannot reach PostgreSQL" tcp_from_analyzer postgres 5432
+check_not "frontend cannot reach PHP-FPM (backend:9000)" tcp_from_frontend backend 9000
+check_not "frontend cannot reach Redis" tcp_from_frontend redis 6379
+check_not "frontend cannot reach PostgreSQL" tcp_from_frontend postgres 5432
+check_not "frontend cannot reach MinIO" tcp_from_frontend minio 9000
+check "PHP exception traces omit argument values (zend.exception_ignore_args)" in_service backend php -r \
+    'exit(ini_get("zend.exception_ignore_args") === "1" ? 0 : 1);'
+check "Redis refuses unauthenticated clients" bash -c \
+    "${compose[*]} exec -T -e REDISCLI_AUTH= redis redis-cli ping 2>&1 | grep -q NOAUTH"
 
 echo "MinIO / S3 (application credentials, bucket-scoped)"
 probe_key="verify/probe-$$.txt"
@@ -303,9 +350,9 @@ echo "Analyzer service (Phases 08-09)"
 check "analyzer publishes no host port" bash -c \
     "[[ \$(docker inspect --format '{{range \$p, \$b := .NetworkSettings.Ports}}{{if \$b}}{{\$p}} {{end}}{{end}}' \$(${compose[*]} ps -q analyzer)) == '' ]]"
 check "health reports versions and limits only" bash -c \
-    "${compose[*]} exec -T backend curl -fsS http://analyzer:8000/internal/v1/health | python3 -c 'import json, sys; d = json.load(sys.stdin); sys.exit(not (set(d) == {\"status\", \"versions\", \"limits\"} and d[\"versions\"][\"contract\"] == \"1.0\"))'"
+    "${compose[*]} exec -T queue curl -fsS http://analyzer:8000/internal/v1/health | python3 -c 'import json, sys; d = json.load(sys.stdin); sys.exit(not (set(d) == {\"status\", \"versions\", \"limits\"} and d[\"versions\"][\"contract\"] == \"1.0\"))'"
 check "unsigned POST /internal/v1/analyze -> 401" bash -c \
-    "[[ \$(${compose[*]} exec -T backend curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' http://analyzer:8000/internal/v1/analyze) == 401 ]]"
+    "[[ \$(${compose[*]} exec -T queue curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' http://analyzer:8000/internal/v1/analyze) == 401 ]]"
 analyzer_zip=$(python3 -I -c 'import base64, io, zipfile
 buffer = io.BytesIO()
 with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -321,7 +368,7 @@ while IFS= read -r line; do
         "PASS "*) pass "Laravel -> analyzer: ${line#PASS }" ;;
         "FAIL "*) fail "Laravel -> analyzer: ${line#FAIL }" ;;
     esac
-done < <("${compose[@]}" exec -T -e VERIFY_ZIP_BASE64="$analyzer_zip" backend php /dev/stdin < scripts/verify-analyzer.php 2>/dev/null || echo "FAIL integration script exited with an error")
+done < <("${compose[@]}" exec -T -e VERIFY_ZIP_BASE64="$analyzer_zip" queue php /dev/stdin < scripts/verify-analyzer.php 2>/dev/null || echo "FAIL integration script exited with an error")
 check "analyzer workspace is empty afterwards" bash -c "[[ -z \$(${compose[*]} exec -T analyzer ls -A /tmp/codedna) ]]"
 
 echo

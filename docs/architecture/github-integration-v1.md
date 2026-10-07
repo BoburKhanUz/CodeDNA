@@ -137,7 +137,12 @@ everything with GitHub:
    (`GITHUB_BRANCH_NOT_FOUND`).
 3. `GET /repos/{owner}/{name}/installation` **with the App JWT** finds the
    installation (`GITHUB_INSTALLATION_REQUIRED`).
-4. The connection is stored under the project lock. A unique index allows
+4. `GET /user/installations` **with the user's token**: that installation
+   must be one the user can access (`GITHUB_INSTALLATION_REQUIRED`,
+   Phase 21). A public repository is readable with any user token, so
+   without this step a user could import through another organization's
+   installation. Every import request repeats the check.
+5. The connection is stored under the project lock. A unique index allows
    at most one ACTIVE connection per project (`GITHUB_ALREADY_CONNECTED`).
 
 The stored metadata is the repository ID, owner, name, full name,

@@ -28,6 +28,28 @@ final class ChallengeGrader
     public const FAILED = 'FAILED';
 
     /** Evaluator statuses that are graded (the code was examined). */
+    /**
+     * Error names that may be shown for a hidden case or as a load error
+     * (Phase 21). Submitted code chooses its exception class names, so a
+     * name could carry a hidden case's arguments out; only Python 3.11's
+     * builtin exception names and the runner's own markers are shown, and
+     * anything else becomes "Error". Visible cases keep the reported name:
+     * their arguments are shown anyway.
+     */
+    public const ERROR_NAMES = [
+        'ArithmeticError', 'AssertionError', 'AttributeError', 'BaseException', 'BaseExceptionGroup', 'BlockingIOError', 'BrokenPipeError',
+        'BufferError', 'BytesWarning', 'ChildProcessError', 'ConnectionAbortedError', 'ConnectionError', 'ConnectionRefusedError',
+        'ConnectionResetError', 'DeprecationWarning', 'EOFError', 'EncodingWarning', 'EnvironmentError', 'Exception', 'ExceptionGroup',
+        'FileExistsError', 'FileNotFoundError', 'FloatingPointError', 'FutureWarning', 'GeneratorExit', 'IOError', 'ImportError',
+        'ImportWarning', 'IndentationError', 'IndexError', 'InterruptedError', 'IsADirectoryError', 'KeyError', 'KeyboardInterrupt',
+        'LookupError', 'MemoryError', 'ModuleNotFoundError', 'NameError', 'NotADirectoryError', 'NotImplementedError', 'OSError',
+        'OverflowError', 'PendingDeprecationWarning', 'PermissionError', 'ProcessLookupError', 'RecursionError', 'ReferenceError',
+        'ResourceWarning', 'RuntimeError', 'RuntimeWarning', 'StopAsyncIteration', 'StopIteration', 'SyntaxError', 'SyntaxWarning',
+        'SystemError', 'SystemExit', 'TabError', 'TimeoutError', 'TypeError', 'UnboundLocalError', 'UnicodeDecodeError',
+        'UnicodeEncodeError', 'UnicodeError', 'UnicodeTranslateError', 'UnicodeWarning', 'UserWarning', 'ValueError', 'Warning',
+        'ZeroDivisionError', 'MissingEntrypoint', 'UnserializableResult', 'ValueTooLarge', 'ValueTooDeep', 'Error',
+    ];
+
     public const GRADED_STATUSES = ['COMPLETED', 'SYNTAX_ERROR', 'LOAD_ERROR', 'TIMEOUT', 'OUTPUT_LIMIT', 'CRASHED'];
 
     private const MAX_SHOWN_BYTES = 1000;
@@ -97,7 +119,7 @@ final class ChallengeGrader
             'verdict' => $passed ? self::PASSED : self::FAILED,
             'execution' => [
                 'status' => $status,
-                'load_error' => $status === 'LOAD_ERROR' && is_string($observed['load_error'] ?? null) ? $observed['load_error'] : null,
+                'load_error' => $status === 'LOAD_ERROR' ? self::errorName($observed['load_error'] ?? null) : null,
                 'message' => self::EXECUTION_MESSAGES[$status],
             ],
             'tests' => [
@@ -138,7 +160,9 @@ final class ChallengeGrader
         };
         $result = ['id' => $case['id'], 'visibility' => $case['visibility'], 'status' => $status];
         if ($status === 'ERROR') {
-            $result['error'] = is_string($observed['error'] ?? null) ? mb_substr($observed['error'], 0, 64) : 'Error';
+            $result['error'] = $visible && is_string($observed['error'] ?? null)
+                ? mb_substr($observed['error'], 0, 64)
+                : self::errorName($observed['error'] ?? null);
         }
         if ($visible) {
             $result['description'] = $case['description'] ?? null;
@@ -150,6 +174,11 @@ final class ChallengeGrader
         }
 
         return $result;
+    }
+
+    private static function errorName(mixed $name): string
+    {
+        return is_string($name) && in_array($name, self::ERROR_NAMES, true) ? $name : 'Error';
     }
 
     /**

@@ -111,3 +111,12 @@ def test_dns_failures_are_fetch_failures(settings: Settings) -> None:
         raise OSError("no such host")
 
     assert rejected(presigned_url(), settings, failing) is ErrorCode.SOURCE_FETCH_FAILED
+
+
+def test_a_public_host_is_only_reached_on_the_https_port(settings: Settings) -> None:
+    """Phase 21: an allow-listed public name cannot be used to probe other ports."""
+    for port in (22, 80, 6379, 8443):
+        url = presigned_url(host=f"storage.example.com:{port}", scheme="https")
+        assert rejected(url, settings, PUBLIC) == ErrorCode.SOURCE_HOST_NOT_ALLOWED
+    target = validate_source_url(presigned_url(host="storage.example.com:443", scheme="https"), settings, PUBLIC)
+    assert target.port == 443

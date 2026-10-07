@@ -353,7 +353,8 @@ timeout chain, which `ConfigurationValidator` checks at boot.
 ## Testing
 
 ```bash
-make test           # analyzer pytest + backend PHPUnit (in containers)
+make test           # analyzer pytest + backend PHPUnit (in containers; PHPUnit runs in the
+                    # queue worker container, which reaches the analyzer — Phase 21)
 make lint-backend   # Laravel Pint --test
 ```
 

@@ -88,7 +88,7 @@ final readonly class GitHubApi
      *
      * @throws GitHubException
      */
-    public function exchangeCode(string $code): GitHubUserTokens
+    public function exchangeCode(#[\SensitiveParameter] string $code): GitHubUserTokens
     {
         return $this->tokenRequest(['code' => $code, 'redirect_uri' => $this->settings->callbackUrl]);
     }
@@ -96,7 +96,7 @@ final readonly class GitHubApi
     /**
      * @throws GitHubException
      */
-    public function refresh(string $refreshToken): GitHubUserTokens
+    public function refresh(#[\SensitiveParameter] string $refreshToken): GitHubUserTokens
     {
         return $this->tokenRequest(['grant_type' => 'refresh_token', 'refresh_token' => $refreshToken]);
     }
@@ -106,7 +106,7 @@ final readonly class GitHubApi
      *
      * @throws GitHubException
      */
-    public function user(string $userToken): array
+    public function user(#[\SensitiveParameter] string $userToken): array
     {
         $data = $this->http->getJson('/user', $userToken)['json'];
         if (! is_array($data) || ! is_int($data['id'] ?? null) || $data['id'] <= 0 || ! GitHubNames::isLogin($data['login'] ?? null)) {
@@ -123,7 +123,7 @@ final readonly class GitHubApi
      *
      * @throws GitHubException
      */
-    public function installations(string $userToken): array
+    public function installations(#[\SensitiveParameter] string $userToken): array
     {
         $data = $this->http->getJson('/user/installations', $userToken, ['per_page' => self::MAX_PER_PAGE])['json'];
         if (! is_array($data) || ! is_array($data['installations'] ?? null)) {
@@ -153,7 +153,7 @@ final readonly class GitHubApi
      *
      * @throws GitHubException
      */
-    public function installationRepositories(string $userToken, int $installationId, int $page, int $perPage): array
+    public function installationRepositories(#[\SensitiveParameter] string $userToken, int $installationId, int $page, int $perPage): array
     {
         $result = $this->http->getJson("/user/installations/{$installationId}/repositories", $userToken, [
             'per_page' => min(self::MAX_PER_PAGE, max(1, $perPage)),
@@ -175,7 +175,7 @@ final readonly class GitHubApi
      *
      * @throws GitHubException
      */
-    public function repository(string $token, int $repositoryId): GitHubRepository
+    public function repository(#[\SensitiveParameter] string $token, int $repositoryId): GitHubRepository
     {
         $repository = GitHubRepository::fromApi($this->http->getJson("/repositories/{$repositoryId}", $token)['json']);
         if ($repository->id !== $repositoryId) {
@@ -190,7 +190,7 @@ final readonly class GitHubApi
      *
      * @throws GitHubException
      */
-    public function branches(string $token, GitHubRepository $repository, int $page, int $perPage): array
+    public function branches(#[\SensitiveParameter] string $token, GitHubRepository $repository, int $page, int $perPage): array
     {
         $result = $this->http->getJson("/repos/{$repository->path()}/branches", $token, [
             'per_page' => min(self::MAX_PER_PAGE, max(1, $perPage)),
@@ -216,7 +216,7 @@ final readonly class GitHubApi
      *
      * @throws GitHubException
      */
-    public function branchHead(string $token, GitHubRepository $repository, string $branch): string
+    public function branchHead(#[\SensitiveParameter] string $token, GitHubRepository $repository, string $branch): string
     {
         if (! GitHubNames::isBranch($branch)) {
             throw new GitHubException(GitHubError::NotFound);
@@ -236,7 +236,7 @@ final readonly class GitHubApi
      *
      * @throws GitHubException
      */
-    public function downloadArchive(string $installationToken, GitHubRepository $repository, string $commitSha, string $destination, int $maxBytes): void
+    public function downloadArchive(#[\SensitiveParameter] string $installationToken, GitHubRepository $repository, string $commitSha, string $destination, int $maxBytes): void
     {
         if (! GitHubNames::isCommitSha($commitSha)) {
             throw new GitHubException(GitHubError::InvalidResponse);

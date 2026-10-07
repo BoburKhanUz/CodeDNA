@@ -192,4 +192,5 @@ at a time:
 | 18 | Growth tracking | Done (growth rules 1.0.0, immediate previous comparable assessment, read-only; [growth-tracking-v1.md](growth-tracking-v1.md)) |
 | 19 | GitHub integration | Done (GitHub App, read-only, imports into source snapshots; [github-integration-v1.md](github-integration-v1.md)) |
 | 20 | Historical DNA | Done (read model, no new persistence, version segments, comparison through growth rules; [historical-dna-v1.md](historical-dna-v1.md)) |
-| 21–25 | Hardening, QA, billing, teams, production | — |
+| 21 | Security hardening | Done (audit, network segmentation, proxy and rate-limit fixes, sandbox and boundary hardening; [threat model](../security/threat-model.md), [hardening](../security/security-hardening.md)) |
+| 22–25 | QA, billing, teams, production | — |

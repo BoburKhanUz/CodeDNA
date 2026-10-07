@@ -127,4 +127,14 @@ final class GitHubNamesTest extends TestCase
             @unlink($path);
         }
     }
+
+    /** Phase 21: "$" alone would also match before a trailing newline. */
+    public function test_a_trailing_newline_is_never_accepted(): void
+    {
+        $this->assertFalse(GitHubNames::isBranch("main\n"));
+        $this->assertFalse(GitHubNames::isLogin("octo-org\n"));
+        $this->assertFalse(GitHubNames::isRepositoryName("billing-service\n"));
+        $this->assertFalse(GitHubNames::isCommitSha(str_repeat('a', 40)."\n"));
+        $this->assertTrue(GitHubNames::isCommitSha(str_repeat('a', 40)));
+    }
 }

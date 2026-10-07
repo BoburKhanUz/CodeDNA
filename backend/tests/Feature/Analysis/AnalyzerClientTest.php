@@ -138,6 +138,9 @@ final class AnalyzerClientTest extends TestCase
         yield 'wrong run ID' => [fn (Request $r) => FakeAnalyzer::success($r, fn (stdClass $x) => $x->analysis_run_id = strtolower((string) Str::ulid())), AnalysisFailure::AnalyzerResultInvalid, false];
         yield 'wrong request ID' => [fn (Request $r) => FakeAnalyzer::success($r, fn (stdClass $x) => $x->request_id = (string) Str::uuid()), AnalysisFailure::AnalyzerResultInvalid, false];
         yield 'other contract major' => [fn (Request $r) => FakeAnalyzer::success($r, fn (stdClass $x) => $x->contract_version = '2.0'), AnalysisFailure::AnalyzerResultInvalid, false];
+        // Phase 21: correctly signed and hashed, but computed over other bytes.
+        yield 'result for other source bytes' => [fn (Request $r) => FakeAnalyzer::success($r, fn (stdClass $x) => $x->source->sha256 = str_repeat('a', 64)), AnalysisFailure::AnalyzerResultInvalid, false];
+        yield 'result for a source of another size' => [fn (Request $r) => FakeAnalyzer::success($r, fn (stdClass $x) => $x->source->size_bytes++), AnalysisFailure::AnalyzerResultInvalid, false];
         yield 'result_hash does not match the content' => [fn (Request $r) => FakeAnalyzer::success($r, null, fn (stdClass $x) => $x->source->files_total++), AnalysisFailure::AnalyzerResultHashMismatch, false];
         yield 'forged result_hash' => [fn (Request $r) => FakeAnalyzer::success($r, null, fn (stdClass $x) => $x->result_hash = str_repeat('0', 64)), AnalysisFailure::AnalyzerResultHashMismatch, false];
         yield 'analyzer INVALID_ARCHIVE' => [fn (Request $r) => FakeAnalyzer::error($r, 422, 'INVALID_ARCHIVE', false), AnalysisFailure::InvalidArchive, false];

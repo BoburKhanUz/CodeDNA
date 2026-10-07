@@ -57,7 +57,9 @@ final class OpenAiCompatibleProvider implements AiProvider
             ->asJson()
             ->connectTimeout((int) $this->config['connect_timeout_seconds'])
             ->timeout((int) $this->config['timeout_seconds'])
-            ->withoutRedirecting();
+            ->withoutRedirecting()
+            // Read as a stream so the size cap applies while reading (Phase 21).
+            ->withOptions(['stream' => true]);
         $key = (string) ($this->config['api_key'] ?? '');
         if ($key !== '') {
             $request = $request->withToken($key);
@@ -101,6 +103,35 @@ final class OpenAiCompatibleProvider implements AiProvider
         };
     }
 
+    /**
+     * The body, refused as soon as it exceeds the content limit plus some
+     * envelope overhead (Phase 21): a misbehaving endpoint cannot make the
+     * worker buffer an unbounded response. The declared length is checked
+     * first, then the bytes actually read.
+     */
+    private function boundedBody(Response $response, int $status): string
+    {
+        $limit = (int) $this->config['max_output_bytes'] + 16384;
+        $declared = $response->header('Content-Length');
+        if ($declared !== '' && ctype_digit($declared) && (int) $declared > $limit) {
+            throw AiProviderException::permanent(AssessmentFailure::OutputTooLarge, 'envelope_too_large', $status);
+        }
+        $stream = $response->toPsrResponse()->getBody();
+        if ($stream->isSeekable()) {
+            $stream->rewind();
+        }
+        $raw = '';
+        while (! $stream->eof()) {
+            $raw .= $stream->read(65536);
+            if (strlen($raw) > $limit) {
+                $stream->close();
+                throw AiProviderException::permanent(AssessmentFailure::OutputTooLarge, 'envelope_too_large', $status);
+            }
+        }
+
+        return $raw;
+    }
+
     private function parse(Response $response): AiProviderResponse
     {
         $status = $response->status();
@@ -113,11 +144,7 @@ final class OpenAiCompatibleProvider implements AiProvider
             };
         }
 
-        $raw = $response->body();
-        // The envelope may add some overhead to the content limit, no more.
-        if (strlen($raw) > (int) $this->config['max_output_bytes'] + 16384) {
-            throw AiProviderException::permanent(AssessmentFailure::OutputTooLarge, 'envelope_too_large', $status);
-        }
+        $raw = $this->boundedBody($response, $status);
         try {
             $decoded = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
         } catch (JsonException) {

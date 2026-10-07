@@ -31,7 +31,11 @@ use Illuminate\Validation\ValidationException;
  * 1. as the user: the repository must be visible to them through the App
  *    (GET /repositories/{id} with their token), and not disabled;
  * 2. the branch (default: the repository's default branch) must exist;
- * 3. as the App: the installation covering the repository is looked up.
+ * 3. as the App: the installation covering the repository is looked up;
+ * 4. as the user: that installation must be one the user can access
+ *    (Phase 21). A public repository is readable with any user token, so
+ *    step 1 alone would let a user import through another organization's
+ *    installation (its tokens and rate limit).
  * Owner, name, visibility and installation come from GitHub, never from the
  * request. One ACTIVE connection per project (unique index).
  */
@@ -61,6 +65,7 @@ final readonly class ConnectGitHubRepository
         } catch (GitHubException $e) {
             throw GitHubErrors::api($e, ErrorCode::GitHubInstallationRequired, 'repository_installation');
         }
+        self::verifyInstallationAccess($this->api, $token, $installationId);
 
         try {
             $connection = $this->db->transaction(function () use ($project, $repository, $branch, $installationId): GitHubConnection {
@@ -101,11 +106,29 @@ final readonly class ConnectGitHubRepository
     }
 
     /**
+     * The installation must be among those the user can access through the
+     * App (GET /user/installations).
+     *
+     * @throws ApiException
+     */
+    public static function verifyInstallationAccess(GitHubApi $api, #[\SensitiveParameter] string $userToken, int $installationId): void
+    {
+        try {
+            $installations = $api->installations($userToken);
+        } catch (GitHubException $e) {
+            throw GitHubErrors::api($e, ErrorCode::GitHubInstallationRequired, 'user_installations');
+        }
+        if (! in_array($installationId, array_column($installations, 'id'), true)) {
+            throw new ApiException(ErrorCode::GitHubInstallationRequired);
+        }
+    }
+
+    /**
      * The repository as the user sees it through the App.
      *
      * @throws ApiException
      */
-    public static function verifiedRepository(GitHubApi $api, string $userToken, int $repositoryId): GitHubRepository
+    public static function verifiedRepository(GitHubApi $api, #[\SensitiveParameter] string $userToken, int $repositoryId): GitHubRepository
     {
         try {
             $repository = $api->repository($userToken, $repositoryId);
@@ -122,7 +145,7 @@ final readonly class ConnectGitHubRepository
     /**
      * @throws ApiException
      */
-    public static function verifyBranch(GitHubApi $api, string $userToken, GitHubRepository $repository, string $branch): string
+    public static function verifyBranch(GitHubApi $api, #[\SensitiveParameter] string $userToken, GitHubRepository $repository, string $branch): string
     {
         try {
             return $api->branchHead($userToken, $repository, $branch);

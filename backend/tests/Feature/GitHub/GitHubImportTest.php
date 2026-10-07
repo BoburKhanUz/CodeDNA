@@ -154,6 +154,15 @@ final class GitHubImportTest extends TestCase
         }
     }
 
+    /** Phase 21: losing access to the installation stops new imports. */
+    public function test_an_import_needs_access_to_the_installation(): void
+    {
+        $this->github->userInstallations = [];
+
+        $this->asUser($this->owner)->postJson($this->path())->assertStatus(409)->assertJsonPath('error.code', 'GITHUB_INSTALLATION_REQUIRED');
+        $this->assertSame(0, GitHubImport::query()->count());
+    }
+
     public function test_the_same_commit_is_never_stored_twice(): void
     {
         $first = $this->import();

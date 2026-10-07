@@ -84,6 +84,10 @@ def validate_source_url(
         raise denied
 
     is_local = host in settings.local_source_hosts
+    # Phase 21: a public storage host is reached on the HTTPS port only, so
+    # an allow-listed name cannot be used to probe its other ports.
+    if not is_local and port not in (None, 443):
+        raise denied
     if parts.scheme == "https":
         default_port = 443
     elif parts.scheme == "http" and is_local:

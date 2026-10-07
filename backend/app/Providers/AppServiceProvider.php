@@ -89,8 +89,16 @@ class AppServiceProvider extends ServiceProvider
 
         TrustProxies::at(config('codedna.trusted_proxies'));
 
-        // bcrypt only uses the first 72 bytes of a password.
-        Password::defaults(static fn (): Password => Password::min(8)->max(72));
+        // bcrypt only uses the first 72 bytes of a password: longer ones
+        // (also 72 characters of multibyte text) are refused rather than
+        // silently truncated (Phase 21).
+        Password::defaults(static fn (): Password => Password::min(8)->max(72)->rules([
+            static function (string $attribute, mixed $value, \Closure $fail): void {
+                if (is_string($value) && strlen($value) > 72) {
+                    $fail('The :attribute must not be longer than 72 bytes.');
+                }
+            },
+        ]));
 
         $this->configureRateLimiting();
     }
@@ -114,11 +122,18 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('api', static fn (Request $request): Limit => Limit::perMinute($limits['api_per_minute'])
             ->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
 
-        RateLimiter::for('login', static fn (Request $request): array => [
-            Limit::perMinute($limits['login_per_minute_per_email'])
-                ->by('login-email:'.mb_strtolower(trim((string) $request->input('email'))).'|'.$request->ip()),
-            Limit::perMinute($limits['login_per_minute_per_ip'])->by('login-ip:'.$request->ip()),
-        ]);
+        RateLimiter::for('login', static function (Request $request) use ($limits): array {
+            // Runs before validation: a non-string email (e.g. a JSON array)
+            // must not throw, it is simply keyed as empty.
+            $email = $request->input('email');
+            $email = is_string($email) ? mb_strtolower(trim($email)) : '';
+
+            return [
+                Limit::perMinute($limits['login_per_minute_per_email'])->by('login-email:'.$email.'|'.$request->ip()),
+                Limit::perMinute($limits['login_per_minute_per_ip'])->by('login-ip:'.$request->ip()),
+                Limit::perHour($limits['login_per_hour_per_email'])->by('login-account:'.$email),
+            ];
+        });
 
         RateLimiter::for('register', static fn (Request $request): Limit => Limit::perMinute($limits['register_per_minute_per_ip'])
             ->by('register-ip:'.$request->ip()));

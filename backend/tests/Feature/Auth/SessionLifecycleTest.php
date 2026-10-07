@@ -35,6 +35,10 @@ final class SessionLifecycleTest extends TestCase
     private function request(string $method, string $uri, ?string $sessionId, array $data = []): TestResponse
     {
         $this->forgetSessionState();
+        // Like a separate HTTP request: no user remembered by the guard from
+        // the previous one (Sanctum's AuthenticateSession behaves differently
+        // when a user is already resolved at the start of the request).
+        $this->app['auth']->forgetGuards();
         // Test-client cookies otherwise persist between requests.
         $this->defaultCookies = [];
         $this->unencryptedCookies = [];
@@ -142,5 +146,24 @@ final class SessionLifecycleTest extends TestCase
             ->assertUnauthorized()
             ->assertJsonPath('error.code', 'AUTHENTICATION_REQUIRED');
         $this->request('GET', '/api/v1/me', $phone)->assertUnauthorized();
+    }
+
+    /**
+     * Phase 21 (audit regression): a session that makes no request between
+     * login and another session's password change is rejected too. Laravel's
+     * SessionGuard::login() records the password hash at login, so the
+     * session is bound from its first moment, not only after its next
+     * request (Sanctum's AuthenticateSession alone would do that).
+     */
+    public function test_changing_the_password_signs_out_a_session_that_was_never_used_again(): void
+    {
+        $parked = $this->sessionIdFrom($this->login()->assertOk());
+        $laptop = $this->sessionIdFrom($this->login()->assertOk());
+
+        $this->changePassword($laptop)->assertNoContent();
+
+        $this->request('GET', '/api/v1/me', $parked)
+            ->assertUnauthorized()
+            ->assertJsonPath('error.code', 'AUTHENTICATION_REQUIRED');
     }
 }

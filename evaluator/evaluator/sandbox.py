@@ -63,6 +63,12 @@ def _limit(slot: Slot, limits: Limits) -> None:
     resource.setrlimit(resource.RLIMIT_FSIZE, (limits.max_file_bytes, limits.max_file_bytes))
     resource.setrlimit(resource.RLIMIT_NOFILE, (limits.max_open_files, limits.max_open_files))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    # No POSIX message queues: they would outlive the job (Phase 21).
+    resource.setrlimit(resource.RLIMIT_MSGQUEUE, (0, 0))
+    # Under memory pressure the kernel kills sandboxed code first, never the
+    # supervisor (which would interrupt the other slot's job).
+    with open("/proc/self/oom_score_adj", "w", encoding="ascii") as adjust:
+        adjust.write("1000")
     os.setgroups([])
     os.setgid(slot.gid)
     os.setuid(slot.uid)
@@ -88,6 +94,10 @@ def _slot_processes(uid: int) -> list[int]:
         if state != "Z":
             pids.append(int(entry.name))
     return pids
+
+
+class SlotUnusableError(RuntimeError):
+    """A slot directory could not be emptied: it must not run another job."""
 
 
 def kill_slot_processes(uid: int, rounds: int = 50) -> int:
@@ -194,3 +204,6 @@ def clean(slot: Slot, limits: Limits) -> None:
         os.killpg(cleaner.pid, signal.SIGKILL)
         cleaner.wait()
     kill_slot_processes(slot.uid)
+    if cleaner.returncode != 0:
+        # Leftovers would reach the next job, possibly another user's.
+        raise SlotUnusableError(f"slot {slot.index} could not be emptied")

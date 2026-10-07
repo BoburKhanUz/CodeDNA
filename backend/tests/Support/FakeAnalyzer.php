@@ -56,6 +56,9 @@ final class FakeAnalyzer
         $result = self::fixture((string) ($sent['options']['result_type'] ?? 'foundation'));
         $result->analysis_run_id = $sent['analysis_run_id'];
         $result->request_id = $request->header('X-Request-ID')[0];
+        // Like the real analyzer: the source it verified (sha256 and size).
+        $result->source->sha256 = $sent['source']['sha256'];
+        $result->source->size_bytes = $sent['source']['size_bytes'];
         if ($mutate !== null) {
             $mutate($result);
         }

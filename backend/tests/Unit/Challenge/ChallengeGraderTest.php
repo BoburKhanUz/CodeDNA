@@ -282,4 +282,29 @@ final class ChallengeGraderTest extends TestCase
             $this->assertStringNotContainsStringIgnoringCase($forbidden, $encoded);
         }
     }
+
+    /**
+     * Phase 21: submitted code names its own exception classes, so a hidden
+     * case's error name could carry that case's arguments out. Hidden cases
+     * and load errors show builtin names only; visible cases keep theirs.
+     */
+    public function test_hidden_case_errors_never_carry_submitted_text(): void
+    {
+        $leak = "[{'items': [{'price_cents': 1999, 'quantity': 3}]}]";
+        $cases = array_map(fn (array $c): array => ['id' => $c['id'], 'status' => 'ERROR', 'error' => $c['visibility'] === ChallengeDefinitionData::VISIBLE ? 'InvalidOrder' : $leak],
+            $this->definition->cases());
+        $cases[array_key_last($cases)]['error'] = 'ZeroDivisionError';
+        $evaluation = $this->grade($this->observed(['cases' => $cases]));
+
+        $hidden = array_values(array_filter($evaluation['cases'], fn (array $c): bool => $c['visibility'] === ChallengeDefinitionData::HIDDEN));
+        $visible = array_values(array_filter($evaluation['cases'], fn (array $c): bool => $c['visibility'] === ChallengeDefinitionData::VISIBLE));
+        $this->assertSame(['Error', 'Error', 'Error', 'ZeroDivisionError'], array_column($hidden, 'error'));
+        $this->assertSame(['InvalidOrder', 'InvalidOrder'], array_column($visible, 'error'));
+        $this->assertStringNotContainsString('price_cents', (string) json_encode($hidden));
+
+        $loaded = $this->grade($this->observed(['status' => 'LOAD_ERROR', 'load_error' => $leak]));
+        $this->assertSame('Error', $loaded['execution']['load_error']);
+        $this->assertSame('ImportError', $this->grade($this->observed(['status' => 'LOAD_ERROR', 'load_error' => 'ImportError']))['execution']['load_error']);
+        $this->assertSame('MissingEntrypoint', $this->grade($this->observed(['status' => 'LOAD_ERROR', 'load_error' => 'MissingEntrypoint']))['execution']['load_error']);
+    }
 }

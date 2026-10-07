@@ -44,8 +44,8 @@ async def analyze(request: Request) -> Response:
     declared = request.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > settings.max_request_body_bytes:
         return _error(ErrorCode.INVALID_REQUEST, request_id, {"reason": "body_too_large"})
-    body = await request.body()
-    if len(body) > settings.max_request_body_bytes:
+    body = await _bounded_body(request, settings.max_request_body_bytes)
+    if body is None:
         return _error(ErrorCode.INVALID_REQUEST, request_id, {"reason": "body_too_large"})
 
     try:
@@ -152,3 +152,20 @@ def _log(message: str, request_id: str, run_id: str | None, code: ErrorCode, sta
             "duration_ms": int((time.monotonic() - started) * 1000),
         },
     )
+
+
+async def _bounded_body(request: Request, limit: int) -> bytes | None:
+    """The request body, or None once it exceeds limit.
+
+    Read chunk by chunk, so a body without Content-Length (chunked
+    transfer encoding) is cut off at the limit instead of being buffered
+    whole before the signature is checked (Phase 21).
+    """
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)

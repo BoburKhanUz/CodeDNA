@@ -377,4 +377,29 @@ final class ConfigurationValidatorTest extends TestCase
         $this->assertSame(['CHALLENGE_JOB_TIMEOUT_SECONDS must be greater than CHALLENGE_EVALUATOR_WAIT_SECONDS.'], $this->challengeProblems(['wait_seconds' => 90]));
         $this->assertSame(['CHALLENGE_JOB_TIMEOUT_SECONDS must be lower than the queue retry_after.'], $this->challengeProblems(['job_timeout_seconds' => 360]));
     }
+
+    /**
+     * Phase 21: production checks apply to every deployed environment, not
+     * only to one spelled exactly "production".
+     */
+    public function test_every_environment_except_local_and_testing_gets_production_checks(): void
+    {
+        foreach (['staging', 'prod', 'Production', 'qa'] as $environment) {
+            $this->assertContains('AI_PROVIDER "fake" is not allowed in production.', $this->aiProblems(['enabled' => true, 'provider' => 'fake'], $environment), $environment);
+            $this->assertContains('APP_DEBUG must be false in production.', (new ConfigurationValidator)->problems($this->config(['app.debug' => true]), $environment), $environment);
+        }
+        $this->assertSame([], $this->aiProblems(['enabled' => true, 'provider' => 'fake'], 'local'));
+        $this->assertNotContains('APP_DEBUG must be false in production.', (new ConfigurationValidator)->problems($this->config(['app.debug' => true]), 'local'));
+    }
+
+    /** Phase 21: credentialed CORS never allows a wildcard or a pattern. */
+    public function test_cors_origins_must_be_exact(): void
+    {
+        $message = 'CORS_ALLOWED_ORIGINS must list exact origins (scheme://host[:port]); wildcards are not allowed.';
+        foreach ([['*'], ['https://*.example.com'], ['https://app.example.com/path'], ['null']] as $origins) {
+            $this->assertContains($message, (new ConfigurationValidator)->problems($this->config(['cors.allowed_origins' => $origins]), 'production'), json_encode($origins));
+        }
+        $this->assertContains('CORS origin patterns are not allowed.', (new ConfigurationValidator)->problems($this->config(['cors.allowed_origins_patterns' => ['~.*~']]), 'production'));
+        $this->assertSame([], (new ConfigurationValidator)->problems($this->config(['cors.allowed_origins' => ['https://app.codedna.example', 'http://localhost:3000']]), 'production'));
+    }
 }

@@ -95,7 +95,16 @@ crashed:
 2. It kills every remaining process of the slot uid, in a loop that skips
    zombies. This catches processes that called `setsid` to escape.
 3. A cleaner, run as the slot user, empties the slot directory. The
-   supervisor itself cannot enter it.
+   supervisor itself cannot enter it. The cleaner is iterative and restores
+   owner permissions before descending, so a directory set to `chmod 000`
+   is emptied too. If the slot is still not empty, the supervisor takes it
+   out of rotation; with no usable slot left the service exits and the
+   restarted container gets fresh tmpfs mounts (Phase 21).
+
+Sandboxed processes also get `RLIMIT_MSGQUEUE 0` (no POSIX message queues)
+and `oom_score_adj 1000` (the OOM killer picks them before the supervisor).
+`/dev/shm` is a 64 KiB root-owned tmpfs that slot users cannot write, so no
+file outlives a job (Phase 21).
 
 When the service starts, it kills every process left over for each slot
 uid.
@@ -114,8 +123,19 @@ each one is a separate sandboxed run.
   - the number of classes.
 - **`run`** executes the module, then calls the entrypoint once per case
   with deep-copied JSON arguments. For each case it reports the returned
-  value as JSON, or the exception type. A value that is not plain JSON, or
-  that is too large, is reported as an error.
+  value as JSON, or the exception type. A value that is not plain JSON, too
+  large, or nested more than 32 levels (`ValueTooDeep`) is reported as an
+  error.
+- **Error names (Phase 21).** Submitted code names its own exception
+  classes, so a name could carry hidden test arguments out. The evaluator
+  reports load errors and case errors only by Python's builtin exception
+  names and the runner's markers (`MissingEntrypoint`,
+  `UnserializableResult`, `ValueTooLarge`, `ValueTooDeep`); anything else is
+  `Error`. Laravel applies the same allowlist to hidden cases and load
+  errors. Visible cases keep the reported name.
+- **One result per request.** Whatever the runner's output provokes, a
+  claimed request always gets a result (`CRASHED` on an unexpected error),
+  so the same code is never resubmitted.
 
 The structural rules come from `inspect`, which runs no submitted code, so
 a submission cannot influence them. The case values in `run` are reported

@@ -21,7 +21,7 @@ final readonly class GitHubSettings
         public string $appSlug,
         public string $clientId,
         public string $clientSecret,
-        public string $privateKey,
+        #[\SensitiveParameter] public string $privateKey,
         public string $apiUrl,
         public string $webUrl,
         public array $archiveOrigins,

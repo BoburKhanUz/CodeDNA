@@ -6,9 +6,16 @@
 #
 # Topology (docs/architecture/infrastructure.md):
 #   browser -> nginx -> frontend (Next.js) | backend (Laravel, PHP-FPM)
-#   backend -> postgres, redis, minio, analyzer
+#   backend -> postgres, redis, minio; queue worker -> analyzer
 #   analyzer lives ONLY on the internal network: no internet access, not
 #   reachable from Nginx, no published port (ADR-005).
+#
+# Networks (Phase 21, docs/security/security-hardening.md#network-segmentation):
+#   codedna           edge: nginx and the Next.js frontend only
+#   codedna-app       nginx and the Laravel containers, postgres, redis, minio
+#   codedna-internal  queue worker, analyzer, minio (no internet)
+# The frontend cannot reach PHP-FPM, Redis, PostgreSQL or MinIO; the analyzer
+# cannot reach PHP-FPM, Redis or PostgreSQL.
 #
 # Host ports are bound to 127.0.0.1 only. This file is for development, not
 # production.
@@ -35,6 +42,7 @@ x-backend-environment: &backend-environment
   REDIS_CLIENT: phpredis
   REDIS_HOST: redis
   REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env (run `make setup`)}
   CACHE_STORE: redis
   QUEUE_CONNECTION: redis
   SESSION_DRIVER: ${SESSION_DRIVER:-redis}
@@ -138,6 +146,7 @@ services:
         condition: service_started
     networks:
       - codedna
+      - codedna-app
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/nginx-health"]
       interval: 10s
@@ -159,8 +168,9 @@ services:
       NEXT_TELEMETRY_DISABLED: "1"
       # Server-side only (never sent to the browser): how the Next.js server
       # reaches the API to check the session, and the public origin it
-      # presents to Sanctum (lib/config.server.ts).
-      BACKEND_INTERNAL_URL: http://nginx
+      # presents to Sanctum (lib/config.server.ts). Port 8080 is Nginx's
+      # internal listener: it alone takes the forwarded client address.
+      BACKEND_INTERNAL_URL: http://nginx:8080
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       # Set to "true" if file changes are not picked up (some Docker Desktop setups).
       WATCHPACK_POLLING: ${FRONTEND_WATCH_POLLING:-false}
@@ -204,9 +214,10 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+    # Not on codedna-internal: the HTTP backend never calls the analyzer,
+    # and the analyzer must not reach PHP-FPM.
     networks:
-      - codedna
-      - codedna-internal
+      - codedna-app
     healthcheck:
       test: ["CMD", "codedna-healthcheck"]
       interval: 10s
@@ -230,7 +241,7 @@ services:
     group_add:
       - "10500"
     networks:
-      - codedna
+      - codedna-app
       - codedna-internal
     command:
       - php
@@ -258,7 +269,7 @@ services:
     group_add:
       - "10500"
     networks:
-      - codedna
+      - codedna-app
     command: ["php", "artisan", "schedule:work"]
     healthcheck:
       disable: true
@@ -356,6 +367,10 @@ services:
       # One private, size-limited working directory per sandbox slot user.
       - /sandbox/0:size=16m,mode=0700,uid=10002,gid=10002
       - /sandbox/1:size=16m,mode=0700,uid=10003,gid=10003
+      # Replaces Docker's world-writable /dev/shm (Phase 21): files there
+      # would outlive a job, be shared between slots and count against the
+      # memory limit. Root-owned and read-only to the slot users.
+      - /dev/shm:size=64k,mode=0755
     volumes:
       - challenge-spool:/spool
     group_add:
@@ -395,7 +410,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - codedna
+      - codedna-app
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
@@ -406,13 +421,18 @@ services:
   redis:
     image: redis:7.4-alpine
     # Append-only persistence so queued jobs survive a container restart.
-    command: ["redis-server", "--appendonly", "yes"]
+    # Password required (Phase 21): Redis holds sessions and queued jobs, and
+    # the queue worker unserializes what it finds there.
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env (run `make setup`)}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env (run `make setup`)}
     ports:
       - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     networks:
-      - codedna
+      - codedna-app
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -437,7 +457,7 @@ services:
     volumes:
       - minio_data:/data
     networks:
-      - codedna
+      - codedna-app
       - codedna-internal
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9000/minio/health/live"]
@@ -468,11 +488,15 @@ services:
     restart: "no"
 
 networks:
-  # Main development network.
+  # Edge network: nginx and the Next.js frontend.
   codedna:
     name: codedna
-  # Internal-only network (no route to the internet): backend <-> analyzer,
-  # backend/analyzer <-> minio (pre-signed URL downloads).
+  # Application network: nginx and the Laravel containers with their data
+  # services. Not internal: Laravel calls GitHub and the AI provider.
+  codedna-app:
+    name: codedna-app
+  # Internal-only network (no route to the internet): queue worker <->
+  # analyzer, queue worker/analyzer <-> minio (pre-signed URL downloads).
   codedna-internal:
     name: codedna-internal
     internal: true

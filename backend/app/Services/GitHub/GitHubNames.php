@@ -14,13 +14,13 @@ final class GitHubNames
     /** A GitHub user or organization login. */
     public static function isLogin(mixed $value): bool
     {
-        return is_string($value) && preg_match('/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/', $value) === 1;
+        return is_string($value) && preg_match('/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/D', $value) === 1;
     }
 
     /** A repository name (without the owner). */
     public static function isRepositoryName(mixed $value): bool
     {
-        return is_string($value) && preg_match('/^[A-Za-z0-9._-]{1,100}$/', $value) === 1 && ! in_array($value, ['.', '..'], true);
+        return is_string($value) && preg_match('/^[A-Za-z0-9._-]{1,100}$/D', $value) === 1 && ! in_array($value, ['.', '..'], true);
     }
 
     /**
@@ -31,13 +31,13 @@ final class GitHubNames
     public static function isBranch(mixed $value): bool
     {
         return is_string($value)
-            && preg_match('#^[A-Za-z0-9._/-]{1,255}$#', $value) === 1
+            && preg_match('#^[A-Za-z0-9._/-]{1,255}$#D', $value) === 1
             && preg_match('#(^[-/.]|/$|//|\.\.|\.lock$|/\.|@\{)#', $value) !== 1;
     }
 
     public static function isCommitSha(mixed $value): bool
     {
-        return is_string($value) && preg_match('/^[0-9a-f]{40}$/', $value) === 1;
+        return is_string($value) && preg_match('/^[0-9a-f]{40}$/D', $value) === 1;
     }
 
     /** "owner/name" as a URL path, each part already validated. */

@@ -49,6 +49,7 @@ final readonly class RequestGitHubImport
         $connection = ConnectionLookup::active($project);
         $token = $this->access->token($actor);
         ConnectGitHubRepository::verifiedRepository($this->api, $token, $connection->repository_id);
+        ConnectGitHubRepository::verifyInstallationAccess($this->api, $token, $connection->installation_id);
 
         try {
             $result = $this->db->transaction(fn (): RequestedGitHubImport => $this->queue($project, $connection));

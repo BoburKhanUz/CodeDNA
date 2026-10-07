@@ -204,6 +204,16 @@ final class OpenAiCompatibleProviderTest extends TestCase
         $this->assertSame([$failure, false, $detail], [$e->failure, $e->retryable, $e->detail]);
     }
 
+    /** Phase 21: an oversized declared length is refused before the body is read. */
+    public function test_an_oversized_declared_length_is_refused_before_reading(): void
+    {
+        HttpFacade::fake([self::URL => HttpFacade::response(self::completion(), 200, ['Content-Length' => (string) (50 * 1024 * 1024)])]);
+
+        $e = $this->expectFailure();
+
+        $this->assertSame([AssessmentFailure::OutputTooLarge, false, 'envelope_too_large'], [$e->failure, $e->retryable, $e->detail]);
+    }
+
     public function test_unsafe_metadata_is_dropped(): void
     {
         HttpFacade::fake([self::URL => HttpFacade::response(self::completion(['model' => "model\nwith newline", 'id' => str_repeat('x', 200), 'usage' => ['prompt_tokens' => -1, 'completion_tokens' => 'many']]))]);

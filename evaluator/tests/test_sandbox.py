@@ -226,6 +226,73 @@ class SandboxTest(unittest.TestCase):
 
 
 @unittest.skipUnless(IN_CONTAINER, "requires the evaluator container")
+class Phase21SandboxTest(unittest.TestCase):
+    def test_exception_names_cannot_carry_hidden_arguments_out(self) -> None:
+        source = "def solve(*args):\n    raise type('leak_' + str(args[0]), (Exception,), {})()\n"
+        self.assertEqual({"id": "v1", "status": "ERROR", "error": "Error"}, value(evaluate(source)))
+        loader = "import sys\nraise type(str(sys._getframe(1).f_locals.get('cases'))[:60], (Exception,), {})()\n"
+        result = evaluate(loader)
+        self.assertEqual(["LOAD_ERROR", "Error"], [result["status"], result["load_error"]])
+
+    def test_a_deeply_nested_return_value_is_graded_not_dropped(self) -> None:
+        source = (
+            "import sys\nsys.setrecursionlimit(5000)\ndef solve(x):\n    v = 1\n    for _ in range(900):\n        v = [v]\n    return v\n"
+        )
+        result = evaluate(source)
+        self.assertEqual("COMPLETED", result["status"])
+        self.assertIn(
+            value(result),
+            [{"id": "v1", "status": "ERROR", "error": "ValueTooDeep"}, {"id": "v1", "status": "ERROR", "error": "UnserializableResult"}],
+        )
+
+    def test_unreadable_directories_are_still_cleaned(self) -> None:
+        evaluate(
+            "import os\ndef solve(x):\n    os.makedirs('a/b/c')\n    open('a/b/c/f', 'w').write('x')\n    os.chmod('a/b', 0)\n    os.chmod('a', 0)\n    return 1\n"
+        )
+        marker = evaluate("import os\ndef solve(x):\n    return sorted(os.listdir('.'))\n")
+        self.assertEqual([], value(marker))
+
+    def test_shared_memory_is_not_writable(self) -> None:
+        source = "def solve(x):\n    try:\n        open('/dev/shm/persist', 'w').write('x')\n        return 'written'\n    except OSError:\n        return 'refused'\n"
+        self.assertEqual("refused", value(evaluate(source)))
+
+    def test_sandboxed_code_is_the_first_choice_of_the_oom_killer(self) -> None:
+        self.assertEqual(1000, value(evaluate("def solve(x):\n    return int(open('/proc/self/oom_score_adj').read())\n")))
+
+
+class ProcessAlwaysAnswersTest(unittest.TestCase):
+    def test_an_unexpected_failure_still_writes_a_result(self) -> None:
+        from types import SimpleNamespace
+        from unittest import mock
+
+        spool = Path(tempfile.mkdtemp())
+        try:
+            for name in ("work", "results"):
+                (spool / name).mkdir()
+            claimed = spool / "work" / f"{ID}.json"
+            claimed.write_text(
+                json.dumps(
+                    {
+                        "protocol": "codedna-evaluator/1",
+                        "id": ID,
+                        "language": "python",
+                        "entrypoint": "solve",
+                        "source": "def solve(x):\n    return x\n",
+                        "cases": [{"id": "v1", "args": [1]}],
+                    }
+                )
+            )
+            limits = config.Limits(5, 5, 256 << 20, 16, 1 << 20, 32, 65536, 16384, 64)
+            conf_ = SimpleNamespace(spool=spool, limits=limits)
+            with mock.patch.object(service, "evaluate", side_effect=RecursionError()):
+                self.assertEqual("CRASHED", service.process(claimed, SimpleNamespace(index=0), conf_))  # type: ignore[arg-type]
+            self.assertFalse(claimed.exists())
+            self.assertEqual("CRASHED", json.loads((spool / "results" / f"{ID}.json").read_text())["status"])
+        finally:
+            shutil.rmtree(spool, ignore_errors=True)
+
+
+@unittest.skipUnless(IN_CONTAINER, "requires the evaluator container")
 class SpoolTest(unittest.TestCase):
     def test_a_claimed_request_is_executed_once_and_answered(self) -> None:
         spool = Path(tempfile.mkdtemp())

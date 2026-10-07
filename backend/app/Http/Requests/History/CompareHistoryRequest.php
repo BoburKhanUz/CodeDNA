@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\History;
 
+use App\Http\Requests\Concerns\AuthorizesProjectView;
 use App\Http\Requests\GitHub\OnlyFields;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -15,6 +16,7 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 final class CompareHistoryRequest extends FormRequest
 {
+    use AuthorizesProjectView;
     use OnlyFields;
 
     /** IDs are case-insensitive: the same snapshot in two spellings is not two snapshots. */

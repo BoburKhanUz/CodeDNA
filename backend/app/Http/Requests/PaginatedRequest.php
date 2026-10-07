@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\AuthorizesProjectView;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
  * Page-based pagination for collection endpoints: ?page=2&per_page=25.
+ * On project routes the project is authorized before validation.
  */
 abstract class PaginatedRequest extends FormRequest
 {
+    use AuthorizesProjectView;
+
     public const DEFAULT_PER_PAGE = 25;
 
     public const MAX_PER_PAGE = 100;

@@ -14,9 +14,9 @@ use Illuminate\Support\Carbon;
 final readonly class GitHubUserTokens
 {
     public function __construct(
-        public string $accessToken,
+        #[\SensitiveParameter] public string $accessToken,
         public ?Carbon $accessTokenExpiresAt,
-        public ?string $refreshToken,
+        #[\SensitiveParameter] public ?string $refreshToken,
         public ?Carbon $refreshTokenExpiresAt,
     ) {}
 

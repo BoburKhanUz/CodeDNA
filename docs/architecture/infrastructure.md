@@ -28,14 +28,17 @@ Related: [ADR-001](../decisions/ADR-001-stack.md) (versions),
               └────────────┘                             ▲
                                                  minio-init (one-shot)
 
-  network codedna           : nginx, frontend, backend, postgres, redis, minio
-  network codedna-internal  : backend, analyzer, minio, minio-init  (no internet)
+  network codedna           : nginx, frontend                          (edge)
+  network codedna-app       : nginx, backend, queue, scheduler, postgres, redis, minio
+  network codedna-internal  : queue, analyzer, minio, minio-init     (no internet)
   no network at all         : evaluator  (files only, via the challenge-spool volume
                               shared with backend, queue and scheduler)
 ```
 
-The analyzer is **not** routed by Nginx and shares no network with Nginx or
-the frontend. Only the backend calls it. The analyzer's only outbound
+The analyzer is **not** routed by Nginx and shares no network with Nginx,
+the frontend or the HTTP backend. Only the queue worker calls it. Since
+Phase 21 the frontend reaches nothing but Nginx, and the analyzer reaches
+nothing but MinIO ([security-hardening.md](../security/security-hardening.md#network-segmentation)). The analyzer's only outbound
 traffic is to MinIO, for pre-signed downloads
 ([ADR-005](../decisions/ADR-005-service-communication.md)).
 
@@ -49,16 +52,16 @@ request and result files with the queue worker through the
 
 | Service | Image / build | Purpose | Host port | Networks | Healthcheck |
 |---|---|---|---|---|---|
-| `nginx` | `nginx:1.28-alpine` | Single-origin router | `127.0.0.1:80` | codedna | `GET /nginx-health` |
+| `nginx` | `nginx:1.28-alpine` | Single-origin router; an unpublished internal listener on `:8080` for the Next.js server | `127.0.0.1:80` | codedna, codedna-app | `GET /nginx-health` |
 | `frontend` | `docker/node/Dockerfile` → `codedna-frontend:dev` | Next.js 16 dev server ([frontend.md](frontend.md)) | — | codedna | HTTP `GET /` on :3000 |
-| `backend` | `docker/php/Dockerfile` → `codedna-backend:dev` | Laravel 13 API on PHP-FPM 8.4 ([backend.md](backend.md)) | — | codedna, codedna-internal | Laravel `/up` over FastCGI (`codedna-healthcheck`) |
-| `queue` | `codedna-backend:dev` (same image, environment and bind mounts as `backend`) | Analysis, AI assessment and challenge queue worker (Phases 10, 15, 16): `php artisan queue:listen analysis --queue=analysis,assessment,challenge --timeout=330` | — | codedna, codedna-internal | none (process) |
-| `scheduler` | `codedna-backend:dev` | Laravel scheduler (Phase 10): `php artisan schedule:work` (`analysis:fail-stale`, `assessment:fail-stale` and `challenge:fail-stale` every five minutes) | — | codedna | none (process) |
+| `backend` | `docker/php/Dockerfile` → `codedna-backend:dev` | Laravel 13 API on PHP-FPM 8.4 ([backend.md](backend.md)) | — | codedna-app | Laravel `/up` over FastCGI (`codedna-healthcheck`) |
+| `queue` | `codedna-backend:dev` (same image, environment and bind mounts as `backend`) | Analysis, AI assessment and challenge queue worker (Phases 10, 15, 16): `php artisan queue:listen analysis --queue=analysis,assessment,challenge --timeout=330` | — | codedna-app, codedna-internal | none (process) |
+| `scheduler` | `codedna-backend:dev` | Laravel scheduler (Phase 10): `php artisan schedule:work` (`analysis:fail-stale`, `assessment:fail-stale` and `challenge:fail-stale` every five minutes) | — | codedna-app | none (process) |
 | `analyzer` | `docker/python/Dockerfile` → `codedna-analyzer:dev` | FastAPI analyzer (Phases 08–09): `GET /internal/v1/health`, HMAC-authenticated `POST /internal/v1/analyze` | — | codedna-internal | `GET /internal/v1/health` |
 | `evaluator` | `docker/evaluator/Dockerfile` → `codedna-evaluator:dev` | Challenge sandbox (Phase 16): runs submitted code as unprivileged slot users with resource limits ([challenge-evaluator.md](challenge-evaluator.md)) | — | **none** (`network_mode: none`) | heartbeat file younger than 15 s |
-| `postgres` | `postgres:16-alpine` | Primary database | `127.0.0.1:5432` | codedna | `pg_isready` |
-| `redis` | `redis:7.4-alpine` | Cache, queues, sessions | `127.0.0.1:6379` | codedna | `redis-cli ping` |
-| `minio` | `cgr.dev/chainguard/minio` (digest-pinned) | Local S3-compatible storage | `127.0.0.1:9000` (API), `127.0.0.1:9001` (console) | codedna, codedna-internal | `GET /minio/health/live` |
+| `postgres` | `postgres:16-alpine` | Primary database | `127.0.0.1:5432` | codedna-app | `pg_isready` |
+| `redis` | `redis:7.4-alpine` | Cache, queues, sessions; password required (`REDIS_PASSWORD`) | `127.0.0.1:6379` | codedna-app | `redis-cli ping` |
+| `minio` | `cgr.dev/chainguard/minio` (digest-pinned) | Local S3-compatible storage | `127.0.0.1:9000` (API), `127.0.0.1:9001` (console) | codedna-app, codedna-internal | `GET /minio/health/live` |
 | `minio-init` | `cgr.dev/chainguard/minio-client` (digest-pinned) | One-shot: bucket and bucket-scoped app user | — | codedna-internal | exits 0 |
 
 All host ports are bound to **127.0.0.1 only** and can be changed in `.env`
@@ -85,20 +88,33 @@ Configuration: `docker/nginx/conf.d/default.conf` and
 Other settings: `client_max_body_size 55m` (50 MiB archive limit plus
 multipart overhead; matches PHP's `post_max_size`; a larger `/api/` body is
 answered by Nginx with a JSON `413 PAYLOAD_TOO_LARGE` in the API's error
-envelope), `server_tokens off`,
-forwarded headers (`X-Forwarded-For`, `-Proto`, `-Host`), and upstream names
+envelope), `server_tokens off`, the security headers of
+`docker/nginx/snippets/security-headers.conf`, and upstream names
 resolved per request through Docker DNS, so recreating a container never needs
 an Nginx restart.
+
+**Client address (Phase 21).** Laravel trusts `X-Forwarded-For` from Nginx
+(`TRUSTED_PROXIES`), so Nginx never passes the client's own header on: it
+sends the TCP peer (`$remote_addr`) to Laravel and to Next.js. The Next.js
+server checks the session through `http://nginx:8080`
+(`BACKEND_INTERNAL_URL`), an internal listener that is not published and
+serves only `/api/`. Only there is the forwarded address taken as the
+client's (`real_ip_header`, private peers only), so rate limits apply to
+the visitor. Behind a production load balancer, configure
+`set_real_ip_from` for the balancer's addresses.
 
 ## Networks
 
 | Network | Type | Members | Why |
 |---|---|---|---|
-| `codedna` | bridge | nginx, frontend, backend, postgres, redis, minio | Main development network; allows host port publishing |
-| `codedna-internal` | bridge, `internal: true` | backend, analyzer, minio, minio-init | **No route to the internet.** Isolates the analyzer, which will process untrusted code |
+| `codedna` | bridge | nginx, frontend | Edge network; allows host port publishing |
+| `codedna-app` | bridge | nginx, backend, queue, scheduler, postgres, redis, minio | Laravel and its data services (Phase 21). Not internal: Laravel calls GitHub and the AI provider |
+| `codedna-internal` | bridge, `internal: true` | queue, analyzer, minio, minio-init | **No route to the internet.** Isolates the analyzer, which processes untrusted code |
 
-`make verify` asserts the isolation: Nginx and the frontend cannot reach
-the analyzer, and the analyzer cannot reach the internet.
+`make verify` asserts the isolation: Nginx, the frontend and the HTTP
+backend cannot reach the analyzer; the analyzer cannot reach the internet,
+PHP-FPM, Redis or PostgreSQL; the frontend cannot reach PHP-FPM, Redis,
+PostgreSQL or MinIO; Redis refuses unauthenticated clients.
 
 ## Volumes
 
@@ -138,6 +154,10 @@ git-ignored.
   768 MiB memory, 1 CPU and 128 PIDs. Its environment holds no credentials.
   Its supervisor drops every job to a per-slot unprivileged user with
   rlimits ([challenge-evaluator.md](challenge-evaluator.md#isolation)).
+- The evaluator's `/dev/shm` is a 64 KiB root-owned tmpfs (mode 0755)
+  instead of Docker's world-writable one: sandboxed code cannot leave files
+  there for later jobs (Phase 21).
+- Redis requires a password (`REDIS_PASSWORD`, generated by `make setup`).
 - No container is privileged. No service mounts the Docker socket.
 - Interactive API docs (`/docs`, `/openapi.json`) are disabled in the
   analyzer.

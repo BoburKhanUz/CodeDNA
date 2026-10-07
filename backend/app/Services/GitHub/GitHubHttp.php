@@ -46,7 +46,7 @@ final readonly class GitHubHttp
      *
      * @throws GitHubException
      */
-    public function getJson(string $path, string $token, array $query = []): array
+    public function getJson(string $path, #[\SensitiveParameter] string $token, array $query = []): array
     {
         $response = $this->send(fn (): Response => $this->api($token)->get($this->settings->apiUrl.$path, $query), retry: true);
 
@@ -60,7 +60,7 @@ final readonly class GitHubHttp
      *
      * @throws GitHubException
      */
-    public function postJson(string $path, string $token, array $body): mixed
+    public function postJson(string $path, #[\SensitiveParameter] string $token, array $body): mixed
     {
         $response = $this->send(fn (): Response => $this->api($token)->post($this->settings->apiUrl.$path, $body), retry: false);
 
@@ -89,7 +89,7 @@ final readonly class GitHubHttp
      *
      * @throws GitHubException
      */
-    public function redirectLocation(string $path, string $token): string
+    public function redirectLocation(string $path, #[\SensitiveParameter] string $token): string
     {
         $response = $this->send(fn (): Response => $this->api($token)->get($this->settings->apiUrl.$path), retry: true, expectRedirect: true);
         $location = $response->header('Location');
@@ -163,7 +163,7 @@ final readonly class GitHubHttp
             ->withoutRedirecting();
     }
 
-    private function api(string $token): PendingRequest
+    private function api(#[\SensitiveParameter] string $token): PendingRequest
     {
         return $this->base()->withHeaders([
             'Accept' => 'application/vnd.github+json',

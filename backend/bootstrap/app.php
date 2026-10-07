@@ -2,6 +2,7 @@
 
 use App\Http\Errors\ApiExceptionRenderer;
 use App\Http\Middleware\AssignRequestId;
+use App\Http\Middleware\PreventResponseCaching;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -17,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(AssignRequestId::class);
+        $middleware->api(prepend: [PreventResponseCaching::class]);
 
         // Sanctum SPA authentication: first-party browser requests get
         // sessions, cookies and CSRF protection (ADR-006).

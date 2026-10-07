@@ -40,7 +40,7 @@ final readonly class CompleteGitHubAuthorization
         private ConnectionInterface $db,
     ) {}
 
-    public function handle(User $user, string $state, string $code): ?string
+    public function handle(User $user, #[\SensitiveParameter] string $state, #[\SensitiveParameter] string $code): ?string
     {
         if (! $this->settings->configured()) {
             throw new ApiException(ErrorCode::GitHubNotConfigured);

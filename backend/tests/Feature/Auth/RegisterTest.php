@@ -173,4 +173,15 @@ final class RegisterTest extends TestCase
             ->assertHeader('Retry-After');
         $this->assertDatabaseCount('users', 0);
     }
+
+    /** Phase 21: bcrypt ignores bytes after the 72nd, so longer passwords are refused, not truncated. */
+    public function test_rejects_passwords_longer_than_72_bytes(): void
+    {
+        $multibyte = str_repeat('ж', 37); // 37 characters, 74 bytes
+        $this->fromBrowser()->postJson(self::URL, $this->payload(['password' => $multibyte, 'password_confirmation' => $multibyte]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['password'], 'error.details.fields');
+        $fits = str_repeat('ж', 36); // 72 bytes
+        $this->fromBrowser()->postJson(self::URL, $this->payload(['password' => $fits, 'password_confirmation' => $fits]))->assertCreated();
+    }
 }

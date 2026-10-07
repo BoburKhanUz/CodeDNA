@@ -24,6 +24,17 @@ use Illuminate\Contracts\Config\Repository;
 final class ConfigurationValidator
 {
     /**
+     * Every environment except local development and the test suite gets
+     * the production checks (Phase 21): a "staging" or "prod" deployment is
+     * not exempt from https, secure cookies, APP_DEBUG=false or the ban on
+     * the fake AI provider.
+     */
+    public static function isDeployed(string $environment): bool
+    {
+        return ! in_array($environment, ['local', 'testing'], true);
+    }
+
+    /**
      * @return list<string> problems found (empty when the configuration is valid)
      */
     public function problems(Repository $config, string $environment): array
@@ -75,7 +86,19 @@ final class ConfigurationValidator
             }
         }
 
-        if ($environment === 'production') {
+        // CORS is closed by default; an explicit list of origins may be set,
+        // never a wildcard, since responses allow credentials (ADR-006).
+        foreach ((array) $config->get('cors.allowed_origins') as $origin) {
+            if (! is_string($origin) || preg_match('~^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$~D', $origin) !== 1) {
+                $problems[] = 'CORS_ALLOWED_ORIGINS must list exact origins (scheme://host[:port]); wildcards are not allowed.';
+                break;
+            }
+        }
+        if ((array) $config->get('cors.allowed_origins_patterns') !== []) {
+            $problems[] = 'CORS origin patterns are not allowed.';
+        }
+
+        if (self::isDeployed($environment)) {
             if ($config->get('app.debug') === true) {
                 $problems[] = 'APP_DEBUG must be false in production.';
             }
@@ -128,7 +151,7 @@ final class ConfigurationValidator
         if (preg_match('/^[a-z0-9][a-z0-9-]{0,99}$/', $settings->appSlug) !== 1) {
             $problems[] = "GITHUB_APP_SLUG must be the GitHub App's URL slug.";
         }
-        $https = $environment === 'production';
+        $https = self::isDeployed($environment);
         foreach (['GITHUB_API_URL' => $settings->apiUrl, 'GITHUB_WEB_URL' => $settings->webUrl, 'GITHUB_CALLBACK_URL' => $settings->callbackUrl] as $name => $url) {
             if (! self::absoluteUrl($url, $https)) {
                 $problems[] = "{$name} must be an absolute ".($https ? 'https' : 'http(s)').' URL.';
@@ -254,7 +277,7 @@ final class ConfigurationValidator
         if (! in_array($provider, [OpenAiCompatibleProvider::NAME, FakeAiProvider::NAME], true)) {
             $problems[] = 'AI_PROVIDER must be "openai_compatible" or "fake".';
         }
-        if ($provider === FakeAiProvider::NAME && $environment === 'production') {
+        if ($provider === FakeAiProvider::NAME && self::isDeployed($environment)) {
             $problems[] = 'AI_PROVIDER "fake" is not allowed in production.';
         }
         if (! in_array($ai['structured_output'] ?? null, OpenAiCompatibleProvider::STRUCTURED_OUTPUT_MODES, true)) {
@@ -266,9 +289,9 @@ final class ConfigurationValidator
                 $problems[] = 'AI_MODEL must be set to a model identifier when AI is enabled.';
             }
             $url = $ai['base_url'] ?? null;
-            $scheme = $environment === 'production' ? 'https' : 'https?';
+            $scheme = self::isDeployed($environment) ? 'https' : 'https?';
             if (! is_string($url) || preg_match('#^'.$scheme.'://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*$#', $url) !== 1) {
-                $problems[] = $environment === 'production'
+                $problems[] = self::isDeployed($environment)
                     ? 'AI_BASE_URL must be an https:// URL without query or credentials in production.'
                     : 'AI_BASE_URL must be an http(s):// URL without query or credentials.';
             }

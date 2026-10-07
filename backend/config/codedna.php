@@ -259,9 +259,12 @@ return [
     'rate_limits' => [
         // Every /api/v1 route, per authenticated user or per IP.
         'api_per_minute' => 120,
-        // POST /api/v1/auth/login, per email+IP pair and per IP.
+        // POST /api/v1/auth/login, per email+IP pair and per IP, and per
+        // email across all IPs (Phase 21: a distributed guesser is still
+        // bounded per account).
         'login_per_minute_per_email' => 5,
         'login_per_minute_per_ip' => 20,
+        'login_per_hour_per_email' => 30,
         // POST /api/v1/auth/register, per IP.
         'register_per_minute_per_ip' => 10,
         // PATCH /api/v1/profile, per user.

@@ -76,9 +76,11 @@ final class GitHubConnectionTest extends TestCase
         $connection = GitHubConnection::query()->sole();
         $this->assertSame([FakeGitHub::INSTALLATION_ID, $this->owner->id], [$connection->installation_id, $connection->user_id]);
         $body = (string) $response->getContent();
-        foreach ([(string) FakeGitHub::INSTALLATION_ID, 'installation', FakeGitHub::API, 'token', 'clone_url'] as $needle) {
+        foreach (['installation', FakeGitHub::API, 'token', 'clone_url'] as $needle) {
             $this->assertStringNotContainsString($needle, $body);
         }
+        // The installation ID as a JSON value (a bare "77" also occurs inside random ULIDs and timestamps).
+        $this->assertDoesNotMatchRegularExpression('/[:\[,]\s*"?'.FakeGitHub::INSTALLATION_ID.'"?\s*[,\]}]/', $body);
         // Verified as the user (repository, branch) and as the App (installation).
         $this->assertSame('Bearer '.FakeGitHub::USER_TOKEN, $this->github->sent('GET', '#^/repositories/\d+$#')[0]->header('Authorization')[0]);
         $this->assertCount(1, $this->github->sent('GET', '#/branches/main$#'));
@@ -117,6 +119,19 @@ final class GitHubConnectionTest extends TestCase
 
         $this->connect()->assertStatus(409)->assertJsonPath('error.code', 'GITHUB_INSTALLATION_REQUIRED');
         $this->assertSame(0, GitHubConnection::query()->count());
+    }
+
+    /**
+     * Phase 21: a public repository is readable with any user token, but its
+     * installation (another organization's) is not the user's: refused.
+     */
+    public function test_another_accounts_installation_is_refused(): void
+    {
+        $this->github->userInstallations = [999];
+
+        $this->connect()->assertStatus(409)->assertJsonPath('error.code', 'GITHUB_INSTALLATION_REQUIRED');
+        $this->assertSame(0, GitHubConnection::query()->count());
+        $this->assertCount(0, $this->github->sent('POST', '#/access_tokens$#'), 'no installation token is minted');
     }
 
     public function test_a_missing_branch_is_refused_and_never_replaced(): void

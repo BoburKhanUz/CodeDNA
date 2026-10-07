@@ -18,7 +18,7 @@ COMPOSE := docker compose
 
 # Placeholder values that only let `docker compose config` interpolate the
 # file in CI/checks; nothing is started with them.
-COMPOSE_CHECK_ENV := APP_KEY=check DB_PASSWORD=check MINIO_ROOT_PASSWORD=check \
+COMPOSE_CHECK_ENV := APP_KEY=check DB_PASSWORD=check REDIS_PASSWORD=check MINIO_ROOT_PASSWORD=check \
 	SOURCE_STORAGE_ACCESS_KEY_ID=check SOURCE_STORAGE_SECRET_ACCESS_KEY=check \
 	ANALYZER_HMAC_SECRET=check
 
@@ -73,10 +73,10 @@ shell-analyzer: ## Open a shell in the analyzer container
 	$(COMPOSE) exec analyzer bash
 
 .PHONY: test
-test: ## Run all test suites inside the running containers
+test: ## Run all test suites inside the running containers (backend in the queue worker: it reaches the analyzer)
 	$(COMPOSE) exec -T analyzer pytest
 	./scripts/ensure-test-database.sh
-	$(COMPOSE) exec -T backend vendor/bin/phpunit
+	$(COMPOSE) exec -T queue vendor/bin/phpunit
 	$(COMPOSE) exec -T frontend npm test
 	$(COMPOSE) exec -T evaluator python3 -m unittest discover -s /opt/evaluator/tests -t /opt/evaluator
 

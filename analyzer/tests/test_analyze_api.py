@@ -369,3 +369,52 @@ def test_concurrent_runs_use_separate_workspaces(settings: Settings) -> None:
         post(client, request_body(ARCHIVE, run_id="01k6p0a1b2c3d4e5f6g7h8j9zz"))
     assert len(set(seen)) == 2
     assert all(hashlib.sha256(path.encode()).hexdigest() for path in seen)
+
+
+def test_a_chunked_body_is_cut_off_at_the_limit_before_authentication(settings: Settings) -> None:
+    """Phase 21: without Content-Length the body is still never buffered past the limit."""
+    sent: list[int] = []
+
+    def chunks():  # type: ignore[no-untyped-def]
+        for _ in range(400):  # 400 x 64 KiB = 25 MiB, far over the 64 KiB limit
+            sent.append(1)
+            yield b"x" * 65536
+
+    with client_for(settings) as client:
+        response = client.post(PATH, content=chunks(), headers={"Content-Type": "application/json"})
+    assert response.status_code == 422 and response.json()["error"]["details"] == {"reason": "body_too_large"}
+
+
+def test_the_endpoint_stops_reading_an_endless_body_just_past_the_limit(settings: Settings) -> None:
+    """The proof for the test above, through the real ASGI app: buffering the
+    whole body first (``await request.body()``) would never return."""
+    import asyncio
+
+    app = create_app(settings, resolver=PRIVATE, fetcher=FakeFetcher(ARCHIVE))
+    received = {"chunks": 0}
+    sent: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        received["chunks"] += 1
+        return {"type": "http.request", "body": b"x" * 1024, "more_body": True}  # never ends
+
+    async def send(message: dict[str, object]) -> None:
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": PATH,
+        "raw_path": PATH.encode(),
+        "query_string": b"",
+        "root_path": "",
+        "headers": [(b"content-type", b"application/json"), (b"transfer-encoding", b"chunked")],
+        "client": ("127.0.0.1", 1),
+        "server": ("analyzer", 8000),
+    }
+    asyncio.run(asyncio.wait_for(app(scope, receive, send), timeout=10))
+    assert sent[0]["status"] == 422
+    assert received["chunks"] <= 70, received

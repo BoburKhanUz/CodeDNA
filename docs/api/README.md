@@ -251,7 +251,9 @@ workflow, planned for a later phase. Email verification is not enforced yet
 A project belongs to exactly one user. **Every project route is
 owner-only:** another user's project answers `404 RESOURCE_NOT_FOUND`,
 exactly like a project that does not exist, so IDs reveal nothing.
-Authorization runs before validation. Project IDs in URLs must be ULIDs.
+Authorization runs before validation, for writes and for reads with query
+parameters alike (Phase 21): invalid input on another user's project is
+still `404`, never `422`. Project IDs in URLs must be ULIDs.
 
 ```json
 {
@@ -1485,6 +1487,12 @@ A single resource is wrapped in `data`:
 ```json
 { "data": { "id": "…", "type": "user" } }
 ```
+
+Every API response, errors included, carries `Cache-Control: no-store,
+private` (Phase 21): it holds account data that no cache may keep. Nginx
+adds `X-Content-Type-Options: nosniff`, `Referrer-Policy`,
+`X-Frame-Options: DENY`, a framing-only `Content-Security-Policy` and
+`Permissions-Policy` ([security-hardening.md](../security/security-hardening.md)).
 
 `204 No Content` responses have no body. Collections are paginated:
 `?page=2&per_page=25` (`per_page` at most 100, default 25; invalid values
