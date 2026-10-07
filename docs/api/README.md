@@ -58,6 +58,9 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `GET` | `/api/v1/projects/{project}/growth` | owner | 200 | Growth of the newest assessment: state, detail, trend series |
 | `GET` | `/api/v1/projects/{project}/growth/timeline` | owner | 200 | Growth snapshots (paginated, newest assessment first) |
 | `GET` | `/api/v1/projects/{project}/growth/{growthSnapshot}` | owner | 200 | One growth snapshot: observations, events, versions, provenance |
+| `GET` | `/api/v1/projects/{project}/history` | owner | 200 | Historical DNA: every assessment as recorded (paginated, newest first) |
+| `GET` | `/api/v1/projects/{project}/history/compare?from=&to=` | owner | 200 | Compare two assessments (server-checked compatibility) |
+| `GET` | `/api/v1/projects/{project}/history/{dnaSnapshot}` | owner | 200 | One assessment, its neighbours and activity context |
 | `GET` | `/api/v1/github` | authenticated | 200 | Whether GitHub is configured, and the caller's GitHub login |
 | `POST` | `/api/v1/github/authorizations` | authenticated, browser session | 201 | Start a GitHub authorization (GitHub URLs with a single-use state) |
 | `POST` | `/api/v1/github/callback` | authenticated, browser session | 200 | Complete it with GitHub's code and the state |
@@ -79,8 +82,9 @@ write method on `/dna`, `/competencies` or `/skill-gaps`). See
 [Projects](#projects), [Source snapshots](#source-snapshots),
 [Analyses](#analyses), [DNA](#dna), [Competencies](#competencies),
 [Skill gaps](#skill-gaps), [AI assessments](#ai-assessments) and
-[Growth tracking](#growth-tracking) and [GitHub integration](#github-integration).
-Growth is read-only (no write method on `/growth`).
+[Growth tracking](#growth-tracking), [Historical DNA](#historical-dna) and
+[GitHub integration](#github-integration). Growth and history are read-only
+(no write method on `/growth` or `/history`).
 
 ### `GET /api/v1/health`
 
@@ -1183,6 +1187,87 @@ The summary fields, plus:
 Values, deltas and qualities are decimal strings with 4 places. They are
 null when the evidence was not measured; they are never `0` for missing
 evidence.
+
+## Historical DNA
+
+Every code assessment of a project, as it was recorded (Phase 20,
+[historical-dna-v1.md](../architecture/historical-dna-v1.md),
+[ADR-012](../decisions/ADR-012-historical-dna.md)). A **read model** over the
+stored DNA, competency, skill gap and growth snapshots. Nothing is
+recalculated or stored.
+
+- **Growth vs. history.** Growth says what changed between an assessment
+  and the one before it. History shows what every assessment looked like.
+- **Points.** A point is a DNA snapshot of a `SUCCEEDED`, completed analysis
+  run of the project. Queued, failed and cancelled analyses, AI
+  assessments and learning activity are never points.
+- **Owner-only.** Another user's project, and a snapshot of another
+  project, answer `404 RESOURCE_NOT_FOUND`. Archived projects stay
+  readable.
+- **IDs only.** Any query field not listed below answers
+  `422 VALIDATION_FAILED`. Scores, deltas, versions and statuses never come
+  from a client.
+- **Never returned:** storage disks, keys or URLs, analyzer payloads, owner
+  IDs, GitHub installation, repository or import IDs, tokens and URLs.
+
+Point detail and comparison responses carry this `notice`:
+
+> Historical DNA shows each code assessment exactly as it was recorded.
+> Stored values are never recalculated or rewritten, and assessments
+> measured with different versions are never compared. Learning activity is
+> context only.
+
+### `GET /api/v1/projects/{project}/history`
+
+Points, newest first, by analysis run completion. `?page` and `?per_page`
+(default 25, at most 100). The usual `meta`. Each point:
+
+| Field | Meaning |
+|---|---|
+| `id`, `type: "history_point"` | The DNA snapshot ID |
+| `analyzed_at`, `analysis_run_id` | When the code was assessed (the run's completion) |
+| `layers` | `{dna: "AVAILABLE", competency, skill_gaps}`: `AVAILABLE` or `UNAVAILABLE`. An unavailable layer is null below, never invented |
+| `versions` | The Phase 18 compatibility fields (`dna_scoring_version`, `dna_specification_fingerprint`, `metrics_version`, `competency_version`, …, `target_profile_version`); null for an unavailable layer |
+| `segments` | `{dna, competency, skill_gaps}`: opaque keys. Equal keys mean measured alike for that layer. Null without the layer |
+| `dna` | `snapshot_id`, `status`, `overall_score`, `data_quality`, `scoring_version`, `specification_fingerprint`, `metrics_version`, `created_at`, and `dimensions` (`COMPLEXITY`, `STRUCTURE`, `CODE_HYGIENE` first: `dimension`, `name`, `status`, `score`, `data_quality`). A dimension the snapshot lacks is `MISSING` with null values |
+| `competency` | `snapshot_id`, `status`, `competency_version`, `specification_fingerprint`, `created_at`, `competencies` (`key`, `name`, `status`, `score`, `level`, `evidence_quality`), or null |
+| `skill_gaps` | `snapshot_id`, `status`, `skill_gap_version`, `target_profile`, `target_profile_version`, `specification_fingerprint`, `created_at`, `results` (`competency_key`, `name`, `status`, `current_score`, `target_score`, `gap`, `material_gap`, `priority`, `evidence_quality`, `current_level`), or null |
+| `source` | `snapshot_id`, `version`, `origin` (`UPLOAD`, `GITHUB` or `REPOSITORY`), `source_hash`, `file_count`, `primary_language`, `created_at`, `github` (`{repository, ref, commit_sha}` for GitHub imports, each null if malformed; otherwise null) |
+| `growth` | The assessment's stored Phase 18 growth under the current rules: `id`, `status`, `previous_dna_snapshot_id`, `previous_assessed_at`, `rules_version`, `summary`, `events`. Null if none |
+
+Values are the stored 4-place decimal strings. A missing value is null,
+never `"0.0000"`.
+
+### `GET /api/v1/projects/{project}/history/{dnaSnapshot}`
+
+One point, as above, plus:
+
+- `notice`;
+- `previous` and `next`: `{dna_snapshot_id, analyzed_at}` or null;
+- `activity`: `{roadmap_steps_completed, challenges_passed}` since the
+  previous point, or null for the first. **Context only.**
+
+`404` if the snapshot is not an eligible point of this project.
+
+### `GET /api/v1/projects/{project}/history/compare?from={dnaSnapshot}&to={dnaSnapshot}`
+
+Two different point IDs (case-insensitive). The server orders them by time:
+`from` is always the earlier one. Either ID not being an eligible point of
+this project answers `404`. A missing, malformed or equal ID, or any other
+field, answers `422`.
+
+| Field | Meaning |
+|---|---|
+| `status` | `COMPARED`, or `INCOMPARABLE` when any compared layer was measured with different versions |
+| `basis` | `GROWTH_SNAPSHOT`: the stored growth of exactly this pair. `GROWTH_RULES`: Phase 18's engine and current rules over the stored values, in memory. Nothing is stored |
+| `growth_snapshot_id` | The stored growth snapshot used, or null |
+| `rules` | `{version, fingerprint}` of the current growth rules |
+| `from`, `to` | The two points, as above |
+| `layers` | `{dna, competency, skill_gaps}`: `COMPARED`, `INCOMPARABLE` or `UNAVAILABLE` (missing on either side; not compared) |
+| `differences` | The differing compatibility fields (`INCOMPARABLE`) |
+| `summary`, `events` | Phase 18 categorical counts and events. No aggregate score |
+| `dna`, `competencies`, `skill_gaps` | Phase 18 observations (`metric_key`, `better`, states, values, `delta`, levels, `level_change`, evidence qualities, `status`). Empty when `INCOMPARABLE` |
+| `activity` | Learning activity between the two points. **Context only** |
 
 ## GitHub integration
 

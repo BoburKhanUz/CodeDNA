@@ -410,8 +410,9 @@ Read-only and owner-only. See [API](../api/README.md#growth-tracking).
 
 ## Not included
 
-- GitHub, GitLab and Bitbucket integration, and historical DNA (Phase 19
-  onward).
+- GitHub, GitLab and Bitbucket integration (Phase 19 onward). Historical
+  DNA (Phase 20, [historical-dna-v1.md](historical-dna-v1.md)) reads growth
+  snapshots and reuses this engine for comparisons; it does not change it.
 - Comparisons across projects or users, team growth, and benchmarks.
 - A growth score, ranking or prediction.
 - Notifications.

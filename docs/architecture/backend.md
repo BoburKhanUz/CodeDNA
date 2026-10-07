@@ -48,7 +48,13 @@ never re-scores anything and never reads learning activity as evidence
 It imports archives through the official API into ordinary source snapshots
 (`App\Actions\GitHub\RunGitHubImport`, queue `github`) and never runs
 `git` or repository code
-([github-integration-v1.md](github-integration-v1.md)). This includes coding
+([github-integration-v1.md](github-integration-v1.md)). Historical DNA
+(Phase 20) is a read model in `App\Services\History`: `HistoryReader`
+loads a project's eligible DNA snapshots with their competency, skill gap
+and growth snapshots in a fixed number of queries, and `HistoryComparer`
+compares two of them through the stored growth snapshot or Phase 18's
+`GrowthEngine`. It stores nothing and has no migration
+([historical-dna-v1.md](historical-dna-v1.md)). This includes coding
 challenges (Phase 16):
 Laravel stores submitted challenge code and writes it to the spool for the
 isolated evaluator service. It never runs it

@@ -416,6 +416,23 @@ roadmap_step_completions, challenge_submissions ──read at display time──
 
 Details: [growth-tracking-v1.md](growth-tracking-v1.md).
 
+### Historical DNA (Phase 20)
+
+History reads; it never writes.
+
+```text
+dna_snapshots ⋈ analysis_runs (SUCCEEDED) ─► page of points (newest first)
+   ├─► competency_snapshots ─► skill_gap_snapshots + skill_gap_results
+   ├─► growth_snapshots + growth_observations (current rules)
+   └─► source_snapshots (provenance: upload, or GitHub repository/ref/commit)
+
+compare(from, to) ─► stored growth snapshot of exactly that pair
+                 └─► otherwise GrowthAssessment ×2 ─► GrowthEngine (in memory, nothing stored)
+```
+
+Learning activity is counted between points as context only. Details:
+[historical-dna-v1.md](historical-dna-v1.md).
+
 ### GitHub imports (Phase 19)
 
 GitHub is a source provider. An import ends in the same immutable source

@@ -56,7 +56,7 @@ describe("GrowthView", () => {
     expect(await screen.findByTestId("growth-notice")).toHaveTextContent(NOTICE);
     expect(screen.getByRole("heading", { level: 1, name: "Growth" })).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Related pages" });
-    for (const [name, path] of [["CodeDNA", "dna"], ["Competency Matrix", "competencies"], ["Skill Gaps", "skill-gaps"], ["Learning Roadmap", "roadmap"]]) {
+    for (const [name, path] of [["CodeDNA", "dna"], ["Competency Matrix", "competencies"], ["Skill Gaps", "skill-gaps"], ["Learning Roadmap", "roadmap"], ["Historical DNA", "history"]]) {
       expect(within(nav).getByRole("link", { name })).toHaveAttribute("href", `/app/projects/${project.id}/${path}`);
     }
     // Read-only: the page only ever reads.

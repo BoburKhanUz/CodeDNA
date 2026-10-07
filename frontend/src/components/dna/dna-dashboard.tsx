@@ -135,6 +135,21 @@ export function DnaDashboard({ projectId, snapshotId }: { projectId: string; sna
               </Link>
             </CardContent>
           </Card>
+          <Card data-testid="history-link">
+            <CardHeader>
+              <CardTitle>
+                <h2>Historical DNA</h2>
+              </CardTitle>
+              <CardDescription>
+                Every code assessment of this project as it was recorded, with version segments and a comparison of any two.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href={`/app/projects/${project.id}/history`} className="text-sm font-medium underline underline-offset-4">
+                View Historical DNA →
+              </Link>
+            </CardContent>
+          </Card>
           <History history={state.history} projectId={project.id} selectedId={state.snapshot.id} />
         </>
       )}

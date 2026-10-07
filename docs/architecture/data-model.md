@@ -52,7 +52,12 @@ There is deliberately no separate `repositories` or `analyses` table. A
 project carries its source origin (`source_type`, `repository_url`). A
 re-analysis is simply another `analysis_run` for the same snapshot. The
 GitHub integration (Phase 19) adds its own tables; a GitHub import still ends
-in an ordinary `source_snapshots` row.
+in an ordinary `source_snapshots` row. Historical DNA (Phase 20) adds **no**
+table: it is a read model over `dna_snapshots`, `competency_snapshots`,
+`skill_gap_snapshots`, `skill_gap_results`, `growth_snapshots`,
+`analysis_runs` and `source_snapshots`, which already keep every assessment
+immutably, with lineage, versions and provenance
+([historical-dna-v1.md](historical-dna-v1.md#why-no-new-persistence)).
 
 ### Relationships (Eloquent)
 
@@ -699,7 +704,7 @@ Historical records (`source_snapshots`, terminal `analysis_runs`,
 `skill_gap_snapshots`, `skill_gap_results`, `challenge_definitions`,
 `roadmap_steps`, `roadmap_step_completions`) are append-only. Challenge instances and submissions change only their
 lifecycle columns, and their database triggers enforce that (Phase 16).
-Roadmap snapshots change only their status, once (Phase 17, trigger). Growth snapshots and observations never change (Phase 18, trigger). This is an architectural invariant.
+Roadmap snapshots change only their status, once (Phase 17, trigger). Growth snapshots and observations never change (Phase 18, trigger). Historical DNA (Phase 20) only reads these records and never rewrites them. This is an architectural invariant.
 
 | Layer | Mechanism |
 |---|---|

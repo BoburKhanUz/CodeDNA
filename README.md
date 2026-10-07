@@ -35,6 +35,7 @@ ASSESS ─► ANALYZE ─► IDENTIFY GAPS ─► LEARN ─► PRACTICE ─► R
 | 17 | Learning roadmap | ✅ Done |
 | 18 | Growth tracking | ✅ Done |
 | 19 | GitHub integration | ✅ Done |
+| 20 | Historical DNA | ✅ Done |
 
 The Docker environment runs every component: Nginx, Laravel 13, Next.js 16,
 the FastAPI analyzer, the challenge evaluator, PostgreSQL 16, Redis 7 and
@@ -95,7 +96,13 @@ branch's current commit becomes an ordinary immutable source snapshot, analyzed 
 same pipeline. **GitHub is a source provider:** repository code is never executed,
 tokens never leave the server, and disconnecting never deletes imported history
 ([github-integration-v1.md](docs/architecture/github-integration-v1.md); configure the App
-with the `GITHUB_*` variables in `.env.example`). The full plan is in
+with the `GITHUB_*` variables in `.env.example`). Since Phase 20 each project has a
+**Historical DNA** page: every completed code assessment as it was recorded, with DNA,
+competency and skill-gap evolution, version segments, source provenance and a comparison
+of any two assessments. It is a read model over the existing immutable snapshots: nothing
+is recalculated or stored, history is never rewritten, and assessments measured with
+different versions are never compared or joined by a trend line
+([historical-dna-v1.md](docs/architecture/historical-dna-v1.md)). The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance
@@ -118,9 +125,9 @@ code runs only in the network-less evaluator and never changes CodeDNA.
 ## Documentation
 
 - Product: [vision](docs/product/vision.md) · [MVP](docs/product/mvp.md)
-- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md) · [coding challenges](docs/architecture/coding-challenges-v1.md) · [challenge evaluator](docs/architecture/challenge-evaluator.md) · [learning roadmap](docs/architecture/learning-roadmap-v1.md) · [growth tracking](docs/architecture/growth-tracking-v1.md) · [GitHub integration](docs/architecture/github-integration-v1.md)
+- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md) · [coding challenges](docs/architecture/coding-challenges-v1.md) · [challenge evaluator](docs/architecture/challenge-evaluator.md) · [learning roadmap](docs/architecture/learning-roadmap-v1.md) · [growth tracking](docs/architecture/growth-tracking-v1.md) · [GitHub integration](docs/architecture/github-integration-v1.md) · [historical DNA](docs/architecture/historical-dna-v1.md)
 - API: [public conventions](docs/api/README.md) · [internal analyzer contract](docs/api/internal-analyzer-contract.md)
-- Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md) · [ADR-007 AI interpretation](docs/decisions/ADR-007-ai-interpretation.md) · [ADR-008 coding challenges](docs/decisions/ADR-008-coding-challenges.md) · [ADR-009 learning roadmap](docs/decisions/ADR-009-learning-roadmap.md) · [ADR-010 growth tracking](docs/decisions/ADR-010-growth-tracking.md) · [ADR-011 GitHub integration](docs/decisions/ADR-011-github-integration.md)
+- Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md) · [ADR-007 AI interpretation](docs/decisions/ADR-007-ai-interpretation.md) · [ADR-008 coding challenges](docs/decisions/ADR-008-coding-challenges.md) · [ADR-009 learning roadmap](docs/decisions/ADR-009-learning-roadmap.md) · [ADR-010 growth tracking](docs/decisions/ADR-010-growth-tracking.md) · [ADR-011 GitHub integration](docs/decisions/ADR-011-github-integration.md) · [ADR-012 historical DNA](docs/decisions/ADR-012-historical-dna.md)
 
 ## Repository layout
 

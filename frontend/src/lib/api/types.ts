@@ -4,6 +4,7 @@
  * Source of truth: backend/app/Http/Resources/{User,DeveloperProfile,Project,SourceSnapshot,AnalysisRun,DnaSnapshot,DnaSnapshotSummary,CompetencySnapshot,CompetencySnapshotSummary,SkillGapSnapshot,SkillGapSnapshotSummary,AiAssessment,AiAssessmentSummary,Challenge,ChallengeSummary,ChallengeSubmission,ChallengeSubmissionSummary,Roadmap,RoadmapSummary,GrowthSnapshot,GrowthSnapshotSummary,GitHubConnection,GitHubImport}Resource.php,
  * backend/app/Http/Controllers/Api/V1/{GitHub/GitHubAccountController,Projects/ProjectGitHubController}.php,
  * backend/app/Http/Controllers/Api/V1/Projects/GrowthController.php (growth overview),
+ * backend/app/Http/Controllers/Api/V1/Projects/HistoryController.php and HistoryPointResource.php (historical DNA),
  * backend/app/Http/Resources/PaginatedCollection.php,
  * backend/app/Enums/{SupportedLocale,ProgrammingLanguage}.php and
  * backend/app/Http/Errors/{ErrorCode,ApiExceptionRenderer}.php. When those
@@ -1086,6 +1087,147 @@ export interface GrowthOverview {
 
 export type GrowthOverviewResponse = DataEnvelope<GrowthOverview>;
 export type GrowthSnapshotResponse = DataEnvelope<GrowthSnapshot>;
+
+/* ---------------------------------------------------------------- Historical DNA (Phase 20) */
+
+export type HistoryLayerState = "AVAILABLE" | "UNAVAILABLE";
+export type HistorySourceOrigin = "UPLOAD" | "GITHUB" | "REPOSITORY";
+
+export interface HistoryDimension {
+  dimension: string;
+  name: string;
+  /** SCORED, UNAVAILABLE, or MISSING when the snapshot does not contain it. */
+  status: string;
+  score: DecimalString | null;
+  data_quality: DecimalString | null;
+}
+
+export interface HistoryCompetency {
+  key: string;
+  name: string;
+  status: string | null;
+  score: DecimalString | null;
+  level: string | null;
+  evidence_quality: DecimalString | null;
+}
+
+export interface HistorySkillGap {
+  competency_key: string;
+  name: string;
+  status: string;
+  current_score: DecimalString | null;
+  target_score: DecimalString | null;
+  /** The stored raw gap; null unless GAP or NO_GAP. */
+  gap: DecimalString | null;
+  material_gap: boolean | null;
+  priority: "LOW" | "MEDIUM" | "HIGH" | null;
+  evidence_quality: DecimalString | null;
+  current_level: string | null;
+}
+
+/** `HistoryPointResource` — one stored assessment, as recorded. */
+export interface HistoryPoint {
+  id: string;
+  type: "history_point";
+  project_id: string;
+  analyzed_at: string;
+  analysis_run_id: string;
+  layers: { dna: "AVAILABLE"; competency: HistoryLayerState; skill_gaps: HistoryLayerState };
+  versions: Record<string, string | null>;
+  /** Equal keys: measured alike, per layer. A trend never crosses a change. */
+  segments: { dna: string; competency: string | null; skill_gaps: string | null };
+  dna: {
+    snapshot_id: string;
+    status: "READY" | "INSUFFICIENT_DATA";
+    overall_score: DecimalString | null;
+    data_quality: DecimalString | null;
+    scoring_version: string;
+    specification_fingerprint: string | null;
+    metrics_version: string | null;
+    created_at: string | null;
+    dimensions: HistoryDimension[];
+  };
+  competency: {
+    snapshot_id: string;
+    status: string;
+    competency_version: string;
+    specification_fingerprint: string;
+    created_at: string | null;
+    competencies: HistoryCompetency[];
+  } | null;
+  skill_gaps: {
+    snapshot_id: string;
+    status: string;
+    skill_gap_version: string;
+    target_profile: string;
+    target_profile_version: string;
+    specification_fingerprint: string;
+    created_at: string | null;
+    results: HistorySkillGap[];
+  } | null;
+  source: {
+    snapshot_id: string;
+    version: number;
+    origin: HistorySourceOrigin;
+    source_hash: string;
+    file_count: number;
+    primary_language: string | null;
+    created_at: string | null;
+    github: { repository: string | null; ref: string | null; commit_sha: string | null } | null;
+  };
+  /** The assessment's stored Phase 18 growth, when calculated. */
+  growth: {
+    id: string;
+    status: GrowthSnapshotStatus;
+    previous_dna_snapshot_id: string | null;
+    previous_assessed_at: string | null;
+    rules_version: string;
+    summary: GrowthSummary;
+    events: GrowthEvent[];
+  } | null;
+}
+
+export interface HistoryRef {
+  dna_snapshot_id: string;
+  analyzed_at: string;
+}
+
+export type LearningActivityContext = { roadmap_steps_completed: number; challenges_passed: number };
+
+/** GET /api/v1/projects/{project}/history/{dnaSnapshot} */
+export interface HistoryPointDetail extends HistoryPoint {
+  notice: string;
+  previous: HistoryRef | null;
+  next: HistoryRef | null;
+  /** Since the previous point: context only, never evidence. */
+  activity: LearningActivityContext | null;
+}
+
+export type HistoryComparisonLayer = "COMPARED" | "INCOMPARABLE" | "UNAVAILABLE";
+
+/** GET /api/v1/projects/{project}/history/compare?from=&to= */
+export interface HistoryComparison {
+  type: "history_comparison";
+  notice: string;
+  status: "COMPARED" | "INCOMPARABLE";
+  /** GROWTH_SNAPSHOT: the stored Phase 18 growth; GROWTH_RULES: the Phase 18 rules over stored values. */
+  basis: "GROWTH_SNAPSHOT" | "GROWTH_RULES";
+  growth_snapshot_id: string | null;
+  rules: { version: string; fingerprint: string };
+  from: HistoryPoint;
+  to: HistoryPoint;
+  layers: { dna: HistoryComparisonLayer; competency: HistoryComparisonLayer; skill_gaps: HistoryComparisonLayer };
+  differences: string[];
+  summary: GrowthSummary;
+  events: GrowthEvent[];
+  dna: GrowthObservation[];
+  competencies: GrowthObservation[];
+  skill_gaps: GrowthObservation[];
+  activity: LearningActivityContext;
+}
+
+export type HistoryPointResponse = DataEnvelope<HistoryPointDetail>;
+export type HistoryComparisonResponse = DataEnvelope<HistoryComparison>;
 
 /* ---------------------------------------------------------------- GitHub (Phase 19) */
 

@@ -492,6 +492,42 @@ snapshot opens with `?snapshot=<id>`.
 - **What it never does.** It sends no data, compares nothing in the
   browser (`lib/growth/format.ts` only reformats digits), and uses no AI.
 
+## Historical DNA (`/app/projects/[project]/history`)
+
+Phase 20. The page presents the read-only
+[history API](../api/README.md#historical-dna) (`lib/history/client.ts`,
+`lib/history/format.ts`, `components/history/history-view.tsx`). It is
+reached from the CodeDNA dashboard's "Historical DNA" card and from growth.
+
+- **Notice.** "Historical DNA shows each code assessment exactly as it was
+  recorded. …"
+- **States:** loading, error with retry, not found (also another user's
+  project), empty ("No assessments yet"), a single assessment ("Baseline
+  established", no trend), and archived (still readable).
+- **Sections:**
+  - **Latest assessments:** the latest and previous assessment, with
+    score, data quality, scoring version and provenance.
+  - **DNA evolution:** an SVG line per dimension on a fixed 0–100 axis,
+    oldest left, with fixed colors (palette slots 1–3, light and dark),
+    distinct marker shapes, a legend and per-point tooltips. Lines run only
+    between consecutive measured points with the same server segment key
+    (`lib/history/format.ts`). A dashed divider marks a scoring change.
+    "No historical trend available" when nothing can be drawn.
+  - **Version segments.**
+  - **Competency evolution:** stored scores and categorical levels per
+    assessment, plus level transitions from growth events.
+  - **Skill-gap evolution:** each competency's stored state, gap and
+    priority per assessment; a closed gap (growth event) is marked
+    "Resolved since the previous assessment". No overall gap.
+  - **Assessment timeline:** newest first, 25 per page, with provenance
+    (uploaded archive, or GitHub repository, ref and short commit), growth
+    summary and links. Two entries can be selected.
+  - **Comparison:** the server's result: observations and deltas, or
+    "Not comparable" with the differing versions; unavailable layers; and
+    learning activity in a dashed "context only" box.
+- **What it never does.** It sends only a page number and two IDs, computes
+  no score, delta, gap or compatibility, and uses no AI.
+
 ## GitHub (`/app/projects/[project]/github`, `/app/github/callback`)
 
 Phase 19. The page presents the [GitHub API](../api/README.md#github-integration)

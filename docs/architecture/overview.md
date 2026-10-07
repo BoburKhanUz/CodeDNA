@@ -54,7 +54,12 @@ context and is never growth evidence
 from GitHub through a read-only GitHub App. Each import becomes an ordinary
 immutable source snapshot, and repository code is never executed
 ([github-integration-v1.md](github-integration-v1.md),
-[ADR-011](../decisions/ADR-011-github-integration.md)). Everything below is
+[ADR-011](../decisions/ADR-011-github-integration.md)). Historical DNA shows
+every assessment of a project as it was recorded. It is a read model over
+the existing immutable snapshots: growth says what changed, history shows
+what each assessment looked like
+([historical-dna-v1.md](historical-dna-v1.md),
+[ADR-012](../decisions/ADR-012-historical-dna.md)). Everything below is
 the target architecture.
 
 ## System context
@@ -118,6 +123,11 @@ the target architecture.
    analyzed by the same pipeline. Disconnecting GitHub never deletes
    historical CodeDNA data, and tokens never leave the server
    ([ADR-011](../decisions/ADR-011-github-integration.md)).
+10. **History is read, never rewritten.** Historical DNA reads the immutable
+    snapshots and stores nothing. It never recalculates a value, never
+    replaces a past state with a current one, and never compares or
+    connects assessments measured with different versions
+    ([ADR-012](../decisions/ADR-012-historical-dna.md)).
 
 ## Data flow
 
@@ -147,6 +157,7 @@ machine, timeouts and retries, and data classification.
 | [ADR-009](../decisions/ADR-009-learning-roadmap.md) | Learning roadmap: a deterministic planning layer, generated on request |
 | [ADR-010](../decisions/ADR-010-growth-tracking.md) | Growth tracking: an observation layer over deterministic assessments |
 | [ADR-011](../decisions/ADR-011-github-integration.md) | GitHub integration: a GitHub App as a read-only source provider |
+| [ADR-012](../decisions/ADR-012-historical-dna.md) | Historical DNA: a read model over immutable snapshots |
 
 New ADRs use the next free number and follow the same format: Status, Date,
 Context, Decision, Consequences, Alternatives considered, and Open questions
@@ -180,4 +191,5 @@ at a time:
 | 17 | Learning roadmap | Done (roadmap catalog and rules 1.0.0, deterministic, on request; [learning-roadmap-v1.md](learning-roadmap-v1.md)) |
 | 18 | Growth tracking | Done (growth rules 1.0.0, immediate previous comparable assessment, read-only; [growth-tracking-v1.md](growth-tracking-v1.md)) |
 | 19 | GitHub integration | Done (GitHub App, read-only, imports into source snapshots; [github-integration-v1.md](github-integration-v1.md)) |
-| 20–25 | History, hardening, QA, billing, teams, production | — |
+| 20 | Historical DNA | Done (read model, no new persistence, version segments, comparison through growth rules; [historical-dna-v1.md](historical-dna-v1.md)) |
+| 21–25 | Hardening, QA, billing, teams, production | — |

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1\Projects;
 
 use App\Enums\AnalysisRunStatus;
-use App\Enums\Challenge\SubmissionStatus;
 use App\Enums\Growth\GrowthSnapshotStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Growth\ListGrowthRequest;
@@ -17,9 +16,9 @@ use App\Models\GrowthSnapshot;
 use App\Models\Project;
 use App\Models\SkillGapSnapshot;
 use App\Services\Growth\GrowthRules;
+use App\Services\Growth\LearningActivity;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 
 /**
  * /api/v1/projects/{project}/growth — read-only growth tracking (Phase 18,
@@ -117,15 +116,8 @@ final class GrowthController extends Controller
         if ($snapshot->previous_assessed_at === null) {
             return null;
         }
-        $window = [$snapshot->previous_assessed_at, $snapshot->assessed_at];
-        $row = DB::selectOne(
-            'SELECT
-                (SELECT count(*) FROM roadmap_step_completions WHERE project_id = ? AND completed_at > ? AND completed_at <= ?) AS steps,
-                (SELECT count(*) FROM challenge_submissions WHERE project_id = ? AND status = ? AND completed_at > ? AND completed_at <= ?) AS challenges',
-            [$snapshot->project_id, ...$window, $snapshot->project_id, SubmissionStatus::Passed->value, ...$window],
-        );
 
-        return ['roadmap_steps_completed' => (int) $row->steps, 'challenges_passed' => (int) $row->challenges];
+        return LearningActivity::between($snapshot->project_id, $snapshot->previous_assessed_at, $snapshot->assessed_at);
     }
 
     /**

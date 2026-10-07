@@ -109,6 +109,7 @@ describe("DnaDashboard", () => {
 
     const card = await screen.findByTestId("growth-link");
     expect(within(card).getByRole("link", { name: "View Growth →" })).toHaveAttribute("href", `/app/projects/${project.id}/growth`);
+    expect(within(screen.getByTestId("history-link")).getByRole("link", { name: "View Historical DNA →" })).toHaveAttribute("href", `/app/projects/${project.id}/history`);
     expect(card).toHaveTextContent("Only new code analysis shows change.");
   });
 

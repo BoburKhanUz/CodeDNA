@@ -135,6 +135,9 @@ export function GrowthView({ projectId, snapshotId }: { projectId: string; snaps
           <Link href={`/app/projects/${project.id}/roadmap`} className="text-muted-foreground underline-offset-4 hover:underline">
             Learning Roadmap
           </Link>
+          <Link href={`/app/projects/${project.id}/history`} className="text-muted-foreground underline-offset-4 hover:underline">
+            Historical DNA
+          </Link>
         </nav>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">Growth</h1>

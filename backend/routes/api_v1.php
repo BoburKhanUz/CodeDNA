@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\Projects\CompetencySnapshotController;
 use App\Http\Controllers\Api\V1\Projects\DnaSnapshotController;
 use App\Http\Controllers\Api\V1\Projects\GitHubImportController;
 use App\Http\Controllers\Api\V1\Projects\GrowthController;
+use App\Http\Controllers\Api\V1\Projects\HistoryController;
 use App\Http\Controllers\Api\V1\Projects\ProjectController;
 use App\Http\Controllers\Api\V1\Projects\ProjectGitHubController;
 use App\Http\Controllers\Api\V1\Projects\RoadmapController;
@@ -193,6 +194,19 @@ Route::middleware('auth:sanctum')->prefix('projects')->name('projects.')->group(
         ->whereUlid(['project', 'growthSnapshot'])
         ->scopeBindings()
         ->name('growth.show');
+
+    // Historical DNA (Phase 20): a read-only view of every stored assessment
+    // of the project as it was recorded. Clients send only pagination and
+    // the IDs of two points to compare. No write routes.
+    Route::get('{project}/history', [HistoryController::class, 'index'])
+        ->whereUlid('project')
+        ->name('history.index');
+    Route::get('{project}/history/compare', [HistoryController::class, 'compare'])
+        ->whereUlid('project')
+        ->name('history.compare');
+    Route::get('{project}/history/{dnaSnapshot}', [HistoryController::class, 'show'])
+        ->whereUlid(['project', 'dnaSnapshot'])
+        ->name('history.show');
 
     // GitHub integration (Phase 19): the project's repository connection and
     // imports into source snapshots. Repository, installation and commit are
