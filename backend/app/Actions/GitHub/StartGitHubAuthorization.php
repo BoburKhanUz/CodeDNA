@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Actions\GitHub;
 
+use App\Enums\Billing\Feature;
 use App\Exceptions\ApiException;
 use App\Http\Errors\ErrorCode;
 use App\Models\GitHubOAuthState;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Billing\Entitlements;
 use App\Services\GitHub\GitHubSettings;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -24,7 +26,7 @@ use Illuminate\Support\Facades\Log;
  */
 final readonly class StartGitHubAuthorization
 {
-    public function __construct(private GitHubSettings $settings) {}
+    public function __construct(private GitHubSettings $settings, private Entitlements $entitlements) {}
 
     /**
      * @return array{authorize_url: string, install_url: string, expires_at: string}
@@ -34,6 +36,8 @@ final readonly class StartGitHubAuthorization
         if (! $this->settings->configured()) {
             throw new ApiException(ErrorCode::GitHubNotConfigured);
         }
+        // Billing (Phase 23): the user's plan must include GitHub integration.
+        $this->entitlements->require($user, Feature::GitHubIntegration);
 
         $now = Carbon::now();
         // Housekeeping: this user's used or expired states are of no further use.

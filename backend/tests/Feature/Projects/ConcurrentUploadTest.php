@@ -13,6 +13,7 @@ use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Tests\Support\BillingFixtures;
 use Tests\Support\ZipBuilder;
 use Tests\TestCase;
 use Throwable;
@@ -57,6 +58,7 @@ final class ConcurrentUploadTest extends TestCase
             // Snapshots are immutable through Eloquent; test cleanup uses the query builder.
             DB::table('source_snapshots')->where('project_id', $this->project->id)->delete();
             DB::table('projects')->where('id', $this->project->id)->delete();
+            BillingFixtures::forget([(string) $this->project->user_id]);
             DB::table('users')->where('id', $this->project->user_id)->delete();
         }
         Storage::forgetDisk('sources');

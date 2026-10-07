@@ -43,6 +43,7 @@ fixing a bug. What each area covers, and its known gaps, is in the
 | `Tests\Support\FakeChallengeEvaluator` | The spool evaluator | Grading without running code |
 | `Tests\Support\FakeGitHub` | GitHub REST and archive downloads | Installations, repositories, branches, archives, errors and rate limits |
 | `Tests\Support\ScriptedAiProvider` | The AI provider | Valid, invalid, oversized and failing responses |
+| `FakePaymentProvider` (`fake`), `Tests\Support\BillingFixtures` | A payment provider | Signed webhooks; paid plans in tests only through a real activation event, never a bypass |
 | `FakeFetcher`, `resolver()` (analyzer) | Network download and DNS | URL policy, pinning and download limits |
 
 The real evaluator is exercised by `RealEvaluatorIntegrationTest` (below).
@@ -106,7 +107,8 @@ afterwards. A mutant must be killed. A surviving mutant is classified:
   (`scripts/ensure-test-database.sh`). Most tests run inside
   `RefreshDatabase` transactions.
 - Concurrency tests must commit their rows. They create their own user and
-  project, and delete exactly those rows in `tearDown`. Stored objects use a
+  project, and delete exactly those rows in `tearDown` (billing rows through
+  `BillingFixtures::forget`, before the user). Stored objects use a
   unique key prefix (`phpunit/<ulid>/`) that is deleted afterwards.
 - The evaluator integration test uses fresh submission IDs. The spool
   client deletes each result after reading it.

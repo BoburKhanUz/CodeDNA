@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Tests\Support\BillingFixtures;
 use Tests\Support\ZipBuilder;
 use Tests\TestCase;
 
@@ -81,6 +82,7 @@ final class AnalysisPipelineIntegrationTest extends TestCase
             DB::table('analysis_runs')->where('project_id', $this->project->id)->delete();
             DB::table('source_snapshots')->where('project_id', $this->project->id)->delete();
             DB::table('projects')->where('id', $this->project->id)->delete();
+            BillingFixtures::forget([(string) $this->project->user_id]);
             DB::table('users')->where('id', $this->project->user_id)->delete();
         }
         Storage::forgetDisk('sources');

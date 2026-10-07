@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Actions\GitHub;
 
+use App\Enums\Billing\Feature;
 use App\Enums\GitHub\GitHubConnectionStatus;
 use App\Exceptions\ApiException;
 use App\Http\Errors\ErrorCode;
 use App\Models\GitHubConnection;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Billing\Entitlements;
 use App\Services\GitHub\GitHubApi;
 use App\Services\GitHub\GitHubErrors;
 use App\Services\GitHub\GitHubException;
@@ -45,6 +47,7 @@ final readonly class ConnectGitHubRepository
         private GitHubApi $api,
         private GitHubUserAccess $access,
         private ConnectionInterface $db,
+        private Entitlements $entitlements,
     ) {}
 
     public function handle(Project $project, User $actor, int $repositoryId, ?string $branch): GitHubConnection
@@ -52,6 +55,8 @@ final readonly class ConnectGitHubRepository
         if (! $project->isActive()) {
             throw new ApiException(ErrorCode::ProjectArchived);
         }
+        // Billing (Phase 23): the owner's plan must include GitHub integration.
+        $this->entitlements->require($project->user_id, Feature::GitHubIntegration);
         if ($branch !== null && ! GitHubNames::isBranch($branch)) {
             throw ValidationException::withMessages(['branch' => 'The branch name is not valid.']);
         }

@@ -34,7 +34,7 @@ final class RouteContractTest extends TestCase
             if (! str_starts_with($route->uri(), 'api/v1/')) {
                 continue;
             }
-            $path = '/'.(string) preg_replace(['/\{step\}/', '/\{installation\}/', '/\{[A-Za-z]+\}/'], ['ch-first-step', '77', self::ID], $route->uri());
+            $path = '/'.(string) preg_replace(['/\{step\}/', '/\{installation\}/', '/\{provider\}/', '/\{[A-Za-z]+\}/'], ['ch-first-step', '77', 'fake', self::ID], $route->uri());
             $paths[$path] = array_values(array_unique([...($paths[$path] ?? []), ...$route->methods()]));
         }
         ksort($paths);
@@ -77,7 +77,8 @@ final class RouteContractTest extends TestCase
 
     public function test_every_protected_route_answers_401_to_an_anonymous_request(): void
     {
-        $public = ['/api/v1/health', '/api/v1/auth/login', '/api/v1/auth/register'];
+        // The billing webhook is authenticated by the provider's signature, not a session (Phase 23).
+        $public = ['/api/v1/health', '/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/billing/webhooks/fake'];
         foreach ($this->paths() as $path => $allowed) {
             if (in_array($path, $public, true)) {
                 continue;

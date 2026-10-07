@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Actions\Challenge;
 
+use App\Enums\Billing\Feature;
+use App\Enums\Billing\QuotaKey;
 use App\Enums\Challenge\ChallengeStatus;
 use App\Enums\Challenge\SubmissionFailure;
 use App\Enums\Challenge\SubmissionStatus;
@@ -15,6 +17,8 @@ use App\Models\ChallengeInstance;
 use App\Models\ChallengeSubmission;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Billing\Entitlements;
+use App\Services\Billing\UsageService;
 use App\Services\Challenge\ChallengeGrader;
 use App\Services\Challenge\Evaluator\ChallengeEvaluator;
 use Illuminate\Contracts\Bus\Dispatcher;
@@ -49,6 +53,8 @@ final readonly class SubmitChallengeSolution
         private Dispatcher $dispatcher,
         private Repository $config,
         private ChallengeEvaluator $evaluator,
+        private Entitlements $entitlements,
+        private UsageService $usage,
     ) {}
 
     public function handle(ChallengeInstance $challenge, User $actor, string $language, string $source, ?string $idempotencyKey): SubmittedSolution
@@ -61,6 +67,8 @@ final readonly class SubmitChallengeSolution
         if ($keyHash !== null && ($replay = $this->replay($challenge, $keyHash, $sourceHash)) !== null) {
             return new SubmittedSolution($replay, false);
         }
+        // Billing (Phase 23): the owner's plan must include coding challenges.
+        $this->entitlements->require($challenge->user_id, Feature::CodingChallenges);
         if (! $this->evaluator->available()) {
             throw new ApiException(ErrorCode::ChallengeEvaluationUnavailable);
         }
@@ -125,6 +133,9 @@ final readonly class SubmitChallengeSolution
             'evaluator' => $this->evaluator->name(),
         ]);
         $submission->save();
+        // Billing (Phase 23): one submission of the owner's plan (refunded if
+        // the evaluation ends in ERROR, which also uses no graded attempt).
+        $this->usage->consume($locked->user_id, QuotaKey::ChallengeSubmissions, 'challenge_submission', $submission->id);
         $locked->forceFill(['status' => ChallengeStatus::Evaluating])->save();
 
         Log::info('challenge.submitted', [

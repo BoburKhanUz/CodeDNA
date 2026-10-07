@@ -17,3 +17,6 @@ Schedule::command('assessment:fail-stale')->everyFiveMinutes()->withoutOverlappi
 
 // Phase 16: end challenge evaluations stuck in QUEUED or RUNNING.
 Schedule::command('challenge:fail-stale')->everyFiveMinutes()->withoutOverlapping();
+
+// Phase 23: record the end of subscriptions canceled at period end.
+Schedule::command('billing:expire-subscriptions')->hourly()->withoutOverlapping();

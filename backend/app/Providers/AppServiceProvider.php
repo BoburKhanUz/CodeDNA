@@ -4,10 +4,22 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Enums\AnalysisRunStatus;
+use App\Enums\Assessment\AssessmentStatus;
+use App\Enums\Billing\QuotaKey;
+use App\Enums\Challenge\SubmissionStatus;
+use App\Enums\GitHub\GitHubImportStatus;
 use App\Exceptions\InvalidConfigurationException;
+use App\Models\AiAssessment;
+use App\Models\AnalysisRun;
+use App\Models\ChallengeSubmission;
+use App\Models\GitHubImport;
 use App\Services\Assessment\Provider\AiProvider;
 use App\Services\Assessment\Provider\FakeAiProvider;
 use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
+use App\Services\Billing\PlanCatalog;
+use App\Services\Billing\Provider\PaymentProviders;
+use App\Services\Billing\UsageService;
 use App\Services\Challenge\ChallengeCatalog;
 use App\Services\Challenge\Evaluator\ChallengeEvaluator;
 use App\Services\Challenge\Evaluator\SpoolChallengeEvaluator;
@@ -61,6 +73,11 @@ class AppServiceProvider extends ServiceProvider
         // every resolution, so nothing caches a secret beyond one request or job.
         $this->app->bind(GitHubSettings::class, static fn ($app): GitHubSettings => GitHubSettings::fromConfig($app['config']));
 
+        // Billing (Phase 23): the plan catalog is read once per request or job;
+        // the payment provider is the configured one only.
+        $this->app->scoped(PlanCatalog::class);
+        $this->app->scoped(PaymentProviders::class, static fn ($app): PaymentProviders => new PaymentProviders((array) $app['config']->get('codedna.billing', [])));
+
         // Growth tracking (Phase 18): the deterministic, versioned rules.
         $this->app->singleton(GrowthRules::class, static fn ($app): GrowthRules => GrowthRules::forVersion(
             (string) $app['config']->get('codedna.growth.rules_version'),
@@ -92,6 +109,8 @@ class AppServiceProvider extends ServiceProvider
 
         TrustProxies::at(config('codedna.trusted_proxies'));
 
+        $this->refundFailedUsage();
+
         // Redis sessions that a request still running at logout cannot bring
         // back (Phase 22). Built like Laravel's own redis driver.
         Session::extend('redis', static function ($app): RedisSessionHandler {
@@ -119,6 +138,27 @@ class AppServiceProvider extends ServiceProvider
         ]));
 
         $this->configureRateLimiting();
+    }
+
+    /**
+     * Billing (Phase 23): an accepted operation that ends without a result
+     * gives its quota unit back, once (docs/billing/entitlements-and-quotas.md#refunds).
+     */
+    private function refundFailedUsage(): void
+    {
+        $refund = static function (QuotaKey $key, string $type, Model $model, bool $failed): void {
+            if ($failed && $model->wasChanged('status')) {
+                app(UsageService::class)->refund($key, $type, (string) $model->getKey());
+            }
+        };
+        AnalysisRun::updated(static fn (AnalysisRun $run) => $refund(QuotaKey::Analyses, 'analysis_run', $run,
+            in_array($run->status, [AnalysisRunStatus::Failed, AnalysisRunStatus::Cancelled], true)));
+        AiAssessment::updated(static fn (AiAssessment $assessment) => $refund(QuotaKey::AiAssessments, 'ai_assessment', $assessment,
+            $assessment->status === AssessmentStatus::Failed));
+        ChallengeSubmission::updated(static fn (ChallengeSubmission $submission) => $refund(QuotaKey::ChallengeSubmissions, 'challenge_submission', $submission,
+            $submission->status === SubmissionStatus::Error));
+        GitHubImport::updated(static fn (GitHubImport $import) => $refund(QuotaKey::GitHubImports, 'github_import', $import,
+            $import->status === GitHubImportStatus::Failed));
     }
 
     private function validateConfiguration(): void
@@ -217,6 +257,12 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('github-write', static fn (Request $request): Limit => Limit::perMinute($limits['github_write_per_minute'])
             ->by('github-write:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
+        RateLimiter::for('billing-read', static fn (Request $request): Limit => Limit::perMinute($limits['billing_read_per_minute'])
+            ->by('billing-read:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+        // Per provider and IP: never keyed by anything a sender controls in the body.
+        RateLimiter::for('billing-webhook', static fn (Request $request): Limit => Limit::perMinute($limits['billing_webhook_per_minute'])
+            ->by('billing-webhook:'.(string) $request->route('provider').'|'.$request->ip()));
 
         RateLimiter::for('github-import', static function (Request $request) use ($limits): array {
             $key = 'github-import:'.($request->user()?->getAuthIdentifier() ?? $request->ip());

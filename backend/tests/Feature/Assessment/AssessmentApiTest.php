@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\AssessmentFixtures;
+use Tests\Support\BillingFixtures;
 use Tests\Support\ScriptedAiProvider;
 use Tests\TestCase;
 
@@ -45,7 +46,8 @@ final class AssessmentApiTest extends TestCase
         config(['codedna.ai.enabled' => true]);
         $this->provider = new ScriptedAiProvider('valid');
         $this->app->instance(AiProvider::class, $this->provider);
-        $this->owner = User::factory()->create();
+        // AI assessment is a paid feature (Phase 23).
+        $this->owner = BillingFixtures::pro(User::factory()->create());
         $this->project = Project::factory()->for($this->owner)->create();
     }
 

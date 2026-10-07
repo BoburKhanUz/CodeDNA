@@ -19,6 +19,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\Support\AssessmentFixtures;
+use Tests\Support\BillingFixtures;
 use Tests\Support\FakeChallengeEvaluator;
 use Tests\Support\ScriptedAiProvider;
 use Tests\TestCase;
@@ -46,7 +47,8 @@ final class QueueOutageTest extends TestCase
         config(['codedna.ai.enabled' => true, 'codedna.challenges.enabled' => true]);
         $this->app->instance(AiProvider::class, new ScriptedAiProvider('valid'));
         $this->app->instance(ChallengeEvaluator::class, new FakeChallengeEvaluator('pass'));
-        $this->owner = User::factory()->create();
+        // AI assessment is a paid feature (Phase 23).
+        $this->owner = BillingFixtures::pro(User::factory()->create());
         $this->project = Project::factory()->for($this->owner)->create();
         $this->working = $this->app->make(Dispatcher::class);
     }

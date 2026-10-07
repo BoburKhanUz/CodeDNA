@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Support\BillingFixtures;
 use Tests\TestCase;
 
 final class ProjectApiTest extends TestCase
@@ -361,7 +362,8 @@ final class ProjectApiTest extends TestCase
 
     public function test_project_creation_and_updates_are_rate_limited_per_user(): void
     {
-        $user = User::factory()->create();
+        // More projects than the free plan allows (Phase 23): the rate limit is what is under test.
+        $user = BillingFixtures::pro(User::factory()->create());
         $createLimit = config('codedna.rate_limits.project_create_per_minute');
         for ($i = 0; $i < $createLimit; $i++) {
             $this->create($user, ['slug' => "project-{$i}"])->assertCreated();

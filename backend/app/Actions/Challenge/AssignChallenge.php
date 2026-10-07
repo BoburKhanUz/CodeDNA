@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Challenge;
 
+use App\Enums\Billing\Feature;
 use App\Enums\Challenge\ChallengeStatus;
 use App\Exceptions\ApiException;
 use App\Http\Errors\ErrorCode;
@@ -13,6 +14,7 @@ use App\Models\Project;
 use App\Models\SkillGapResult;
 use App\Models\SkillGapSnapshot;
 use App\Models\User;
+use App\Services\Billing\Entitlements;
 use App\Services\Challenge\ChallengeCatalog;
 use App\Services\Challenge\ChallengeDefinitionData;
 use App\Services\Challenge\ChallengeSelectionException;
@@ -48,6 +50,7 @@ final readonly class AssignChallenge
         private Repository $config,
         private ChallengeCatalog $catalog,
         private ChallengeSelector $selector,
+        private Entitlements $entitlements,
     ) {}
 
     public function handle(Project $project, User $actor, ?string $skillGapSnapshotId, ?string $competencyKey): AssignedChallenge
@@ -55,6 +58,8 @@ final readonly class AssignChallenge
         if ($this->config->get('codedna.challenges.enabled') !== true) {
             throw new ApiException(ErrorCode::ChallengesDisabled);
         }
+        // Billing (Phase 23): the owner's plan must include coding challenges.
+        $this->entitlements->require($project->user_id, Feature::CodingChallenges);
 
         try {
             return $this->db->transaction(fn (): AssignedChallenge => $this->resolve($project, $actor, $skillGapSnapshotId, $competencyKey));

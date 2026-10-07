@@ -256,6 +256,31 @@ return [
         'import_stale_after_seconds' => (int) env('GITHUB_IMPORT_STALE_AFTER_SECONDS', 900),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Billing (Phase 23)
+    |--------------------------------------------------------------------------
+    |
+    | docs/billing/billing-architecture.md. Plans, prices, features and quotas
+    | are NOT configuration: they are the frozen, versioned catalog in code
+    | (App\Services\Billing\Catalog), stored as immutable rows. Nothing here
+    | can grant a plan or raise a quota.
+    |
+    | provider: "none" (default: no payment provider; every user is on FREE)
+    | or "fake" (a signed, deterministic test provider; refused outside the
+    | local and testing environments).
+    |
+    */
+    'billing' => [
+        'provider' => (string) env('BILLING_PROVIDER', 'none'),
+        // The webhook signing secret of the configured provider. Never committed.
+        'webhook_secret' => (string) env('BILLING_WEBHOOK_SECRET', ''),
+        // A webhook signed further than this from now is refused (replay protection).
+        'webhook_tolerance_seconds' => 300,
+        // Largest webhook body read; providers send a few KiB.
+        'webhook_max_bytes' => 65536,
+    ],
+
     'rate_limits' => [
         // Every /api/v1 route, per authenticated user or per IP.
         'api_per_minute' => 120,
@@ -298,6 +323,11 @@ return [
         'github_write_per_minute' => 20,
         'github_import_per_minute' => 5,
         'github_import_per_hour' => 30,
+        // GET /api/v1/billing/*, per user.
+        'billing_read_per_minute' => 60,
+        // POST /api/v1/billing/webhooks/{provider}, per provider and IP. Generous:
+        // providers retry and burst, and a refused delivery is retried later anyway.
+        'billing_webhook_per_minute' => 600,
     ],
 
 ];

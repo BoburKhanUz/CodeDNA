@@ -7,6 +7,7 @@ namespace App\Actions\Analysis;
 use App\Enums\AnalysisFailure;
 use App\Enums\AnalysisResultType;
 use App\Enums\AnalysisRunStatus;
+use App\Enums\Billing\QuotaKey;
 use App\Exceptions\ApiException;
 use App\Http\Errors\ErrorCode;
 use App\Jobs\AnalyzeSourceSnapshot;
@@ -14,6 +15,7 @@ use App\Models\AnalysisRun;
 use App\Models\Project;
 use App\Models\SourceSnapshot;
 use App\Models\User;
+use App\Services\Billing\UsageService;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -42,6 +44,7 @@ final readonly class StartAnalysis
     public function __construct(
         private ConnectionInterface $db,
         private Dispatcher $dispatcher,
+        private UsageService $usage,
     ) {}
 
     public function handle(Project $project, User $actor, string $sourceSnapshotId, AnalysisResultType $resultType): StartedAnalysis
@@ -93,6 +96,9 @@ final readonly class StartAnalysis
             ]),
         ]);
         $run->save();
+        // Billing (Phase 23): a new run uses one analysis of the owner's plan
+        // (refunded if it ends FAILED or CANCELLED); a reused run uses none.
+        $this->usage->consume($locked->user_id, QuotaKey::Analyses, 'analysis_run', $run->id);
 
         return new StartedAnalysis($run, true);
     }

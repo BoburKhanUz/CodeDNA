@@ -18,6 +18,8 @@ final class ConfigurationValidatorTest extends TestCase
         'queue_connection' => 'analysis', 'version' => '1.0.0',
     ];
 
+    private const BILLING = ['provider' => 'none', 'webhook_secret' => '', 'webhook_tolerance_seconds' => 300, 'webhook_max_bytes' => 65536];
+
     private const CHALLENGES = [
         'enabled' => true, 'catalog_version' => '1.0.0', 'evaluator' => 'spool', 'spool_path' => '/var/spool/codedna-challenges',
         'wait_seconds' => 45, 'max_source_bytes' => 16384, 'max_source_lines' => 400, 'max_attempts' => 5, 'job_timeout_seconds' => 90,
@@ -79,6 +81,7 @@ final class ConfigurationValidatorTest extends TestCase
             'codedna.growth.rules_version' => '1.0.0',
             'codedna.ai' => self::AI,
             'codedna.challenges' => self::CHALLENGES,
+            'codedna.billing' => self::BILLING,
         ], $overrides) as $key => $value) {
             $config->set($key, $value);
         }
@@ -89,6 +92,21 @@ final class ConfigurationValidatorTest extends TestCase
     public function test_a_complete_production_configuration_is_valid(): void
     {
         $this->assertSame([], (new ConfigurationValidator)->problems($this->config(), 'production'));
+    }
+
+    public function test_billing_accepts_only_known_providers_and_never_the_fake_one_in_production(): void
+    {
+        $problems = fn (array $billing, string $environment): array => (new ConfigurationValidator)->problems(
+            $this->config(['codedna.billing' => $billing + self::BILLING]), $environment);
+
+        $this->assertSame([], $problems([], 'production'));
+        $this->assertSame([], $problems(['provider' => 'fake', 'webhook_secret' => str_repeat('w', 32)], 'local'));
+        $this->assertSame(['BILLING_PROVIDER must be "none" or "fake".'], $problems(['provider' => 'stripe', 'webhook_secret' => str_repeat('w', 32)], 'production'));
+        foreach (['production', 'staging', 'prod'] as $deployed) {
+            $this->assertContains('BILLING_PROVIDER "fake" is not allowed in production.', $problems(['provider' => 'fake', 'webhook_secret' => str_repeat('w', 32)], $deployed));
+        }
+        $this->assertSame(['BILLING_WEBHOOK_SECRET must be at least 32 characters when a billing provider is configured.'],
+            $problems(['provider' => 'fake', 'webhook_secret' => 'short'], 'local'));
     }
 
     public function test_requires_an_application_key_and_postgresql(): void

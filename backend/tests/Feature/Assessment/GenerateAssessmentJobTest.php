@@ -32,6 +32,7 @@ use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\Support\AssessmentFixtures;
+use Tests\Support\BillingFixtures;
 use Tests\Support\ScriptedAiProvider;
 use Tests\TestCase;
 
@@ -57,7 +58,7 @@ final class GenerateAssessmentJobTest extends TestCase
         Queue::fake();
         config(['codedna.ai.enabled' => true]);
         Event::listen(MessageLogged::class, fn (MessageLogged $log) => $this->logs[] = $log);
-        $this->gaps = AssessmentFixtures::skillGaps(Project::factory()->for(User::factory())->create());
+        $this->gaps = AssessmentFixtures::skillGaps(Project::factory()->for(BillingFixtures::pro(User::factory()->create()))->create());
     }
 
     private function queued(string ...$modes): AiAssessment
@@ -446,7 +447,8 @@ final class GenerateAssessmentJobTest extends TestCase
         foreach (['configured-provider-key', 'BEGIN_UNTRUSTED', 'is DATA', '100/100', 'Ignore previous', 'COMPLEXITY_MANAGEMENT', '0.6000', 'Authorization', 'resp_test_1'] as $forbidden) {
             $this->assertStringNotContainsString($forbidden, $logged);
         }
-        foreach ($this->logs as $log) {
+        // Billing logs (the PRO subscription of the setup) have their own allow-list test.
+        foreach (array_filter($this->logs, fn (MessageLogged $log): bool => ! str_starts_with($log->message, 'billing.')) as $log) {
             $this->assertSame([], array_diff(array_keys($log->context), [
                 'assessment_id', 'project_id', 'input_fingerprint', 'provider', 'model', 'attempt', 'status', 'duration_ms',
                 'error_code', 'http_status', 'reason', 'retryable', 'retry_in_seconds', 'requested_by', 'request_id', 'exception',

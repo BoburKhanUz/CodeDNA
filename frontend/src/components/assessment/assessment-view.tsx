@@ -26,7 +26,15 @@ type State =
   | { status: "error"; error: unknown }
   | { status: "loaded"; project: Project; assessment: AiAssessment | null; latestSkillGapId: string | null };
 
-type RequestState = { status: "idle" } | { status: "sending" } | { status: "unavailable" } | { status: "error"; error: unknown };
+type RequestState =
+  | { status: "idle" }
+  | { status: "sending" }
+  | { status: "unavailable" }
+  | { status: "plan"; code: string }
+  | { status: "error"; error: unknown };
+
+/** Refusals that depend on the caller's plan (Phase 23), shown with a link to Billing. */
+const PLAN_CODES: readonly string[] = ["FEATURE_NOT_INCLUDED", "SUBSCRIPTION_INACTIVE", "QUOTA_EXCEEDED"];
 
 /**
  * AI assessment of a project (Phase 15): a non-authoritative, AI-generated
@@ -87,6 +95,10 @@ export function AssessmentView({ projectId }: { projectId: string }) {
       .catch((error: unknown) => {
         if (isApiError(error) && error.status === 401) {
           handleError(error);
+          return;
+        }
+        if (isApiError(error) && PLAN_CODES.includes(error.code)) {
+          setRequest({ status: "plan", code: error.code });
           return;
         }
         setRequest(isApiError(error) && error.code === "AI_ASSESSMENT_DISABLED" ? { status: "unavailable" } : { status: "error", error });
@@ -167,6 +179,26 @@ export function AssessmentView({ projectId }: { projectId: string }) {
         </p>
       </div>
 
+      {request.status === "plan" ? (
+        <Card data-testid="assessment-plan">
+          <CardHeader>
+            <CardTitle>
+              <h2>{request.code === "QUOTA_EXCEEDED" ? "Monthly AI assessment limit reached" : "AI assessment is not part of your plan"}</h2>
+            </CardTitle>
+            <CardDescription>
+              {request.code === "SUBSCRIPTION_INACTIVE"
+                ? "Your subscription is not active right now."
+                : request.code === "QUOTA_EXCEEDED"
+                  ? "Your plan's AI assessments for this period are used up."
+                  : "Your plan does not include AI assessment."}{" "}
+              All deterministic results remain available.{" "}
+              <Link href="/app/billing" className="underline underline-offset-4">
+                See Billing
+              </Link>
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      ) : null}
       {request.status === "unavailable" ? (
         <Card data-testid="assessment-unavailable">
           <CardHeader>

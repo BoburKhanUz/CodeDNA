@@ -103,7 +103,13 @@ competency and skill-gap evolution, version segments, source provenance and a co
 of any two assessments. It is a read model over the existing immutable snapshots: nothing
 is recalculated or stored, history is never rewritten, and assessments measured with
 different versions are never compared or joined by a trend line
-([historical-dna-v1.md](docs/architecture/historical-dna-v1.md)). The full plan is in
+([historical-dna-v1.md](docs/architecture/historical-dna-v1.md)). Since Phase 23 every account
+has a **plan**: FREE by default (everything except AI assessment, with monthly limits),
+or PRO through a subscription. The server checks features and quotas where resources are
+created, keeps an auditable usage ledger and changes subscriptions only through signed,
+idempotent payment-provider webhooks. No payment provider is required and no money is
+processed; `/app/billing` shows the plan, usage and catalog
+([billing architecture](docs/billing/billing-architecture.md)). The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance
@@ -129,6 +135,7 @@ code runs only in the network-less evaluator and never changes CodeDNA.
 - Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md) · [coding challenges](docs/architecture/coding-challenges-v1.md) · [challenge evaluator](docs/architecture/challenge-evaluator.md) · [learning roadmap](docs/architecture/learning-roadmap-v1.md) · [growth tracking](docs/architecture/growth-tracking-v1.md) · [GitHub integration](docs/architecture/github-integration-v1.md) · [historical DNA](docs/architecture/historical-dna-v1.md)
 - Testing: [test strategy](docs/testing/test-strategy.md) · [QA matrix](docs/testing/qa-matrix.md)
 - Security: [threat model](docs/security/threat-model.md) · [security hardening](docs/security/security-hardening.md) (after pulling Phase 21, run `make setup` once to add `REDIS_PASSWORD` to `.env`)
+- Billing: [architecture](docs/billing/billing-architecture.md) · [subscription state machine](docs/billing/subscription-state-machine.md) · [entitlements and quotas](docs/billing/entitlements-and-quotas.md)
 - API: [public conventions](docs/api/README.md) · [internal analyzer contract](docs/api/internal-analyzer-contract.md)
 - Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md) · [ADR-007 AI interpretation](docs/decisions/ADR-007-ai-interpretation.md) · [ADR-008 coding challenges](docs/decisions/ADR-008-coding-challenges.md) · [ADR-009 learning roadmap](docs/decisions/ADR-009-learning-roadmap.md) · [ADR-010 growth tracking](docs/decisions/ADR-010-growth-tracking.md) · [ADR-011 GitHub integration](docs/decisions/ADR-011-github-integration.md) · [ADR-012 historical DNA](docs/decisions/ADR-012-historical-dna.md)
 

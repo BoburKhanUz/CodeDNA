@@ -7,6 +7,7 @@ namespace App\Support;
 use App\Services\Assessment\AssessmentSpecification;
 use App\Services\Assessment\Provider\FakeAiProvider;
 use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
+use App\Services\Billing\Provider\FakePaymentProvider;
 use App\Services\Challenge\ChallengeCatalog;
 use App\Services\Competency\CompetencySpecification;
 use App\Services\Dna\ScoringSpecification;
@@ -74,7 +75,7 @@ final class ConfigurationValidator
         if (! in_array($config->get('codedna.roadmap.rules_version'), RoadmapRules::VERSIONS, true)) {
             $problems[] = 'CODEDNA_ROADMAP_RULES_VERSION must be one of: '.implode(', ', RoadmapRules::VERSIONS).'.';
         }
-        $problems = [...$problems, ...$this->aiProblems($config, $environment), ...$this->challengeProblems($config)];
+        $problems = [...$problems, ...$this->aiProblems($config, $environment), ...$this->challengeProblems($config), ...$this->billingProblems($config, $environment)];
 
         // The test suite swaps in in-memory drivers; every other environment
         // must use the Redis-backed infrastructure (docs/architecture/backend.md).
@@ -332,6 +333,30 @@ final class ConfigurationValidator
      *
      * @return list<string>
      */
+    /**
+     * Billing (Phase 23): only known providers; the fake provider never in a
+     * deployed environment; a configured provider needs a strong webhook secret.
+     *
+     * @return list<string>
+     */
+    private function billingProblems(Repository $config, string $environment): array
+    {
+        $problems = [];
+        $billing = (array) $config->get('codedna.billing', []);
+        $provider = $billing['provider'] ?? null;
+        if (! in_array($provider, ['none', FakePaymentProvider::NAME], true)) {
+            $problems[] = 'BILLING_PROVIDER must be "none" or "fake".';
+        }
+        if ($provider === FakePaymentProvider::NAME && self::isDeployed($environment)) {
+            $problems[] = 'BILLING_PROVIDER "fake" is not allowed in production.';
+        }
+        if ($provider !== 'none' && strlen((string) ($billing['webhook_secret'] ?? '')) < 32) {
+            $problems[] = 'BILLING_WEBHOOK_SECRET must be at least 32 characters when a billing provider is configured.';
+        }
+
+        return $problems;
+    }
+
     private function challengeProblems(Repository $config): array
     {
         $problems = [];

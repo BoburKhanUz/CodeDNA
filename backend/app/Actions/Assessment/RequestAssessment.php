@@ -6,6 +6,8 @@ namespace App\Actions\Assessment;
 
 use App\Enums\Assessment\AssessmentFailure;
 use App\Enums\Assessment\AssessmentStatus;
+use App\Enums\Billing\Feature;
+use App\Enums\Billing\QuotaKey;
 use App\Exceptions\ApiException;
 use App\Http\Errors\ErrorCode;
 use App\Jobs\GenerateAssessment;
@@ -18,6 +20,8 @@ use App\Services\Assessment\AssessmentInput;
 use App\Services\Assessment\AssessmentInputBuilder;
 use App\Services\Assessment\AssessmentSpecification;
 use App\Services\Assessment\Provider\AiProvider;
+use App\Services\Billing\Entitlements;
+use App\Services\Billing\UsageService;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Container\Container;
@@ -54,6 +58,8 @@ final readonly class RequestAssessment
         private Repository $config,
         private Container $container,
         private AssessmentInputBuilder $builder,
+        private Entitlements $entitlements,
+        private UsageService $usage,
     ) {}
 
     public function handle(Project $project, User $actor, ?string $skillGapSnapshotId): RequestedAssessment
@@ -61,6 +67,8 @@ final readonly class RequestAssessment
         if ($this->config->get('codedna.ai.enabled') !== true) {
             throw new ApiException(ErrorCode::AiAssessmentDisabled);
         }
+        // Billing (Phase 23): the owner's plan must include AI assessment.
+        $this->entitlements->require($project->user_id, Feature::AiAssessment);
         $spec = AssessmentSpecification::forVersion((string) $this->config->get('codedna.ai.version'));
         /** @var AiProvider $provider */
         $provider = $this->container->make(AiProvider::class);
@@ -153,6 +161,8 @@ final readonly class RequestAssessment
             'input' => $input->toStored(),
         ]);
         $assessment->save();
+        // Billing (Phase 23): one AI assessment of the owner's plan (refunded if it ends FAILED).
+        $this->usage->consume($gaps->user_id, QuotaKey::AiAssessments, 'ai_assessment', $assessment->id);
 
         Log::info('assessment.queued', [
             'assessment_id' => $assessment->id,

@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\Support\AssessmentFixtures;
+use Tests\Support\BillingFixtures;
 use Tests\TestCase;
 use Throwable;
 
@@ -69,6 +70,7 @@ final class AssessmentMigrationAndConcurrencyTest extends TestCase
             DB::table('analysis_runs')->where('project_id', $projectId)->delete();
             DB::table('source_snapshots')->where('project_id', $projectId)->delete();
             DB::table('projects')->where('id', $projectId)->delete();
+            BillingFixtures::forget([(string) $this->gaps->user_id]);
             DB::table('users')->where('id', $this->gaps->user_id)->delete();
         }
         foreach (glob($this->resultDir.'/*') ?: [] as $file) {
@@ -80,7 +82,7 @@ final class AssessmentMigrationAndConcurrencyTest extends TestCase
 
     private function gaps(): SkillGapSnapshot
     {
-        return $this->gaps = AssessmentFixtures::skillGaps(Project::factory()->for(User::factory())->create());
+        return $this->gaps = AssessmentFixtures::skillGaps(Project::factory()->for(BillingFixtures::pro(User::factory()->create()))->create());
     }
 
     /**

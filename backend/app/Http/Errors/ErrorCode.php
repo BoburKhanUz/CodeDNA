@@ -62,6 +62,11 @@ enum ErrorCode: string
     case GitHubNotConnected = 'GITHUB_NOT_CONNECTED';
     case GitHubRateLimited = 'GITHUB_RATE_LIMITED';
     case GitHubUnavailable = 'GITHUB_UNAVAILABLE';
+    // Billing (Phase 23): commercial denials, never server failures.
+    case FeatureNotIncluded = 'FEATURE_NOT_INCLUDED';
+    case SubscriptionInactive = 'SUBSCRIPTION_INACTIVE';
+    case QuotaExceeded = 'QUOTA_EXCEEDED';
+    case BillingUnavailable = 'BILLING_UNAVAILABLE';
     case InternalError = 'INTERNAL_ERROR';
     case ServiceUnavailable = 'SERVICE_UNAVAILABLE';
 
@@ -86,9 +91,10 @@ enum ErrorCode: string
             self::SourceArchiveInvalid, self::SourceArchiveUnsafe, self::SourceUncompressedSizeExceeded,
             self::SourceFileCountExceeded, self::SourceFileTooLarge,
             self::GitHubStateInvalid, self::GitHubRepositoryNotFound, self::GitHubBranchNotFound => 422,
+            self::FeatureNotIncluded, self::SubscriptionInactive, self::QuotaExceeded => 402,
             self::RateLimited, self::GitHubRateLimited => 429,
             self::InternalError => 500,
-            self::ServiceUnavailable, self::GitHubNotConfigured, self::GitHubUnavailable => 503,
+            self::ServiceUnavailable, self::GitHubNotConfigured, self::GitHubUnavailable, self::BillingUnavailable => 503,
         };
     }
 
@@ -138,6 +144,10 @@ enum ErrorCode: string
             self::GitHubAlreadyConnected => 'This project is already connected to a GitHub repository. Disconnect it first.',
             self::GitHubNotConnected => 'This project is not connected to a GitHub repository.',
             self::GitHubRateLimited => 'GitHub is rate limiting requests. Retry later.',
+            self::FeatureNotIncluded => 'Your plan does not include this feature.',
+            self::SubscriptionInactive => 'Your subscription is not active, so its features are paused.',
+            self::QuotaExceeded => 'This would exceed what your plan includes for the current period.',
+            self::BillingUnavailable => 'Billing is not available right now. Retry later.',
             self::GitHubUnavailable => 'GitHub is not reachable right now. Retry later.',
             self::InternalError => 'An unexpected error occurred.',
             self::ServiceUnavailable => 'The service is temporarily unavailable.',

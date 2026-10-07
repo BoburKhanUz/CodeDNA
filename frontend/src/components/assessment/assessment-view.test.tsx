@@ -135,6 +135,23 @@ describe("AssessmentView", () => {
     expect(screen.queryByRole("button", { name: "Generate AI assessment" })).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["FEATURE_NOT_INCLUDED", "AI assessment is not part of your plan"],
+    ["SUBSCRIPTION_INACTIVE", "AI assessment is not part of your plan"],
+    ["QUOTA_EXCEEDED", "Monthly AI assessment limit reached"],
+  ] as const)("links to Billing when the plan refuses with %s", async (code, heading) => {
+    respondWith({ assessments: [], post: () => apiErrorResponse(402, code) });
+    const ui = userEvent.setup();
+    render(<AssessmentView projectId={project.id} />);
+
+    await ui.click(await screen.findByRole("button", { name: "Generate AI assessment" }));
+
+    const card = await screen.findByTestId("assessment-plan");
+    expect(card).toHaveTextContent(heading);
+    expect(within(card).getByRole("link", { name: "See Billing" })).toHaveAttribute("href", "/app/billing");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("polls a queued assessment until it is ready", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     respondWith({ assessments: [queuedAssessment, runningAssessment, succeededAssessment] });

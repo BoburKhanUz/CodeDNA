@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Actions\GitHub;
 
+use App\Enums\Billing\Feature;
+use App\Enums\Billing\QuotaKey;
 use App\Enums\GitHub\GitHubFailure;
 use App\Enums\GitHub\GitHubImportStatus;
 use App\Exceptions\ApiException;
@@ -13,6 +15,8 @@ use App\Models\GitHubConnection;
 use App\Models\GitHubImport;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Billing\Entitlements;
+use App\Services\Billing\UsageService;
 use App\Services\GitHub\GitHubApi;
 use App\Services\GitHub\GitHubUserAccess;
 use Illuminate\Contracts\Config\Repository;
@@ -39,6 +43,8 @@ final readonly class RequestGitHubImport
         private GitHubUserAccess $access,
         private ConnectionInterface $db,
         private Repository $config,
+        private Entitlements $entitlements,
+        private UsageService $usage,
     ) {}
 
     public function handle(Project $project, User $actor): RequestedGitHubImport
@@ -46,6 +52,9 @@ final readonly class RequestGitHubImport
         if (! $project->isActive()) {
             throw new ApiException(ErrorCode::ProjectArchived);
         }
+        // Billing (Phase 23): the owner's plan must include GitHub integration
+        // (checked before any call to GitHub).
+        $this->entitlements->require($project->user_id, Feature::GitHubIntegration);
         $connection = ConnectionLookup::active($project);
         $token = $this->access->token($actor);
         ConnectGitHubRepository::verifiedRepository($this->api, $token, $connection->repository_id);
@@ -108,6 +117,8 @@ final readonly class RequestGitHubImport
             'ref' => $current->branch,
             'status' => GitHubImportStatus::Queued,
         ])->save();
+        // Billing (Phase 23): one GitHub import of the owner's plan (refunded if it ends FAILED).
+        $this->usage->consume($locked->user_id, QuotaKey::GitHubImports, 'github_import', $import->id);
 
         return new RequestedGitHubImport($import, true);
     }

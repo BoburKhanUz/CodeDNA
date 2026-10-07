@@ -123,6 +123,10 @@ x-backend-environment: &backend-environment
   CHALLENGE_EVALUATOR_SPOOL: /var/spool/codedna-challenges
   CHALLENGE_MAX_SOURCE_BYTES: ${CHALLENGE_MAX_SOURCE_BYTES:-16384}
   CHALLENGE_MAX_ATTEMPTS: ${CHALLENGE_MAX_ATTEMPTS:-5}
+  # Billing (Phase 23): "none" (default, everyone on FREE) or "fake" (signed
+  # test provider, local only). The webhook secret comes only from .env.
+  BILLING_PROVIDER: ${BILLING_PROVIDER:-none}
+  BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET:-}
 
 x-backend-volumes: &backend-volumes
   - ./backend:/var/www/backend

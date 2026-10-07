@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Snapshots;
 
+use App\Enums\Billing\QuotaKey;
 use App\Enums\SourceType;
 use App\Exceptions\ApiException;
 use App\Exceptions\DomainRuleViolation;
@@ -12,6 +13,7 @@ use App\Http\Errors\ErrorCode;
 use App\Models\Project;
 use App\Models\SourceSnapshot;
 use App\Models\User;
+use App\Services\Billing\UsageService;
 use App\Support\Sources\ArchiveSummary;
 use App\Support\Sources\LanguageGuesser;
 use App\Support\Sources\SourceArchiveLimits;
@@ -46,6 +48,7 @@ final readonly class StoreUploadedSource
 
     public function __construct(
         private RecordSourceSnapshot $recordSourceSnapshot,
+        private UsageService $usage,
         private LanguageGuesser $languageGuesser,
         private FilesystemFactory $filesystems,
         private Repository $config,
@@ -72,6 +75,10 @@ final readonly class StoreUploadedSource
         if ($keyHash !== null && ($existing = $this->findByIdempotencyKey($project, $keyHash)) !== null) {
             return $this->replay($existing, $sourceHash);
         }
+        // Billing (Phase 23): refuse before storing anything if the upload no
+        // longer fits the plan; RecordSourceSnapshot charges it atomically.
+        $this->usage->ensureAvailable($project->user_id, QuotaKey::SourceUploads);
+        $this->usage->ensureAvailable($project->user_id, QuotaKey::SourceUploadBytes, max(1, $sizeBytes));
 
         $snapshotId = strtolower((string) Str::ulid());
         $diskName = (string) $this->config->get('codedna.sources.disk');

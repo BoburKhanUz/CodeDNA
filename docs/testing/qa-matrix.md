@@ -27,6 +27,7 @@ tested.
 | Growth tracking | ✓ | ✓ | ✓ | ✓ | — | ✓ trigger-protected rows | ✓ |
 | Historical DNA | ✓ | ✓ | — read-only | ✓ | — | ✓ | ✓ |
 | GitHub integration | ✓ | ✓ | ✓ import request, duplicate delivery | ✓ GitHub errors, rate limits | ✓ GitHub double | ✓ installation access, sensitive parameters | ✓ (GitHub double) |
+| Billing (Phase 23) | ✓ catalog fingerprints, state machine | ✓ API, enforcement on every limited action, webhooks | ✓ last unit, project slots, duplicate deliveries, competing activations, renewal vs cancel | ✓ refunds on failure, stale, deferred and invalid events, expiry | ✓ error codes and types (`check_contracts.py`) | ✓ signature, tolerance, size, no bypass setting, `fake` refused in production, append-only rows | ✓ (fake provider) |
 | Frontend pages | ✓ | — | ✓ late responses (assessment, challenges, GitHub, roadmap, history) | ✓ every project page × loading, 401, 404, 500 and retry, network failure, malformed ID (`page-states.test.tsx`) | ✓ error codes | ✓ no server text shown, React escaping | ✓ |
 | Infrastructure | — | — | — | — | — | ✓ `make verify` (networks, headers, Redis auth, spoofed `X-Forwarded-For`) | — |
 

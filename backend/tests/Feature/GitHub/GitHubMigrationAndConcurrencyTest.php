@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Support\BillingFixtures;
 use Tests\Support\FakeGitHub;
 use Tests\Support\GitHubFixtures;
 use Tests\TestCase;
@@ -65,6 +66,7 @@ final class GitHubMigrationAndConcurrencyTest extends TestCase
             DB::table('github_accounts')->where('user_id', $project->user_id)->delete();
             DB::table('source_snapshots')->where('project_id', $id)->delete();
             DB::table('projects')->where('id', $id)->delete();
+            BillingFixtures::forget([(string) $project->user_id]);
             DB::table('users')->where('id', $project->user_id)->delete();
         }
         Storage::forgetDisk('sources');

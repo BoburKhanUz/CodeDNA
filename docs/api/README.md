@@ -75,6 +75,11 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `GET` | `/api/v1/projects/{project}/github/imports` | owner | 200 | Imports (paginated, newest first) |
 | `POST` | `/api/v1/projects/{project}/github/imports` | owner | 202 / 200 | Import the branch's current commit into a source snapshot (200 = the import in progress) |
 | `GET` | `/api/v1/projects/{project}/github/imports/{import}` | owner | 200 | One import |
+| `GET` | `/api/v1/billing` | authenticated | 200 | The caller's plan, status, period, entitlements and quota usage |
+| `GET` | `/api/v1/billing/plans` | authenticated | 200 | The plan catalog with integer prices |
+| `GET` | `/api/v1/billing/subscription` | authenticated | 200 | The caller's current subscription and its history |
+| `GET` | `/api/v1/billing/usage` | authenticated | 200 | The caller's usage ledger (paginated, newest first) |
+| `POST` | `/api/v1/billing/webhooks/{provider}` | provider signature | 200 | Payment provider events (configured provider only) |
 
 There is no `DELETE` for projects (`405`) and no update, delete or download
 for snapshots. DNA, competency and skill gap snapshots are read-only (no
@@ -83,8 +88,9 @@ write method on `/dna`, `/competencies` or `/skill-gaps`). See
 [Analyses](#analyses), [DNA](#dna), [Competencies](#competencies),
 [Skill gaps](#skill-gaps), [AI assessments](#ai-assessments) and
 [Growth tracking](#growth-tracking), [Historical DNA](#historical-dna) and
-[GitHub integration](#github-integration). Growth and history are read-only
-(no write method on `/growth` or `/history`).
+[GitHub integration](#github-integration) and [Billing](#billing). Growth
+and history are read-only (no write method on `/growth` or `/history`), and
+so is billing for users (no write method on `/billing…`).
 
 ### `GET /api/v1/health`
 
@@ -1409,6 +1415,99 @@ An import is an object with these fields:
 
 The same commit of the same repository is never stored twice in a project.
 
+## Billing
+
+Phase 23. Server-side plans, entitlements and quotas; see
+[Billing architecture](../billing/billing-architecture.md),
+[Subscription state machine](../billing/subscription-state-machine.md) and
+[Entitlements and quotas](../billing/entitlements-and-quotas.md).
+
+The user-facing routes are read-only and always return the caller's own
+billing. None accepts a plan, a status, a quota or a user ID: `POST`, `PUT`,
+`PATCH` and `DELETE` are `405`, and query parameters other than pagination
+are ignored. Provider references (customer and subscription IDs) are never
+returned.
+
+Billing is enforced by the actions that create resources. They may answer:
+
+| HTTP | `code` | Returned by | `details` |
+|---|---|---|---|
+| 402 | `FEATURE_NOT_INCLUDED` | The action needs a feature the plan does not include | `feature`, `plan` |
+| 402 | `SUBSCRIPTION_INACTIVE` | The caller's subscription would include it but does not grant access now | `feature`, `plan` |
+| 402 | `QUOTA_EXCEEDED` | `POST /projects`, source uploads, analyses, assessments, challenge submissions, GitHub imports | `quota`, `limit`, `used`, `resets_at` |
+| 503 | `BILLING_UNAVAILABLE` | Billing could not be decided | none |
+
+A refused request creates nothing and consumes nothing. An idempotent replay
+of an existing resource is answered as before and consumes nothing.
+
+### `GET /api/v1/billing`
+
+```json
+{
+  "data": {
+    "type": "billing_overview",
+    "plan": { "key": "FREE", "version": "1.0.0", "name": "Free" },
+    "source": "FREE_FALLBACK",
+    "status": "FREE",
+    "subscription": null,
+    "inactive_subscription": null,
+    "period": { "start": "2026-10-01T00:00:00Z", "end": "2026-11-01T00:00:00Z" },
+    "entitlements": [{ "feature": "AI_ASSESSMENT", "label": "AI assessment", "included": false }],
+    "quotas": [
+      { "key": "ANALYSES", "label": "Analyses", "unit": "COUNT", "period": "MONTHLY",
+        "limit": 60, "used": 1, "remaining": 59, "unlimited": false, "resets_at": "2026-11-01T00:00:00Z" }
+    ]
+  }
+}
+```
+
+- `source` is `SUBSCRIPTION` when a subscription grants the plan, otherwise
+  `FREE_FALLBACK`. `status` is the subscription's status, or `FREE`.
+- `subscription` is the granting subscription. `inactive_subscription` is a
+  current subscription that does not grant access now (for example `PAUSED`).
+- Every feature and every quota is listed. `limit` is `null` for unlimited;
+  `remaining` is never negative; `resets_at` is `null` for quotas that do not
+  reset (`ACTIVE_PROJECTS`).
+
+### `GET /api/v1/billing/plans`
+
+The listed plan versions: `key`, `version`, `name`, `description`, `status`
+(`ACTIVE`, `RESERVED`), `available` (can be bought), `currency`, `prices`
+(`monthly_minor`, `annual_minor`: integer minor units, `null` when not
+offered), `features` and `quotas`.
+
+### `GET /api/v1/billing/subscription`
+
+`{ "type": "billing_subscription_state", "current": <subscription|null>,
+"history": [...] }`. `current` is the caller's newest subscription with
+`status`, `plan`, `grants_access`, the period, `trial_ends_at`,
+`cancel_at_period_end`, `canceled_at` and `ended_at`. `history` lists the
+caller's applied subscription events (`event`, `subscription_id`,
+`from_status`, `to_status`, the resulting `plan` and `occurred_at`), newest
+first, at most 50.
+
+### `GET /api/v1/billing/usage`
+
+The caller's usage ledger, paginated (`page`, `per_page` up to 100): `quota`,
+`amount`, `outcome` (`ACCEPTED`, `REJECTED`, `REFUNDED`), `resource_type`,
+`resource_id`, `period_start`, `period_end` and `created_at`.
+
+### `POST /api/v1/billing/webhooks/{provider}`
+
+For the payment provider, not for browsers. No session; the provider's
+signature over the raw body is verified first. Only the configured provider
+(`BILLING_PROVIDER`) is accepted, other names are `404`. Bodies over 64 KiB
+are `413`; a bad signature or an unsupported body is `400`. Every verified
+event is answered `200`:
+
+```json
+{ "data": { "type": "billing_webhook_receipt", "status": "processed", "outcome": "APPLIED" } }
+```
+
+`status` is `duplicate` for an event ID already received (nothing is applied
+again). The outcomes are listed in
+[Billing architecture](../billing/billing-architecture.md#webhooks).
+
 ## Authentication (browser, Sanctum SPA)
 
 Browsers authenticate with Laravel's **session cookie**. No token is ever
@@ -1533,6 +1632,9 @@ Every error, on every API route, uses one envelope:
 |---|---|---|
 | 400 | `BAD_REQUEST` | Malformed request, or a session endpoint called without a session |
 | 401 | `AUTHENTICATION_REQUIRED` | No valid session (or token) |
+| 402 | `FEATURE_NOT_INCLUDED` | The caller's plan does not include the feature ([Billing](#billing)) |
+| 402 | `SUBSCRIPTION_INACTIVE` | The caller's subscription does not grant access now |
+| 402 | `QUOTA_EXCEEDED` | The request would exceed a plan limit (`details`: `quota`, `limit`, `used`, `resets_at`) |
 | 403 | `FORBIDDEN` | Authenticated but not allowed (policy denial) |
 | 404 | `RESOURCE_NOT_FOUND` | Unknown route or resource the caller may not see (no existence leaks) |
 | 405 | `METHOD_NOT_ALLOWED` | Wrong HTTP method for the route (e.g. `DELETE` on a project) |
@@ -1577,6 +1679,7 @@ Every error, on every API route, uses one envelope:
 | 429 | `RATE_LIMITED` | Rate limit exceeded (`Retry-After` header) |
 | 500 | `INTERNAL_ERROR` | Unexpected failure |
 | 503 | `SERVICE_UNAVAILABLE` | Temporarily unavailable (e.g. maintenance) |
+| 503 | `BILLING_UNAVAILABLE` | Billing could not be decided |
 
 The vocabulary is defined in `app/Http/Errors/ErrorCode.php`. Add a code only
 when a client must be able to tell the case apart.
@@ -1610,6 +1713,8 @@ queued jobs (Laravel Context).
 | `github-read` | `GET /github/installations…`, `GET /projects/{project}/github/branches` | 60 / minute | user ID |
 | `github-write` | `POST`, `PATCH`, `DELETE /projects/{project}/github`, `DELETE /github` | 20 / minute | user ID |
 | `github-import` | `POST /projects/{project}/github/imports` | 5 / minute **and** 30 / hour | user ID |
+| `billing-read` | `GET /billing…` | 60 / minute | user ID |
+| `billing-webhook` | `POST /billing/webhooks/{provider}` | 600 / minute | provider + IP |
 
 Every attempt counts, successful or not. When a limit is exceeded the
 response is `429 RATE_LIMITED` with `Retry-After`. Throttled routes also

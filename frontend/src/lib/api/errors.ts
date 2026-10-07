@@ -70,6 +70,14 @@ export function describeApiError(error: unknown): string {
       return "This project is archived. It keeps its history but cannot be changed or receive new source.";
     case "INVALID_SOURCE_TYPE":
       return "This project does not accept uploaded source.";
+    case "FEATURE_NOT_INCLUDED":
+      return "Your plan does not include this feature. See Billing for what each plan includes.";
+    case "SUBSCRIPTION_INACTIVE":
+      return "Your subscription is not active right now, so its features are paused. See Billing for details.";
+    case "QUOTA_EXCEEDED":
+      return "You have reached your plan's limit for this. See Billing for your usage and when it resets.";
+    case "BILLING_UNAVAILABLE":
+      return "Billing is not available right now. Please try again shortly.";
     case "ANALYSIS_NOT_COMPLETED":
       return "This analysis has no result yet: it has not succeeded.";
     case "IDEMPOTENCY_KEY_REUSED":

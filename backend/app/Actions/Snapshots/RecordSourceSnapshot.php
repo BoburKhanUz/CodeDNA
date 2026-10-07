@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Actions\Snapshots;
 
+use App\Enums\Billing\QuotaKey;
 use App\Enums\SourceType;
 use App\Exceptions\DomainRuleViolation;
 use App\Models\Project;
 use App\Models\SourceSnapshot;
+use App\Services\Billing\UsageService;
 use Illuminate\Database\ConnectionInterface;
 
 /**
@@ -22,7 +24,7 @@ use Illuminate\Database\ConnectionInterface;
  */
 final readonly class RecordSourceSnapshot
 {
-    public function __construct(private ConnectionInterface $db) {}
+    public function __construct(private ConnectionInterface $db, private UsageService $usage) {}
 
     /**
      * @param  array<string, mixed>  $metadata  descriptive data only, never file contents
@@ -72,6 +74,13 @@ final readonly class RecordSourceSnapshot
                 'idempotency_key_hash' => $idempotencyKeyHash,
             ]);
             $snapshot->save();
+            // Billing (Phase 23): an uploaded archive counts towards the
+            // owner's monthly uploads and bytes, in this transaction, so a
+            // refusal records nothing. GitHub imports are counted when requested.
+            if ($sourceType === SourceType::Upload) {
+                $this->usage->consume($locked->user_id, QuotaKey::SourceUploads, 'source_snapshot', $snapshot->id);
+                $this->usage->consume($locked->user_id, QuotaKey::SourceUploadBytes, 'source_snapshot', $snapshot->id, max(1, $sizeBytes));
+            }
 
             return $snapshot;
         });

@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\V1\Auth\LoginController;
 use App\Http\Controllers\Api\V1\Auth\LogoutController;
 use App\Http\Controllers\Api\V1\Auth\PasswordController;
 use App\Http\Controllers\Api\V1\Auth\RegisterController;
+use App\Http\Controllers\Api\V1\Billing\BillingController;
+use App\Http\Controllers\Api\V1\Billing\BillingWebhookController;
 use App\Http\Controllers\Api\V1\GitHub\GitHubAccountController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\MeController;
@@ -61,6 +63,21 @@ Route::middleware('auth:sanctum')->group(function (): void {
         ->middleware('throttle:profile-update')
         ->name('profile.update');
 });
+
+// Billing (Phase 23, docs/billing/billing-architecture.md). Read-only for
+// users: always the caller's own billing, and no route accepts a plan, a
+// price, a quota or a provider reference. Plans change only through verified
+// provider webhooks, which are authenticated by their signature, not a session.
+Route::middleware(['auth:sanctum', 'throttle:billing-read'])->prefix('billing')->name('billing.')->group(function (): void {
+    Route::get('/', [BillingController::class, 'overview'])->name('overview');
+    Route::get('plans', [BillingController::class, 'plans'])->name('plans');
+    Route::get('usage', [BillingController::class, 'usage'])->name('usage');
+    Route::get('subscription', [BillingController::class, 'subscription'])->name('subscription');
+});
+Route::post('billing/webhooks/{provider}', BillingWebhookController::class)
+    ->where('provider', '[a-z][a-z0-9_]{0,31}')
+    ->middleware('throttle:billing-webhook')
+    ->name('billing.webhook');
 
 // Projects and immutable source snapshots (Phase 07). Owner-only: other
 // users' projects answer 404 (ProjectPolicy). No DELETE routes: projects are

@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Tests\Support\BillingFixtures;
 use Tests\Support\ChallengeFixtures;
 use Tests\Support\FakeChallengeEvaluator;
 use Tests\TestCase;
@@ -71,6 +72,7 @@ final class ChallengeMigrationAndConcurrencyTest extends TestCase
             DB::table('analysis_runs')->where('project_id', $projectId)->delete();
             DB::table('source_snapshots')->where('project_id', $projectId)->delete();
             DB::table('projects')->where('id', $projectId)->delete();
+            BillingFixtures::forget([(string) $gaps->user_id]);
             DB::table('users')->where('id', $gaps->user_id)->delete();
         }
         // Definitions are shared catalog copies; remove the unreferenced ones this test created.

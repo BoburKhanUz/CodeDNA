@@ -14,6 +14,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Tests\Support\BillingFixtures;
 use Tests\Support\ChallengeFixtures;
 use Tests\TestCase;
 use Throwable;
@@ -61,6 +62,7 @@ final class RoadmapMigrationAndConcurrencyTest extends TestCase
             DB::table('analysis_runs')->where('project_id', $id)->delete();
             DB::table('source_snapshots')->where('project_id', $id)->delete();
             DB::table('projects')->where('id', $id)->delete();
+            BillingFixtures::forget([(string) $project->user_id]);
             DB::table('users')->where('id', $project->user_id)->delete();
         }
         foreach (glob($this->dir.'/*') ?: [] as $file) {

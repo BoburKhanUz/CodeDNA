@@ -193,4 +193,6 @@ at a time:
 | 19 | GitHub integration | Done (GitHub App, read-only, imports into source snapshots; [github-integration-v1.md](github-integration-v1.md)) |
 | 20 | Historical DNA | Done (read model, no new persistence, version segments, comparison through growth rules; [historical-dna-v1.md](historical-dna-v1.md)) |
 | 21 | Security hardening | Done (audit, network segmentation, proxy and rate-limit fixes, sandbox and boundary hardening; [threat model](../security/threat-model.md), [hardening](../security/security-hardening.md)) |
-| 22–25 | QA, billing, teams, production | — |
+| 22 | QA and regression | Done ([test strategy](../testing/test-strategy.md), [QA matrix](../testing/qa-matrix.md)) |
+| 23 | Billing / SaaS foundation | Done (plan catalog 1.0.0, FREE fallback, entitlements, quotas, usage ledger, subscription state machine, provider-neutral webhooks; no real provider; [billing architecture](../billing/billing-architecture.md)) |
+| 24–25 | Teams, production | — |

@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\Feature\Dna\CalculateDnaSnapshotTest;
+use Tests\Support\BillingFixtures;
 use Tests\Support\StoredResults;
 use Tests\TestCase;
 use Throwable;
@@ -65,6 +66,7 @@ final class SkillGapMigrationAndConcurrencyTest extends TestCase
             DB::table('analysis_runs')->where('project_id', $projectId)->delete();
             DB::table('source_snapshots')->where('project_id', $projectId)->delete();
             DB::table('projects')->where('id', $projectId)->delete();
+            BillingFixtures::forget([(string) $this->competency->user_id]);
             DB::table('users')->where('id', $this->competency->user_id)->delete();
         }
         foreach (glob($this->resultDir.'/*') ?: [] as $file) {

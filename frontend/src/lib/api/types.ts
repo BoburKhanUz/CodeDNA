@@ -76,6 +76,10 @@ export const API_ERROR_CODES = [
   "GITHUB_NOT_CONNECTED",
   "GITHUB_RATE_LIMITED",
   "GITHUB_UNAVAILABLE",
+  "FEATURE_NOT_INCLUDED",
+  "SUBSCRIPTION_INACTIVE",
+  "QUOTA_EXCEEDED",
+  "BILLING_UNAVAILABLE",
   "INTERNAL_ERROR",
   "SERVICE_UNAVAILABLE",
 ] as const;
@@ -1315,4 +1319,86 @@ export interface ProjectGitHub {
   account_connected: boolean;
   connection: GitHubConnection | null;
   latest_import: GitHubImport | null;
+}
+
+// Billing (Phase 23): BillingController, Billing*Resource. Read-only: the
+// browser shows what the server decided and never grants anything.
+
+export const BILLING_FEATURES = [
+  "PROJECTS",
+  "SOURCE_ANALYSIS",
+  "AI_ASSESSMENT",
+  "CODING_CHALLENGES",
+  "LEARNING_ROADMAP",
+  "GROWTH_ANALYTICS",
+  "HISTORICAL_DNA",
+  "GITHUB_INTEGRATION",
+] as const;
+export type BillingFeature = (typeof BILLING_FEATURES)[number];
+
+export const SUBSCRIPTION_STATUSES = ["TRIALING", "ACTIVE", "PAST_DUE", "PAUSED", "CANCELED", "EXPIRED"] as const;
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
+
+export interface BillingPlanRef {
+  key: string;
+  version: string;
+  name: string;
+}
+
+/** `BillingSubscriptionResource` (never carries provider references). */
+export interface BillingSubscription {
+  id: string;
+  type: "billing_subscription";
+  status: SubscriptionStatus;
+  provider: string;
+  plan: BillingPlanRef;
+  grants_access: boolean;
+  started_at: string;
+  current_period_start: string;
+  current_period_end: string;
+  trial_ends_at: string | null;
+  cancel_at_period_end: boolean;
+  canceled_at: string | null;
+  ended_at: string | null;
+}
+
+export interface BillingQuota {
+  key: string;
+  label: string;
+  unit: "COUNT" | "BYTES";
+  period: "MONTHLY" | "CURRENT";
+  /** null: unlimited. */
+  limit: number | null;
+  used: number;
+  remaining: number | null;
+  unlimited: boolean;
+  resets_at: string | null;
+}
+
+/** GET /api/v1/billing */
+export interface BillingOverview {
+  type: "billing_overview";
+  plan: BillingPlanRef;
+  source: "FREE_FALLBACK" | "SUBSCRIPTION";
+  status: SubscriptionStatus | "FREE";
+  subscription: BillingSubscription | null;
+  inactive_subscription: BillingSubscription | null;
+  period: { start: string; end: string };
+  entitlements: { feature: BillingFeature; label: string; included: boolean }[];
+  quotas: BillingQuota[];
+}
+
+/** `BillingPlanResource`. Prices are integer minor units (cents); null is "not offered". */
+export interface BillingPlan {
+  type: "billing_plan";
+  key: string;
+  version: string;
+  name: string;
+  description: string;
+  status: "ACTIVE" | "RESERVED" | "RETIRED";
+  available: boolean;
+  currency: string;
+  prices: { monthly_minor: number | null; annual_minor: number | null };
+  features: { key: BillingFeature; label: string; included: boolean }[];
+  quotas: { key: string; label: string; unit: "COUNT" | "BYTES"; period: "MONTHLY" | "CURRENT"; limit: number | null }[];
 }

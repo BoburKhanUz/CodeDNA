@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Tests\Support\BillingFixtures;
 use Tests\TestCase;
 use Throwable;
 
@@ -48,6 +49,7 @@ final class AccountConcurrencyTest extends TestCase
         $users = DB::table('users')->where('email', 'like', "race-{$this->tag}%")->pluck('id');
         DB::table('projects')->whereIn('user_id', $users)->delete();
         DB::table('developer_profiles')->whereIn('user_id', $users)->delete();
+        BillingFixtures::forget($users);
         DB::table('users')->whereIn('id', $users)->delete();
         parent::tearDown();
     }

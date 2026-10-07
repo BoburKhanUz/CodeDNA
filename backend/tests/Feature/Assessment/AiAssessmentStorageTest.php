@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Tests\Support\AssessmentFixtures;
+use Tests\Support\BillingFixtures;
 use Tests\Support\ScriptedAiProvider;
 use Tests\TestCase;
 
@@ -45,7 +46,7 @@ final class AiAssessmentStorageTest extends TestCase
         config(['codedna.ai.enabled' => true]);
         $this->provider = new ScriptedAiProvider('valid');
         $this->app->instance(AiProvider::class, $this->provider);
-        $this->gaps = AssessmentFixtures::skillGaps(Project::factory()->for(User::factory())->create());
+        $this->gaps = AssessmentFixtures::skillGaps(Project::factory()->for(BillingFixtures::pro(User::factory()->create()))->create());
     }
 
     private function queued(): AiAssessment

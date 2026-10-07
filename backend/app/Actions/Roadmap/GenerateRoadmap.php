@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\Roadmap;
 
+use App\Enums\Billing\Feature;
 use App\Enums\Roadmap\RoadmapStatus;
 use App\Exceptions\ApiException;
 use App\Http\Errors\ErrorCode;
@@ -13,6 +14,7 @@ use App\Models\RoadmapStep;
 use App\Models\SkillGapResult;
 use App\Models\SkillGapSnapshot;
 use App\Models\User;
+use App\Services\Billing\Entitlements;
 use App\Services\Challenge\ChallengeCatalog;
 use App\Services\Roadmap\RoadmapCatalog;
 use App\Services\Roadmap\RoadmapGenerationException;
@@ -52,10 +54,14 @@ final readonly class GenerateRoadmap
         private RoadmapRules $rules,
         private ChallengeCatalog $challenges,
         private RoadmapGenerator $generator,
+        private Entitlements $entitlements,
     ) {}
 
     public function handle(Project $project, User $actor): GeneratedRoadmap
     {
+        // Billing (Phase 23): the owner's plan must include the learning roadmap.
+        $this->entitlements->require($project->user_id, Feature::LearningRoadmap);
+
         return $this->db->transaction(fn (): GeneratedRoadmap => $this->generate($project, $actor));
     }
 

@@ -30,10 +30,13 @@ final class DatabaseTest extends TestCase
         // Framework/auth (Phase 03), the four domain tables (Phase 05),
         // developer profiles (Phase 06), analysis results (Phase 10),
         // competency snapshots (Phase 13), skill gaps (Phase 14), AI assessments
-        // (Phase 15), challenges (Phase 16), roadmaps (Phase 17) growth (Phase 18) and GitHub (Phase 19),
-        // nothing else.
+        // (Phase 15), challenges (Phase 16), roadmaps (Phase 17) growth (Phase 18), GitHub (Phase 19)
+        // and billing (Phase 23), nothing else.
         $this->assertSame([
-            'ai_assessments', 'analysis_results', 'analysis_runs', 'challenge_definitions', 'challenge_instances', 'challenge_submissions', 'competency_snapshots', 'developer_profiles', 'dna_snapshots', 'failed_jobs', 'github_accounts', 'github_connections', 'github_imports', 'github_oauth_states', 'growth_observations', 'growth_snapshots', 'migrations',
+            'ai_assessments', 'analysis_results', 'analysis_runs',
+            'billing_customers', 'billing_plan_features', 'billing_plan_quotas', 'billing_plans', 'billing_subscription_events',
+            'billing_subscriptions', 'billing_usage_counters', 'billing_usage_events', 'billing_webhook_events',
+            'challenge_definitions', 'challenge_instances', 'challenge_submissions', 'competency_snapshots', 'developer_profiles', 'dna_snapshots', 'failed_jobs', 'github_accounts', 'github_connections', 'github_imports', 'github_oauth_states', 'growth_observations', 'growth_snapshots', 'migrations',
             'personal_access_tokens', 'projects', 'roadmap_snapshots', 'roadmap_step_completions', 'roadmap_steps', 'skill_gap_results', 'skill_gap_snapshots', 'source_snapshots', 'users',
         ], $tables);
     }
