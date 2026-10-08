@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { isApiError } from "@/lib/api/errors";
 import { login } from "@/lib/auth/client";
+import { afterSignInPath } from "@/lib/organizations/invitation-link";
 
 const FIELDS = ["email", "password"] as const;
 type Field = (typeof FIELDS)[number];
@@ -38,7 +39,7 @@ export function LoginForm({ notice }: { notice?: "password-changed" } = {}) {
     setSubmitting(true);
     try {
       await login({ email: values.email.trim(), password: values.password });
-      router.replace("/app");
+      router.replace(afterSignInPath());
       router.refresh();
     } catch (error) {
       if (isApiError(error) && error.code === "VALIDATION_FAILED") {

@@ -78,6 +78,30 @@ export function describeApiError(error: unknown): string {
       return "You have reached your plan's limit for this. See Billing for your usage and when it resets.";
     case "BILLING_UNAVAILABLE":
       return "Billing is not available right now. Please try again shortly.";
+    case "ORGANIZATION_SUSPENDED":
+      return "This team is suspended. Its history can be read but nothing can be changed.";
+    case "ORGANIZATION_ARCHIVED":
+      return "This team is archived. Its history can be read but nothing can be changed.";
+    case "MEMBERSHIP_SUSPENDED":
+      return "Your membership in this team is suspended. Ask a team admin to reactivate it.";
+    case "INSUFFICIENT_ORGANIZATION_ROLE":
+      return "Your role in this team does not allow this.";
+    case "ALREADY_A_MEMBER":
+      return "This person is already a member of the team.";
+    case "INVITATION_EXPIRED":
+      return "This invitation has expired. Ask for a new one.";
+    case "INVITATION_REVOKED":
+      return "This invitation was withdrawn.";
+    case "INVITATION_ALREADY_ACCEPTED":
+      return "This invitation has already been used.";
+    case "INVITATION_EMAIL_MISMATCH":
+      return "This invitation was sent to a different email address. Sign in with that account to accept it.";
+    case "SEAT_LIMIT_REACHED":
+      return "The team has no free seat. A team admin can free one by removing or suspending a member.";
+    case "CANNOT_REMOVE_OWNER":
+      return "The team owner cannot be removed.";
+    case "CANNOT_CHANGE_OWNER_ROLE":
+      return "The team owner's role and status cannot be changed.";
     case "ANALYSIS_NOT_COMPLETED":
       return "This analysis has no result yet: it has not succeeded.";
     case "IDEMPOTENCY_KEY_REUSED":

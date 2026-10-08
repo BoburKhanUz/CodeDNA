@@ -109,7 +109,12 @@ or PRO through a subscription. The server checks features and quotas where resou
 created, keeps an auditable usage ledger and changes subscriptions only through signed,
 idempotent payment-provider webhooks. No payment provider is required and no money is
 processed; `/app/billing` shows the plan, usage and catalog
-([billing architecture](docs/billing/billing-architecture.md)). The full plan is in
+([billing architecture](docs/billing/billing-architecture.md)). Since Phase 24 users can form
+**teams** (organizations). A team has an owner, admins and members, invites people with
+single-use links, owns team projects that every member works on, keeps an append-only audit
+log and shows read-only team analytics. Team projects use the team's own plan and seats,
+never a member's, and nobody's own CodeDNA changes by joining a team
+([teams architecture](docs/teams/teams-architecture.md)). The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance
@@ -136,6 +141,7 @@ code runs only in the network-less evaluator and never changes CodeDNA.
 - Testing: [test strategy](docs/testing/test-strategy.md) · [QA matrix](docs/testing/qa-matrix.md)
 - Security: [threat model](docs/security/threat-model.md) · [security hardening](docs/security/security-hardening.md) (after pulling Phase 21, run `make setup` once to add `REDIS_PASSWORD` to `.env`)
 - Billing: [architecture](docs/billing/billing-architecture.md) · [subscription state machine](docs/billing/subscription-state-machine.md) · [entitlements and quotas](docs/billing/entitlements-and-quotas.md)
+- Teams: [architecture](docs/teams/teams-architecture.md) · [authorization](docs/teams/authorization.md) · [invitations](docs/teams/invitations.md) · [billing boundary](docs/teams/billing-boundary.md) · [team analytics](docs/teams/team-analytics.md)
 - API: [public conventions](docs/api/README.md) · [internal analyzer contract](docs/api/internal-analyzer-contract.md)
 - Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md) · [ADR-007 AI interpretation](docs/decisions/ADR-007-ai-interpretation.md) · [ADR-008 coding challenges](docs/decisions/ADR-008-coding-challenges.md) · [ADR-009 learning roadmap](docs/decisions/ADR-009-learning-roadmap.md) · [ADR-010 growth tracking](docs/decisions/ADR-010-growth-tracking.md) · [ADR-011 GitHub integration](docs/decisions/ADR-011-github-integration.md) · [ADR-012 historical DNA](docs/decisions/ADR-012-historical-dna.md)
 

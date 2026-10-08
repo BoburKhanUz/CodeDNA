@@ -38,7 +38,7 @@ final class UpdateProjectRequest extends FormRequest
 
         return [
             'name' => ['sometimes', 'required', ...ProjectRules::name()],
-            'slug' => ['sometimes', 'required', ...ProjectRules::slug($project->user_id, $project->id)],
+            'slug' => ['sometimes', 'required', ...ProjectRules::slug($project->user_id, $project->id, $project->organization_id)],
             'description' => ['sometimes', ...ProjectRules::description()],
             'default_branch' => ['sometimes', ...ProjectRules::defaultBranch()],
             'repository_url' => $isRepository

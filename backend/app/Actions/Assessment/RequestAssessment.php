@@ -68,7 +68,7 @@ final readonly class RequestAssessment
             throw new ApiException(ErrorCode::AiAssessmentDisabled);
         }
         // Billing (Phase 23): the owner's plan must include AI assessment.
-        $this->entitlements->require($project->user_id, Feature::AiAssessment);
+        $this->entitlements->require($project, Feature::AiAssessment);
         $spec = AssessmentSpecification::forVersion((string) $this->config->get('codedna.ai.version'));
         /** @var AiProvider $provider */
         $provider = $this->container->make(AiProvider::class);
@@ -161,8 +161,8 @@ final readonly class RequestAssessment
             'input' => $input->toStored(),
         ]);
         $assessment->save();
-        // Billing (Phase 23): one AI assessment of the owner's plan (refunded if it ends FAILED).
-        $this->usage->consume($gaps->user_id, QuotaKey::AiAssessments, 'ai_assessment', $assessment->id);
+        // Billing (Phase 23): one AI assessment of the project's billing subject (refunded if it ends FAILED).
+        $this->usage->consume(Project::query()->findOrFail($gaps->project_id), QuotaKey::AiAssessments, 'ai_assessment', $assessment->id);
 
         Log::info('assessment.queued', [
             'assessment_id' => $assessment->id,

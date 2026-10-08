@@ -9,6 +9,13 @@ use App\Http\Controllers\Api\V1\Billing\BillingWebhookController;
 use App\Http\Controllers\Api\V1\GitHub\GitHubAccountController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\MeController;
+use App\Http\Controllers\Api\V1\Organizations\InvitationAcceptanceController;
+use App\Http\Controllers\Api\V1\Organizations\OrganizationAnalyticsController;
+use App\Http\Controllers\Api\V1\Organizations\OrganizationAuditController;
+use App\Http\Controllers\Api\V1\Organizations\OrganizationController;
+use App\Http\Controllers\Api\V1\Organizations\OrganizationInvitationController;
+use App\Http\Controllers\Api\V1\Organizations\OrganizationMemberController;
+use App\Http\Controllers\Api\V1\Organizations\OrganizationProjectController;
 use App\Http\Controllers\Api\V1\Profile\ProfileController;
 use App\Http\Controllers\Api\V1\Projects\AnalysisController;
 use App\Http\Controllers\Api\V1\Projects\ArchiveProjectController;
@@ -78,6 +85,71 @@ Route::post('billing/webhooks/{provider}', BillingWebhookController::class)
     ->where('provider', '[a-z][a-z0-9_]{0,31}')
     ->middleware('throttle:billing-webhook')
     ->name('billing.webhook');
+
+// Organizations (Phase 24, docs/teams/teams-architecture.md). Members only:
+// an organization the caller does not belong to answers 404. Roles and
+// organization state are checked by OrganizationAccess, in the policies and
+// again by each action under the organization row lock. Memberships are never
+// deleted (DELETE marks them REMOVED); organizations are archived.
+//
+// Invitation links carry the token in the path; the access log redacts it.
+Route::get('organizations/invitations/{token}', [InvitationAcceptanceController::class, 'show'])
+    ->where('token', '[A-Za-z0-9_-]{1,128}')
+    ->middleware('throttle:invitation-preview')
+    ->name('organizations.invitations.preview');
+Route::post('organizations/invitations/{token}/accept', [InvitationAcceptanceController::class, 'accept'])
+    ->where('token', '[A-Za-z0-9_-]{1,128}')
+    ->middleware(['auth:sanctum', 'throttle:invitation-accept'])
+    ->name('organizations.invitations.accept');
+
+Route::middleware('auth:sanctum')->prefix('organizations')->name('organizations.')->group(function (): void {
+    Route::get('/', [OrganizationController::class, 'index'])->name('index');
+    Route::post('/', [OrganizationController::class, 'store'])
+        ->middleware('throttle:organization-create')
+        ->name('store');
+    Route::get('{organization}', [OrganizationController::class, 'show'])->whereUlid('organization')->name('show');
+    Route::patch('{organization}', [OrganizationController::class, 'update'])
+        ->whereUlid('organization')
+        ->middleware('throttle:organization-write')
+        ->name('update');
+    Route::post('{organization}/archive', [OrganizationController::class, 'archive'])
+        ->whereUlid('organization')
+        ->middleware('throttle:organization-write')
+        ->name('archive');
+    Route::get('{organization}/billing', [OrganizationController::class, 'billing'])->whereUlid('organization')->name('billing');
+
+    Route::get('{organization}/members', [OrganizationMemberController::class, 'index'])->whereUlid('organization')->name('members.index');
+    Route::patch('{organization}/members/{membership}', [OrganizationMemberController::class, 'update'])
+        ->whereUlid(['organization', 'membership'])
+        ->scopeBindings()
+        ->middleware('throttle:organization-write')
+        ->name('members.update');
+    Route::delete('{organization}/members/{membership}', [OrganizationMemberController::class, 'destroy'])
+        ->whereUlid(['organization', 'membership'])
+        ->scopeBindings()
+        ->middleware('throttle:organization-write')
+        ->name('members.destroy');
+
+    Route::get('{organization}/invitations', [OrganizationInvitationController::class, 'index'])->whereUlid('organization')->name('invitations.index');
+    Route::post('{organization}/invitations', [OrganizationInvitationController::class, 'store'])
+        ->whereUlid('organization')
+        ->middleware('throttle:invitation-create')
+        ->name('invitations.store');
+    Route::post('{organization}/invitations/{invitation}/revoke', [OrganizationInvitationController::class, 'revoke'])
+        ->whereUlid(['organization', 'invitation'])
+        ->scopeBindings()
+        ->middleware('throttle:organization-write')
+        ->name('invitations.revoke');
+
+    Route::get('{organization}/projects', [OrganizationProjectController::class, 'index'])->whereUlid('organization')->name('projects.index');
+    Route::post('{organization}/projects', [OrganizationProjectController::class, 'store'])
+        ->whereUlid('organization')
+        ->middleware('throttle:project-create')
+        ->name('projects.store');
+
+    Route::get('{organization}/audit-events', OrganizationAuditController::class)->whereUlid('organization')->name('audit-events.index');
+    Route::get('{organization}/analytics', OrganizationAnalyticsController::class)->whereUlid('organization')->name('analytics');
+});
 
 // Projects and immutable source snapshots (Phase 07). Owner-only: other
 // users' projects answer 404 (ProjectPolicy). No DELETE routes: projects are

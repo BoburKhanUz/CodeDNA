@@ -54,7 +54,7 @@ final readonly class RequestGitHubImport
         }
         // Billing (Phase 23): the owner's plan must include GitHub integration
         // (checked before any call to GitHub).
-        $this->entitlements->require($project->user_id, Feature::GitHubIntegration);
+        $this->entitlements->require($project, Feature::GitHubIntegration);
         $connection = ConnectionLookup::active($project);
         $token = $this->access->token($actor);
         ConnectGitHubRepository::verifiedRepository($this->api, $token, $connection->repository_id);
@@ -118,7 +118,7 @@ final readonly class RequestGitHubImport
             'status' => GitHubImportStatus::Queued,
         ])->save();
         // Billing (Phase 23): one GitHub import of the owner's plan (refunded if it ends FAILED).
-        $this->usage->consume($locked->user_id, QuotaKey::GitHubImports, 'github_import', $import->id);
+        $this->usage->consume($locked, QuotaKey::GitHubImports, 'github_import', $import->id);
 
         return new RequestedGitHubImport($import, true);
     }

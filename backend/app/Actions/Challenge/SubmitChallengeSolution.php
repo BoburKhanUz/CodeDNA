@@ -68,7 +68,7 @@ final readonly class SubmitChallengeSolution
             return new SubmittedSolution($replay, false);
         }
         // Billing (Phase 23): the owner's plan must include coding challenges.
-        $this->entitlements->require($challenge->user_id, Feature::CodingChallenges);
+        $this->entitlements->require(Project::query()->findOrFail($challenge->project_id), Feature::CodingChallenges);
         if (! $this->evaluator->available()) {
             throw new ApiException(ErrorCode::ChallengeEvaluationUnavailable);
         }
@@ -135,7 +135,7 @@ final readonly class SubmitChallengeSolution
         $submission->save();
         // Billing (Phase 23): one submission of the owner's plan (refunded if
         // the evaluation ends in ERROR, which also uses no graded attempt).
-        $this->usage->consume($locked->user_id, QuotaKey::ChallengeSubmissions, 'challenge_submission', $submission->id);
+        $this->usage->consume($project, QuotaKey::ChallengeSubmissions, 'challenge_submission', $submission->id);
         $locked->forceFill(['status' => ChallengeStatus::Evaluating])->save();
 
         Log::info('challenge.submitted', [

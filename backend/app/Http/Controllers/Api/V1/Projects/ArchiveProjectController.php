@@ -8,17 +8,21 @@ use App\Actions\Projects\ArchiveProject;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProjectResource;
 use App\Models\Project;
+use App\Models\User;
 use Illuminate\Contracts\Auth\Access\Gate;
+use Illuminate\Http\Request;
 
 /**
  * POST /api/v1/projects/{project}/archive — ACTIVE -> ARCHIVED (idempotent).
  */
 final class ArchiveProjectController extends Controller
 {
-    public function __invoke(Project $project, Gate $gate, ArchiveProject $archiveProject): ProjectResource
+    public function __invoke(Request $request, Project $project, Gate $gate, ArchiveProject $archiveProject): ProjectResource
     {
         $gate->authorize('archive', $project);
+        /** @var User $user */
+        $user = $request->user();
 
-        return new ProjectResource($archiveProject->handle($project));
+        return new ProjectResource($archiveProject->handle($project, $user));
     }
 }

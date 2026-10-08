@@ -78,8 +78,8 @@ final readonly class RecordSourceSnapshot
             // owner's monthly uploads and bytes, in this transaction, so a
             // refusal records nothing. GitHub imports are counted when requested.
             if ($sourceType === SourceType::Upload) {
-                $this->usage->consume($locked->user_id, QuotaKey::SourceUploads, 'source_snapshot', $snapshot->id);
-                $this->usage->consume($locked->user_id, QuotaKey::SourceUploadBytes, 'source_snapshot', $snapshot->id, max(1, $sizeBytes));
+                $this->usage->consume($locked, QuotaKey::SourceUploads, 'source_snapshot', $snapshot->id);
+                $this->usage->consume($locked, QuotaKey::SourceUploadBytes, 'source_snapshot', $snapshot->id, max(1, $sizeBytes));
             }
 
             return $snapshot;

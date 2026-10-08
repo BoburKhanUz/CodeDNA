@@ -273,6 +273,30 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
+        RateLimiter::for('organization-create', static function (Request $request) use ($limits): array {
+            $key = 'organization-create:'.($request->user()?->getAuthIdentifier() ?? $request->ip());
+
+            return [
+                Limit::perMinute($limits['organization_create_per_minute'])->by($key.'|minute'),
+                Limit::perHour($limits['organization_create_per_hour'])->by($key.'|hour'),
+            ];
+        });
+        RateLimiter::for('organization-write', static fn (Request $request): Limit => Limit::perMinute($limits['organization_write_per_minute'])
+            ->by('organization-write:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+        RateLimiter::for('invitation-create', static function (Request $request) use ($limits): array {
+            $key = 'invitation-create:'.($request->user()?->getAuthIdentifier() ?? $request->ip());
+
+            return [
+                Limit::perMinute($limits['invitation_create_per_minute'])->by($key.'|minute'),
+                Limit::perHour($limits['invitation_create_per_hour'])->by($key.'|hour'),
+            ];
+        });
+        RateLimiter::for('invitation-accept', static fn (Request $request): array => [
+            Limit::perMinute($limits['invitation_accept_per_minute'])->by('invitation-accept:'.($request->user()?->getAuthIdentifier() ?? $request->ip())),
+            Limit::perMinute($limits['invitation_accept_per_minute_per_ip'])->by('invitation-accept-ip:'.$request->ip()),
+        ]);
+        RateLimiter::for('invitation-preview', static fn (Request $request): Limit => Limit::perMinute($limits['invitation_preview_per_minute_per_ip'])
+            ->by('invitation-preview:'.$request->ip()));
         RateLimiter::for('password-change', static function (Request $request) use ($limits): array {
             $key = 'password-change:'.($request->user()?->getAuthIdentifier() ?? $request->ip());
 

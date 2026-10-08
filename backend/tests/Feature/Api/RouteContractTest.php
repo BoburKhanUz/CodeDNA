@@ -77,8 +77,10 @@ final class RouteContractTest extends TestCase
 
     public function test_every_protected_route_answers_401_to_an_anonymous_request(): void
     {
-        // The billing webhook is authenticated by the provider's signature, not a session (Phase 23).
-        $public = ['/api/v1/health', '/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/billing/webhooks/fake'];
+        // The billing webhook is authenticated by the provider's signature, not a session (Phase 23);
+        // an invitation link's preview is readable by whoever holds the link (Phase 24).
+        $public = ['/api/v1/health', '/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/billing/webhooks/fake',
+            '/api/v1/organizations/invitations/'.self::ID];
         foreach ($this->paths() as $path => $allowed) {
             if (in_array($path, $public, true)) {
                 continue;

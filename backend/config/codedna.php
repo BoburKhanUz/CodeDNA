@@ -323,6 +323,18 @@ return [
         'github_write_per_minute' => 20,
         'github_import_per_minute' => 5,
         'github_import_per_hour' => 30,
+        // Organizations (Phase 24), per user unless noted: creating
+        // organizations, changing them and their members, inviting, and
+        // invitation links (accept per user and per IP; the unauthenticated
+        // preview per IP), which bounds token guessing.
+        'organization_create_per_minute' => 5,
+        'organization_create_per_hour' => 20,
+        'organization_write_per_minute' => 30,
+        'invitation_create_per_minute' => 10,
+        'invitation_create_per_hour' => 50,
+        'invitation_accept_per_minute' => 10,
+        'invitation_accept_per_minute_per_ip' => 20,
+        'invitation_preview_per_minute_per_ip' => 30,
         // GET /api/v1/billing/*, per user.
         'billing_read_per_minute' => 60,
         // POST /api/v1/billing/webhooks/{provider}, per provider and IP. Generous:

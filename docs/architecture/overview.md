@@ -195,4 +195,5 @@ at a time:
 | 21 | Security hardening | Done (audit, network segmentation, proxy and rate-limit fixes, sandbox and boundary hardening; [threat model](../security/threat-model.md), [hardening](../security/security-hardening.md)) |
 | 22 | QA and regression | Done ([test strategy](../testing/test-strategy.md), [QA matrix](../testing/qa-matrix.md)) |
 | 23 | Billing / SaaS foundation | Done (plan catalog 1.0.0, FREE fallback, entitlements, quotas, usage ledger, subscription state machine, provider-neutral webhooks; no real provider; [billing architecture](../billing/billing-architecture.md)) |
-| 24–25 | Teams, production | — |
+| 24 | Teams / B2B foundation | Done (organizations, roles, hashed single-use invitations, team projects, organization billing subject and seats, audit log, read-only team analytics; [teams architecture](../teams/teams-architecture.md)) |
+| 25 | Production | — |

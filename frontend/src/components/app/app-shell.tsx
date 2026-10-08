@@ -1,6 +1,6 @@
 "use client";
 
-import { CreditCard, FolderGit2, Home, UserRound } from "lucide-react";
+import { CreditCard, FolderGit2, Home, UserRound, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -12,6 +12,7 @@ import { Logo } from "@/components/brand/logo";
 const NAVIGATION = [
   { href: "/app", label: "Home", icon: Home },
   { href: "/app/projects", label: "Projects", icon: FolderGit2 },
+  { href: "/app/organizations", label: "Teams", icon: Users },
   { href: "/app/profile", label: "Profile", icon: UserRound },
   { href: "/app/billing", label: "Billing", icon: CreditCard },
 ] as const;

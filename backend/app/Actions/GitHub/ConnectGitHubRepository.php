@@ -56,7 +56,7 @@ final readonly class ConnectGitHubRepository
             throw new ApiException(ErrorCode::ProjectArchived);
         }
         // Billing (Phase 23): the owner's plan must include GitHub integration.
-        $this->entitlements->require($project->user_id, Feature::GitHubIntegration);
+        $this->entitlements->require($project, Feature::GitHubIntegration);
         if ($branch !== null && ! GitHubNames::isBranch($branch)) {
             throw ValidationException::withMessages(['branch' => 'The branch name is not valid.']);
         }

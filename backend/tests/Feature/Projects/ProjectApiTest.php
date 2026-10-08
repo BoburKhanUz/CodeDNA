@@ -21,7 +21,7 @@ final class ProjectApiTest extends TestCase
     private const URL = '/api/v1/projects';
 
     private const RESOURCE_KEYS = [
-        'id', 'type', 'name', 'slug', 'description', 'default_branch', 'source_type',
+        'id', 'type', 'organization_id', 'name', 'slug', 'description', 'default_branch', 'source_type',
         'repository_url', 'language', 'status', 'created_at', 'updated_at',
     ];
 
@@ -66,6 +66,7 @@ final class ProjectApiTest extends TestCase
         $response->assertCreated()->assertExactJson(['data' => [
             'id' => $project->id,
             'type' => 'project',
+            'organization_id' => null,
             'name' => 'Billing Service',
             'slug' => 'billing-service',
             'description' => 'Invoices and payments.',

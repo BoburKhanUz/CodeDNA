@@ -35,11 +35,16 @@ final class ProjectRules
     }
 
     /**
+     * Slugs are unique per owner among personal projects, and per
+     * organization among an organization's projects (Phase 24).
+     *
      * @return list<mixed>
      */
-    public static function slug(string $userId, ?string $ignoreProjectId = null): array
+    public static function slug(string $userId, ?string $ignoreProjectId = null, ?string $organizationId = null): array
     {
-        $unique = Rule::unique('projects', 'slug')->where('user_id', $userId);
+        $unique = $organizationId === null
+            ? Rule::unique('projects', 'slug')->where('user_id', $userId)->whereNull('organization_id')
+            : Rule::unique('projects', 'slug')->where('organization_id', $organizationId);
         if ($ignoreProjectId !== null) {
             $unique = $unique->ignore($ignoreProjectId);
         }

@@ -13,8 +13,14 @@ use Illuminate\Validation\Rule;
  * is the authenticated user, the status starts ACTIVE, and any other field
  * (id, user_id, status, metadata, ...) is ignored.
  */
-final class StoreProjectRequest extends FormRequest
+class StoreProjectRequest extends FormRequest
 {
+    /** The organization a team project is created in (Phase 24); null for a personal project. */
+    protected function organizationId(): ?string
+    {
+        return null;
+    }
+
     /**
      * @return array<string, list<mixed>>
      */
@@ -22,7 +28,7 @@ final class StoreProjectRequest extends FormRequest
     {
         return [
             'name' => ['required', ...ProjectRules::name()],
-            'slug' => ['required', ...ProjectRules::slug((string) $this->user()?->getAuthIdentifier())],
+            'slug' => ['required', ...ProjectRules::slug((string) $this->user()?->getAuthIdentifier(), null, $this->organizationId())],
             'description' => ProjectRules::description(),
             'default_branch' => ProjectRules::defaultBranch(),
             'source_type' => ['required', 'string', Rule::enum(SourceType::class)],

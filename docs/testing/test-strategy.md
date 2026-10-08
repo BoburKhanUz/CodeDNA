@@ -108,7 +108,8 @@ afterwards. A mutant must be killed. A surviving mutant is classified:
   `RefreshDatabase` transactions.
 - Concurrency tests must commit their rows. They create their own user and
   project, and delete exactly those rows in `tearDown` (billing rows through
-  `BillingFixtures::forget`, before the user). Stored objects use a
+  `BillingFixtures::forget`, and organizations through
+  `OrganizationFixtures::forget`, before the user). Stored objects use a
   unique key prefix (`phpunit/<ulid>/`) that is deleted afterwards.
 - The evaluator integration test uses fresh submission IDs. The spool
   client deletes each result after reading it.

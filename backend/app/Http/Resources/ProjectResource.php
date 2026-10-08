@@ -24,6 +24,8 @@ final class ProjectResource extends JsonResource
         return [
             'id' => $this->id,
             'type' => 'project',
+            // Phase 24: the owning organization, or null for a personal project.
+            'organization_id' => $this->organization_id,
             'name' => $this->name,
             'slug' => $this->slug,
             'description' => $this->description,

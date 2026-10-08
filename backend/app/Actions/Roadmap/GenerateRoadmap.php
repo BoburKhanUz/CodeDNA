@@ -60,7 +60,7 @@ final readonly class GenerateRoadmap
     public function handle(Project $project, User $actor): GeneratedRoadmap
     {
         // Billing (Phase 23): the owner's plan must include the learning roadmap.
-        $this->entitlements->require($project->user_id, Feature::LearningRoadmap);
+        $this->entitlements->require($project, Feature::LearningRoadmap);
 
         return $this->db->transaction(fn (): GeneratedRoadmap => $this->generate($project, $actor));
     }

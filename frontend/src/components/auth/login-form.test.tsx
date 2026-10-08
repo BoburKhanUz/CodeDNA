@@ -56,6 +56,17 @@ describe("LoginForm", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("returns to a pending team invitation after signing in", async () => {
+    window.sessionStorage.setItem("codedna.pendingInvitation", "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde");
+    fetchMock.mockResolvedValueOnce(jsonResponse({ data: user }));
+    render(<LoginForm />);
+
+    await fillAndSubmit("ada@example.com", "secret-123");
+
+    expect(router.replace).toHaveBeenCalledWith("/invitations/accept");
+    window.sessionStorage.clear();
+  });
+
   it("signs in and navigates to the app", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ data: user }));
     render(<LoginForm />);

@@ -80,6 +80,18 @@ export const API_ERROR_CODES = [
   "SUBSCRIPTION_INACTIVE",
   "QUOTA_EXCEEDED",
   "BILLING_UNAVAILABLE",
+  "ORGANIZATION_SUSPENDED",
+  "ORGANIZATION_ARCHIVED",
+  "MEMBERSHIP_SUSPENDED",
+  "INSUFFICIENT_ORGANIZATION_ROLE",
+  "ALREADY_A_MEMBER",
+  "INVITATION_EXPIRED",
+  "INVITATION_REVOKED",
+  "INVITATION_ALREADY_ACCEPTED",
+  "INVITATION_EMAIL_MISMATCH",
+  "SEAT_LIMIT_REACHED",
+  "CANNOT_REMOVE_OWNER",
+  "CANNOT_CHANGE_OWNER_ROLE",
   "INTERNAL_ERROR",
   "SERVICE_UNAVAILABLE",
 ] as const;
@@ -203,6 +215,8 @@ export interface Project {
   /** ULID (26 characters, lowercase). */
   id: string;
   type: "project";
+  /** Phase 24: the owning organization, or null for a personal project. */
+  organization_id: string | null;
   name: string;
   slug: string;
   description: string | null;
@@ -1401,4 +1415,136 @@ export interface BillingPlan {
   prices: { monthly_minor: number | null; annual_minor: number | null };
   features: { key: BillingFeature; label: string; included: boolean }[];
   quotas: { key: string; label: string; unit: "COUNT" | "BYTES"; period: "MONTHLY" | "CURRENT"; limit: number | null }[];
+}
+
+// Organizations (Phase 24): OrganizationResource and friends. Roles and
+// statuses are the server's; the UI shows controls only where the server
+// would allow them, and the server decides every request.
+
+export const ORGANIZATION_ROLES = ["OWNER", "ADMIN", "MEMBER"] as const;
+export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
+export type OrganizationStatus = "ACTIVE" | "SUSPENDED" | "ARCHIVED";
+export type MembershipStatus = "ACTIVE" | "SUSPENDED" | "REMOVED";
+export type InvitationStatus = "PENDING" | "ACCEPTED" | "REVOKED" | "EXPIRED";
+
+export interface Organization {
+  id: string;
+  type: "organization";
+  name: string;
+  slug: string;
+  status: OrganizationStatus;
+  /** The caller's own role and membership status. */
+  role: OrganizationRole;
+  membership_status: MembershipStatus;
+  member_count: number;
+  project_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizationMembership {
+  id: string;
+  type: "organization_membership";
+  /** email is null unless the caller is an ADMIN or the OWNER. */
+  user: { id: string; name: string; email: string | null };
+  role: OrganizationRole;
+  status: MembershipStatus;
+  joined_at: string;
+  updated_at: string;
+}
+
+export interface OrganizationInvitation {
+  id: string;
+  type: "organization_invitation";
+  email: string;
+  role: Exclude<OrganizationRole, "OWNER">;
+  status: InvitationStatus;
+  invited_by: { id: string; name: string };
+  expires_at: string;
+  accepted_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+/** POST .../invitations: the invitation and, once, its token. */
+export interface CreatedInvitation extends OrganizationInvitation {
+  token: string;
+}
+
+export interface InvitationPreview {
+  type: "organization_invitation_preview";
+  status: InvitationStatus;
+  /** Only while the invitation is PENDING. */
+  organization: { name: string } | null;
+  role: Exclude<OrganizationRole, "OWNER"> | null;
+  expires_at: string | null;
+  email_hint: string | null;
+}
+
+export interface InvitationAcceptance {
+  type: "organization_invitation_acceptance";
+  organization: Organization;
+  membership: OrganizationMembership;
+}
+
+export interface OrganizationAuditEvent {
+  id: string;
+  type: "organization_audit_event";
+  action: string;
+  actor: { id: string; name: string | null } | null;
+  target: { type: string; id: string } | null;
+  metadata: Record<string, unknown>;
+  request_id: string | null;
+  created_at: string;
+}
+
+export interface OrganizationBilling {
+  type: "organization_billing";
+  plan: BillingPlanRef;
+  entitlement_version: string;
+  seats: { limit: number; used: number; remaining: number };
+  period: { start: string; end: string };
+  quotas: BillingQuota[];
+}
+
+export interface CompetencyAggregate {
+  key: string;
+  measured_projects: number;
+  sufficient: boolean;
+  average_score: number | null;
+  gap_projects: number;
+  priorities: { HIGH: number; MEDIUM: number; LOW: number };
+  insufficient_evidence_projects: number;
+}
+
+/** GET .../analytics: read-only, deterministic, grouped by version. */
+export interface OrganizationAnalytics {
+  type: "organization_analytics";
+  organization_id: string;
+  generated_at: string;
+  minimum_projects: number;
+  members: { active: number; suspended: number; by_role: Record<OrganizationRole, number> };
+  seats: { limit: number; used: number; remaining: number };
+  projects: { active: number; archived: number };
+  analyses: { succeeded: number; failed: number; succeeded_last_30_days: number; last_completed_at: string | null };
+  dna: {
+    projects_with_dna: number;
+    members_with_dna: number;
+    by_version: {
+      scoring_version: string;
+      projects: number;
+      scored_projects: number;
+      sufficient: boolean;
+      average_overall_score: number | null;
+    }[];
+  };
+  competencies: {
+    competency_version: string;
+    skill_gap_version: string;
+    target_profile: string;
+    target_profile_version: string;
+    projects: number;
+    snapshot_status: Record<string, number>;
+    competencies: CompetencyAggregate[];
+  }[];
 }

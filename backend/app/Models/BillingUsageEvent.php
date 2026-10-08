@@ -14,11 +14,13 @@ use Illuminate\Support\Carbon;
 /**
  * One entry of the usage ledger (Phase 23): what was consumed, refunded or
  * refused, by whom, under which plan version and subscription, for which
- * resource, in which period. Append-only. It never holds source code, URLs
+ * resource, in which period. Append-only. Its billing subject is a user or, for
+ * team projects (Phase 24), an organization. It never holds source code, URLs
  * or secrets: only the resource's type and ID.
  *
  * @property string $id
- * @property string $user_id
+ * @property string|null $user_id
+ * @property string|null $organization_id
  * @property string|null $billing_subscription_id
  * @property string $billing_plan_id
  * @property QuotaKey $quota_key

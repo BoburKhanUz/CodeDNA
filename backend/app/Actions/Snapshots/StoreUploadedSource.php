@@ -77,8 +77,8 @@ final readonly class StoreUploadedSource
         }
         // Billing (Phase 23): refuse before storing anything if the upload no
         // longer fits the plan; RecordSourceSnapshot charges it atomically.
-        $this->usage->ensureAvailable($project->user_id, QuotaKey::SourceUploads);
-        $this->usage->ensureAvailable($project->user_id, QuotaKey::SourceUploadBytes, max(1, $sizeBytes));
+        $this->usage->ensureAvailable($project, QuotaKey::SourceUploads);
+        $this->usage->ensureAvailable($project, QuotaKey::SourceUploadBytes, max(1, $sizeBytes));
 
         $snapshotId = strtolower((string) Str::ulid());
         $diskName = (string) $this->config->get('codedna.sources.disk');

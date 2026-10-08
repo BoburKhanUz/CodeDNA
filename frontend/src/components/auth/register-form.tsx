@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { isApiError } from "@/lib/api/errors";
 import { register } from "@/lib/auth/client";
+import { afterSignInPath } from "@/lib/organizations/invitation-link";
 
 const FIELDS = ["name", "email", "password", "password_confirmation"] as const;
 type Field = (typeof FIELDS)[number];
@@ -56,7 +57,7 @@ export function RegisterForm() {
         password: values.password,
         password_confirmation: values.password_confirmation,
       });
-      router.replace("/app");
+      router.replace(afterSignInPath());
       router.refresh();
     } catch (error) {
       if (isApiError(error) && error.code === "VALIDATION_FAILED") {

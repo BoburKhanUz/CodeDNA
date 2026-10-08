@@ -45,6 +45,7 @@ describe("/app (authenticated area)", () => {
     expect(screen.getByRole("link", { name: "Profile" })).not.toHaveAttribute("aria-current");
     expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute("href", "/app/projects");
     expect(screen.getByRole("link", { name: "Billing" })).toHaveAttribute("href", "/app/billing");
+    expect(screen.getByRole("link", { name: "Teams" })).toHaveAttribute("href", "/app/organizations");
   });
 
   it("propagates API failures to the error boundary instead of logging the user out", async () => {

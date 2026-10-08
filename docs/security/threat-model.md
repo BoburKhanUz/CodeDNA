@@ -122,6 +122,13 @@ or stack traces.
 - **Evaluator:** has no network at all.
 - **Redis:** requires a password.
 
+**Teams (Phase 24).** Organizations add a tenant boundary: membership is
+checked first on every organization and team-project route. Invitation tokens
+are hashed, single-use, email-bound, short-lived and redacted from the access
+log. Roles cannot be escalated, the owner cannot be removed, and seats cannot
+be raced. The full table is in
+[teams architecture](../teams/teams-architecture.md#threat-model).
+
 ## Assumptions
 
 - The host and Docker daemon are trusted, and only trusted operators can

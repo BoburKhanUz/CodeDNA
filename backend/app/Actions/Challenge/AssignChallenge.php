@@ -59,7 +59,7 @@ final readonly class AssignChallenge
             throw new ApiException(ErrorCode::ChallengesDisabled);
         }
         // Billing (Phase 23): the owner's plan must include coding challenges.
-        $this->entitlements->require($project->user_id, Feature::CodingChallenges);
+        $this->entitlements->require($project, Feature::CodingChallenges);
 
         try {
             return $this->db->transaction(fn (): AssignedChallenge => $this->resolve($project, $actor, $skillGapSnapshotId, $competencyKey));

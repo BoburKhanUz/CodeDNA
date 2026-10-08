@@ -377,6 +377,25 @@ while IFS= read -r line; do
 done < <("${compose[@]}" exec -T -e VERIFY_ZIP_BASE64="$analyzer_zip" queue php /dev/stdin < scripts/verify-analyzer.php 2>/dev/null || echo "FAIL integration script exited with an error")
 check "analyzer workspace is empty afterwards" bash -c "[[ -z \$(${compose[*]} exec -T analyzer ls -A /tmp/codedna) ]]"
 
+echo "Teams (Phase 24)"
+check "anonymous GET /api/v1/organizations -> 401" bash -c \
+    "[[ \$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: application/json' '$base/api/v1/organizations') == 401 ]]"
+check "GET /invitations/accept (public invitation page) -> 200" bash -c \
+    "[[ \$(curl -s -o /dev/null -w '%{http_code}' '$base/invitations/accept') == 200 ]]"
+# Invitation tokens travel in the API path; the access log must never hold one.
+invitation_token_redacted() {
+    local token since
+    token="Vf$(python3 -I -c 'import secrets; print(secrets.token_hex(20))')x"
+    since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    [[ $(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: application/json' "$base/api/v1/organizations/invitations/$token") == 404 ]] || return 1
+    [[ $(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Accept: application/json' "$base/api/v1/organizations/invitations/$token/accept") == 401 ]] || return 1
+    sleep 1
+    local log
+    log=$("${compose[@]}" logs --since "$since" nginx 2>&1)
+    ! grep -q "$token" <<<"$log" && grep -q 'organizations/invitations/\[redacted\]/accept' <<<"$log"
+}
+check "invitation tokens are redacted from the Nginx access log" invitation_token_redacted
+
 echo
 if [[ $failures -eq 0 ]]; then
     echo "All infrastructure checks passed."

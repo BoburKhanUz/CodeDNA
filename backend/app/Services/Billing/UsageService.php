@@ -10,7 +10,10 @@ use App\Enums\Billing\UsageOutcome;
 use App\Exceptions\ApiException;
 use App\Http\Errors\ErrorCode;
 use App\Models\BillingUsageEvent;
+use App\Models\Organization;
+use App\Models\Project;
 use App\Models\User;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use LogicException;
@@ -35,7 +38,7 @@ final readonly class UsageService
     /**
      * @throws ApiException FEATURE_NOT_INCLUDED, SUBSCRIPTION_INACTIVE, QUOTA_EXCEEDED
      */
-    public function consume(User|string $user, QuotaKey $key, string $resourceType, string $resourceId, int $amount = 1): void
+    public function consume(User|string|Project|Organization $subject, QuotaKey $key, string $resourceType, string $resourceId, int $amount = 1): void
     {
         if (DB::transactionLevel() === 0) {
             throw new LogicException('consume() must run inside the transaction that creates the resource.');
@@ -43,26 +46,22 @@ final readonly class UsageService
         if ($amount < 1) {
             throw new LogicException('Usage is consumed in positive whole units.');
         }
-        $context = $this->entitlements->require($user, $key->feature());
+        $context = $this->entitlements->require($subject, $key->feature());
         if ($this->charged($key, $resourceType, $resourceId)) {
             return;
         }
 
         $limit = $context->plan->includes($key->feature()) ? $context->plan->limitFor($key) : 0;
-        DB::table('billing_usage_counters')->insertOrIgnore([
-            'user_id' => $context->userId, 'quota_key' => $key->value, 'period_start' => $context->periodStart, 'used' => 0, 'updated_at' => $context->now,
+        DB::table($context->counterTable())->insertOrIgnore([
+            ...$context->subject(), 'quota_key' => $key->value, 'period_start' => $context->periodStart, 'used' => 0, 'updated_at' => $context->now,
         ]);
-        $counter = DB::table('billing_usage_counters')
-            ->where('user_id', $context->userId)->where('quota_key', $key->value)->where('period_start', $context->periodStart)
-            ->lockForUpdate()->first();
+        $counter = $this->counter($context, $key)->lockForUpdate()->first();
         $used = (int) ($counter->used ?? 0);
         if ($limit !== null && $used + $amount > $limit) {
             $this->refuse($context, $key, $amount, $limit, $used);
         }
 
-        DB::table('billing_usage_counters')
-            ->where('user_id', $context->userId)->where('quota_key', $key->value)->where('period_start', $context->periodStart)
-            ->update(['used' => DB::raw('used + '.$amount), 'updated_at' => $context->now]);
+        $this->counter($context, $key)->update(['used' => DB::raw('used + '.$amount), 'updated_at' => $context->now]);
         $this->record($context, $key, UsageOutcome::Accepted, $amount, $resourceType, $resourceId);
     }
 
@@ -72,13 +71,11 @@ final readonly class UsageService
      *
      * @throws ApiException FEATURE_NOT_INCLUDED, SUBSCRIPTION_INACTIVE, QUOTA_EXCEEDED
      */
-    public function ensureAvailable(User|string $user, QuotaKey $key, int $amount = 1): void
+    public function ensureAvailable(User|string|Project|Organization $subject, QuotaKey $key, int $amount = 1): void
     {
-        $context = $this->entitlements->require($user, $key->feature());
+        $context = $this->entitlements->require($subject, $key->feature());
         $limit = $context->plan->includes($key->feature()) ? $context->plan->limitFor($key) : 0;
-        $used = (int) DB::table('billing_usage_counters')
-            ->where('user_id', $context->userId)->where('quota_key', $key->value)->where('period_start', $context->periodStart)
-            ->value('used');
+        $used = (int) $this->counter($context, $key)->value('used');
         if ($limit !== null && $used + $amount > $limit) {
             $this->refuse($context, $key, $amount, $limit, $used);
         }
@@ -97,26 +94,26 @@ final readonly class UsageService
             if ($charge === null) {
                 return;
             }
-            $counter = DB::table('billing_usage_counters')
-                ->where('user_id', $charge->user_id)->where('quota_key', $key->value)->where('period_start', $charge->period_start)
-                ->lockForUpdate()->first();
+            $counters = $charge->organization_id !== null
+                ? DB::table('billing_organization_usage_counters')->where('organization_id', $charge->organization_id)
+                : DB::table('billing_usage_counters')->where('user_id', $charge->user_id);
+            $counters->where('quota_key', $key->value)->where('period_start', $charge->period_start);
+            $counter = (clone $counters)->lockForUpdate()->first();
             $refunded = BillingUsageEvent::query()
                 ->where('quota_key', $key->value)->where('resource_type', $resourceType)->where('resource_id', $resourceId)
                 ->where('outcome', UsageOutcome::Refunded->value)->exists();
             if ($refunded || $counter === null) {
                 return;
             }
-            DB::table('billing_usage_counters')
-                ->where('user_id', $charge->user_id)->where('quota_key', $key->value)->where('period_start', $charge->period_start)
-                ->update(['used' => DB::raw('GREATEST(used - '.$charge->amount.', 0)'), 'updated_at' => now()]);
+            $counters->update(['used' => DB::raw('GREATEST(used - '.$charge->amount.', 0)'), 'updated_at' => now()]);
             $refund = new BillingUsageEvent;
             $refund->forceFill([
-                'user_id' => $charge->user_id, 'billing_subscription_id' => $charge->billing_subscription_id, 'billing_plan_id' => $charge->billing_plan_id,
+                'user_id' => $charge->user_id, 'organization_id' => $charge->organization_id, 'billing_subscription_id' => $charge->billing_subscription_id, 'billing_plan_id' => $charge->billing_plan_id,
                 'quota_key' => $key, 'outcome' => UsageOutcome::Refunded, 'amount' => -$charge->amount,
                 'period_start' => $charge->period_start, 'period_end' => $charge->period_end,
                 'resource_type' => $resourceType, 'resource_id' => $resourceId,
             ])->save();
-            Log::info('billing.usage.refunded', ['user_id' => $charge->user_id, 'quota' => $key->value, 'resource_type' => $resourceType, 'resource_id' => $resourceId]);
+            Log::info('billing.usage.refunded', ['user_id' => $charge->user_id, 'organization_id' => $charge->organization_id, 'quota' => $key->value, 'resource_type' => $resourceType, 'resource_id' => $resourceId]);
         });
     }
 
@@ -130,7 +127,7 @@ final readonly class UsageService
     {
         $reject = fn () => $this->record($context, $key, UsageOutcome::Rejected, $amount, null, null);
         DB::transactionLevel() === 0 ? $reject() : DB::afterRollBack($reject);
-        Log::info('billing.quota.exceeded', ['user_id' => $context->userId, 'quota' => $key->value, 'plan' => $context->plan->key, 'limit' => $limit, 'used' => $used]);
+        Log::info('billing.quota.exceeded', [...$context->subject(), 'quota' => $key->value, 'plan' => $context->plan->key, 'limit' => $limit, 'used' => $used]);
 
         throw new ApiException(ErrorCode::QuotaExceeded, null, [
             'quota' => $key->value,
@@ -138,6 +135,13 @@ final readonly class UsageService
             'used' => $used,
             'resets_at' => $key->period() === QuotaPeriod::Monthly ? $context->periodEnd->toIso8601ZuluString() : null,
         ]);
+    }
+
+    /** The subject's counter row for the quota in the context's period. */
+    private function counter(BillingContext $context, QuotaKey $key): Builder
+    {
+        return DB::table($context->counterTable())->where($context->subject())
+            ->where('quota_key', $key->value)->where('period_start', $context->periodStart);
     }
 
     private function charged(QuotaKey $key, string $resourceType, string $resourceId): bool
@@ -151,7 +155,7 @@ final readonly class UsageService
     {
         $event = new BillingUsageEvent;
         $event->forceFill([
-            'user_id' => $context->userId, 'billing_subscription_id' => $context->subscription?->id, 'billing_plan_id' => $context->plan->id,
+            ...$context->subject(), 'billing_subscription_id' => $context->subscription?->id, 'billing_plan_id' => $context->plan->id,
             'quota_key' => $key, 'outcome' => $outcome, 'amount' => $amount,
             'period_start' => $context->periodStart, 'period_end' => $context->periodEnd,
             'resource_type' => $resourceType, 'resource_id' => $resourceId,

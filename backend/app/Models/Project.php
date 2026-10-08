@@ -26,6 +26,7 @@ use Illuminate\Support\Carbon;
  *
  * @property string $id
  * @property string $user_id
+ * @property string|null $organization_id
  * @property string $name
  * @property string $slug
  * @property string|null $description
@@ -132,6 +133,23 @@ class Project extends Model
     public function isActive(): bool
     {
         return $this->status === ProjectStatus::Active;
+    }
+
+    /**
+     * Phase 24: an organization's project (access through membership) or,
+     * when NULL, a personal one (access by its owner, user_id). Set at
+     * creation only; user_id stays the creator.
+     *
+     * @return BelongsTo<Organization, $this>
+     */
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
+    public function isTeamProject(): bool
+    {
+        return $this->organization_id !== null;
     }
 
     /**

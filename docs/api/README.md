@@ -80,6 +80,24 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `GET` | `/api/v1/billing/subscription` | authenticated | 200 | The caller's current subscription and its history |
 | `GET` | `/api/v1/billing/usage` | authenticated | 200 | The caller's usage ledger (paginated, newest first) |
 | `POST` | `/api/v1/billing/webhooks/{provider}` | provider signature | 200 | Payment provider events (configured provider only) |
+| `GET` | `/api/v1/organizations` | authenticated | 200 | The caller's organizations (teams) with their role |
+| `POST` | `/api/v1/organizations` | authenticated | 201 | Create an organization; the caller becomes OWNER |
+| `GET` | `/api/v1/organizations/{organization}` | member | 200 | One organization |
+| `PATCH` | `/api/v1/organizations/{organization}` | ADMIN+ | 200 | Rename |
+| `POST` | `/api/v1/organizations/{organization}/archive` | OWNER | 200 | Archive (irreversible; nothing is deleted) |
+| `GET` | `/api/v1/organizations/{organization}/billing` | ADMIN+ | 200 | The organization as a billing subject: plan, seats, quotas (read-only) |
+| `GET` | `/api/v1/organizations/{organization}/members` | member | 200 | Members (emails for ADMIN+) |
+| `PATCH` | `/api/v1/organizations/{organization}/members/{membership}` | ADMIN+ | 200 | Change a member's role and/or status |
+| `DELETE` | `/api/v1/organizations/{organization}/members/{membership}` | ADMIN+ | 200 | Remove a member (status REMOVED; the record stays) |
+| `GET` | `/api/v1/organizations/{organization}/invitations` | ADMIN+ | 200 | Invitations (never their tokens) |
+| `POST` | `/api/v1/organizations/{organization}/invitations` | ADMIN+ | 201 | Invite an email; returns the token once |
+| `POST` | `/api/v1/organizations/{organization}/invitations/{invitation}/revoke` | ADMIN+ | 200 | Revoke an invitation |
+| `GET` | `/api/v1/organizations/invitations/{token}` | none | 200 | Preview an invitation link |
+| `POST` | `/api/v1/organizations/invitations/{token}/accept` | invited user | 200 | Accept an invitation |
+| `GET` | `/api/v1/organizations/{organization}/projects` | member | 200 | The organization's projects |
+| `POST` | `/api/v1/organizations/{organization}/projects` | ADMIN+ | 201 | Create a team project |
+| `GET` | `/api/v1/organizations/{organization}/audit-events` | ADMIN+ | 200 | The audit log (paginated, newest first) |
+| `GET` | `/api/v1/organizations/{organization}/analytics` | member | 200 | Read-only team analytics |
 
 There is no `DELETE` for projects (`405`) and no update, delete or download
 for snapshots. DNA, competency and skill gap snapshots are read-only (no
@@ -88,7 +106,8 @@ write method on `/dna`, `/competencies` or `/skill-gaps`). See
 [Analyses](#analyses), [DNA](#dna), [Competencies](#competencies),
 [Skill gaps](#skill-gaps), [AI assessments](#ai-assessments) and
 [Growth tracking](#growth-tracking), [Historical DNA](#historical-dna) and
-[GitHub integration](#github-integration) and [Billing](#billing). Growth
+[GitHub integration](#github-integration), [Billing](#billing) and
+[Organizations](#organizations). Growth
 and history are read-only (no write method on `/growth` or `/history`), and
 so is billing for users (no write method on `/billing…`).
 
@@ -1508,6 +1527,113 @@ event is answered `200`:
 again). The outcomes are listed in
 [Billing architecture](../billing/billing-architecture.md#webhooks).
 
+## Organizations
+
+Phase 24. Organizations (shown to users as teams) own projects and have
+members; see [Teams architecture](../teams/teams-architecture.md),
+[Authorization](../teams/authorization.md),
+[Invitations](../teams/invitations.md),
+[Billing boundary](../teams/billing-boundary.md) and
+[Team analytics](../teams/team-analytics.md).
+
+Access is decided on the server for every request, in this order:
+
+1. An organization that does not exist, or one the caller is not a member of
+   (including a REMOVED member), answers `404 RESOURCE_NOT_FOUND`.
+2. A suspended membership answers `403 MEMBERSHIP_SUSPENDED`.
+3. Too low a role answers `403 INSUFFICIENT_ORGANIZATION_ROLE`.
+4. A change to a SUSPENDED or ARCHIVED organization answers `409
+   ORGANIZATION_SUSPENDED` or `ORGANIZATION_ARCHIVED`; reads stay available.
+
+No request body, header or query parameter can choose a role, an owner, a
+status, a plan or a seat limit.
+
+### `POST /api/v1/organizations`
+
+`{ "name": "Acme Engineering" }` (1–100 characters, trimmed). The slug is
+generated (`acme-engineering-k3x9qa`) and the creator becomes the OWNER. The
+organization starts ACTIVE, on the FREE plan with 5 seats. Every other field
+is ignored.
+
+### `GET /api/v1/organizations` and `GET /api/v1/organizations/{organization}`
+
+```json
+{
+  "data": {
+    "id": "01k…", "type": "organization", "name": "Acme Engineering", "slug": "acme-engineering-k3x9qa",
+    "status": "ACTIVE", "role": "ADMIN", "membership_status": "ACTIVE",
+    "member_count": 4, "project_count": 2, "created_at": "…", "updated_at": "…"
+  }
+}
+```
+
+`role` and `membership_status` are the caller's own. The list includes
+organizations where the caller is ACTIVE or SUSPENDED, never REMOVED.
+
+### Members
+
+- `GET .../members` lists ACTIVE and SUSPENDED members: `user` (`id`,
+  `name`, and `email` for ADMIN+ only), `role`, `status` and `joined_at`.
+- `PATCH .../members/{membership}` takes `{ "role": "ADMIN"|"MEMBER" }`
+  and/or `{ "status": "ACTIVE"|"SUSPENDED" }`. The actor must outrank the
+  target and may give roles only up to their own; OWNER is never assignable
+  (422).
+- `DELETE .../members/{membership}` sets the status to REMOVED; the record
+  is kept. The owner gives `409 CANNOT_REMOVE_OWNER` or
+  `CANNOT_CHANGE_OWNER_ROLE`. A reactivation without a free seat gives `402
+  SEAT_LIMIT_REACHED`.
+
+### Invitations
+
+`POST .../invitations` takes `{ "email": "dev@example.com", "role": "MEMBER" }`
+and returns the invitation and, **once**, its `token`. Share it as
+`/invitations/accept#<token>`. The token expires after 72 hours and is
+single-use.
+
+`GET /api/v1/organizations/invitations/{token}` (no session) returns
+`status`; while the invitation is PENDING it also returns the organization's
+`name`, the `role`, `expires_at` and a masked `email_hint`.
+
+`POST /api/v1/organizations/invitations/{token}/accept` (the invited
+account's session) returns the organization and the new membership. It can
+fail with:
+
+- `403 INVITATION_EMAIL_MISMATCH`;
+- `409 INVITATION_EXPIRED`, `INVITATION_REVOKED`, `INVITATION_ALREADY_ACCEPTED` or `ALREADY_A_MEMBER`;
+- `402 SEAT_LIMIT_REACHED`;
+- `404` for unknown and malformed tokens alike.
+
+Tokens are never stored (only their SHA-256) and never logged; the access
+log redacts them.
+
+### Team projects
+
+`POST .../projects` takes the same body as `POST /api/v1/projects`; the slug
+is unique within the organization. It needs ADMIN+ and an ACTIVE
+organization, and it uses the organization's project slot (`402
+QUOTA_EXCEEDED` with the organization's limit). The project is then used
+through the ordinary `/api/v1/projects/{project}/…` routes, where:
+
+- any active member reads and works on it;
+- ADMIN+ update, archive and connect GitHub;
+- non-members get 404.
+
+Project responses carry `organization_id`, which is `null` for personal
+projects. `GET /api/v1/projects` lists personal projects only.
+
+### `GET .../audit-events`
+
+ADMIN+, paginated, newest first: `action`, `actor`, `target` (`type`, `id`),
+`metadata` and `request_id`. Read-only; there is no write method.
+
+### `GET .../analytics`
+
+Any member. Members, seats, projects, analyses, and DNA and competency
+figures from the latest snapshot of each active team project. DNA figures
+are grouped by version, and an average is given only with at least
+`minimum_projects` measured projects; see
+[Team analytics](../teams/team-analytics.md).
+
 ## Authentication (browser, Sanctum SPA)
 
 Browsers authenticate with Laravel's **session cookie**. No token is ever
@@ -1635,6 +1761,18 @@ Every error, on every API route, uses one envelope:
 | 402 | `FEATURE_NOT_INCLUDED` | The caller's plan does not include the feature ([Billing](#billing)) |
 | 402 | `SUBSCRIPTION_INACTIVE` | The caller's subscription does not grant access now |
 | 402 | `QUOTA_EXCEEDED` | The request would exceed a plan limit (`details`: `quota`, `limit`, `used`, `resets_at`) |
+| 402 | `SEAT_LIMIT_REACHED` | The organization has no free seat (`details`: `limit`, `used`) |
+| 403 | `MEMBERSHIP_SUSPENDED` | The caller's membership in the organization is suspended |
+| 403 | `INSUFFICIENT_ORGANIZATION_ROLE` | The caller's organization role does not allow the action |
+| 403 | `INVITATION_EMAIL_MISMATCH` | The invitation is for another email address |
+| 409 | `ORGANIZATION_SUSPENDED` | The organization is suspended (read-only) |
+| 409 | `ORGANIZATION_ARCHIVED` | The organization is archived (read-only) |
+| 409 | `ALREADY_A_MEMBER` | The person is already a member |
+| 409 | `INVITATION_EXPIRED` | The invitation has expired |
+| 409 | `INVITATION_REVOKED` | The invitation was revoked |
+| 409 | `INVITATION_ALREADY_ACCEPTED` | The invitation was already used |
+| 409 | `CANNOT_REMOVE_OWNER` | The owner cannot be removed |
+| 409 | `CANNOT_CHANGE_OWNER_ROLE` | The owner's role and status cannot be changed |
 | 403 | `FORBIDDEN` | Authenticated but not allowed (policy denial) |
 | 404 | `RESOURCE_NOT_FOUND` | Unknown route or resource the caller may not see (no existence leaks) |
 | 405 | `METHOD_NOT_ALLOWED` | Wrong HTTP method for the route (e.g. `DELETE` on a project) |
@@ -1715,6 +1853,11 @@ queued jobs (Laravel Context).
 | `github-import` | `POST /projects/{project}/github/imports` | 5 / minute **and** 30 / hour | user ID |
 | `billing-read` | `GET /billing…` | 60 / minute | user ID |
 | `billing-webhook` | `POST /billing/webhooks/{provider}` | 600 / minute | provider + IP |
+| `organization-create` | `POST /organizations` | 5 / minute **and** 20 / hour | user ID |
+| `organization-write` | `PATCH /organizations/{organization}`, `.../archive`, member changes, invitation revocation | 30 / minute | user ID |
+| `invitation-create` | `POST /organizations/{organization}/invitations` | 10 / minute **and** 50 / hour | user ID |
+| `invitation-accept` | `POST /organizations/invitations/{token}/accept` | 10 / minute **and** 20 / minute | user ID, **and** IP |
+| `invitation-preview` | `GET /organizations/invitations/{token}` | 30 / minute | IP |
 
 Every attempt counts, successful or not. When a limit is exceeded the
 response is `429 RATE_LIMITED` with `Retry-After`. Throttled routes also

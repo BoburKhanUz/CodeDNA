@@ -46,6 +46,13 @@ final class PlanCatalog
             ?? throw new ApiException(ErrorCode::BillingUnavailable);
     }
 
+    /** A stored plan version by ID (an organization's billing account names one). */
+    public function byId(string $id): BillingPlan
+    {
+        return $this->all()->first(fn (BillingPlan $p): bool => $p->id === $id)
+            ?? throw new ApiException(ErrorCode::BillingUnavailable);
+    }
+
     /** A plan version a provider may subscribe a user to: only ACTIVE plans other than FREE. */
     public function purchasable(string $key, ?string $version): ?BillingPlan
     {

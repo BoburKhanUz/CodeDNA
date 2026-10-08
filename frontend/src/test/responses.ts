@@ -55,6 +55,7 @@ export const profile: DeveloperProfile = {
 export const project: Project = {
   id: "01k6p0a1b2c3d4e5f6g7h8j9km",
   type: "project",
+  organization_id: null,
   name: "Billing Service",
   slug: "billing-service",
   description: null,

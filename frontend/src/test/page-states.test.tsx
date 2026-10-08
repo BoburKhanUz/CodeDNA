@@ -11,6 +11,11 @@ import { DnaDashboard } from "@/components/dna/dna-dashboard";
 import { ProjectGitHubView } from "@/components/github/project-github";
 import { GrowthView } from "@/components/growth/growth-view";
 import { HistoryView } from "@/components/history/history-view";
+import { OrganizationAnalytics } from "@/components/organizations/organization-analytics";
+import { OrganizationAudit } from "@/components/organizations/organization-audit";
+import { OrganizationMembers } from "@/components/organizations/organization-members";
+import { OrganizationOverview } from "@/components/organizations/organization-overview";
+import { OrganizationProjects } from "@/components/organizations/organization-projects";
 import { ProjectDetail } from "@/components/projects/project-detail";
 import { RoadmapView } from "@/components/roadmap/roadmap-view";
 import { SkillGapAnalysis } from "@/components/skill-gap/skill-gap-analysis";
@@ -53,6 +58,15 @@ const pages: [string, (id: string) => ReactElement][] = [
   ["history", (id) => <HistoryView projectId={id} />],
   ["GitHub", (id) => <ProjectGitHubView projectId={id} />],
 ];
+
+// Phase 24: every team page handles the same states (OrganizationFrame).
+pages.push(
+  ["team overview", (id) => <OrganizationOverview organizationId={id} />],
+  ["team members", (id) => <OrganizationMembers organizationId={id} />],
+  ["team projects", (id) => <OrganizationProjects organizationId={id} />],
+  ["team audit log", (id) => <OrganizationAudit organizationId={id} />],
+  ["team analytics", (id) => <OrganizationAnalytics organizationId={id} />],
+);
 
 describe.each(pages)("the %s page", (_, page) => {
   it("shows a loading state while waiting", () => {

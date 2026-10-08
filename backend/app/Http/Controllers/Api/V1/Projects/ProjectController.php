@@ -18,7 +18,9 @@ use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Http\JsonResponse;
 
 /**
- * /api/v1/projects — the authenticated developer's projects.
+ * /api/v1/projects — the authenticated developer's personal projects.
+ * Creating here always creates a personal project; team projects are
+ * created and listed under /api/v1/organizations/{organization}/projects.
  *
  * There is no DELETE: projects leave the active list through
  * POST /api/v1/projects/{project}/archive (ArchiveProjectController).
@@ -30,7 +32,8 @@ final class ProjectController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $projects = $user->projects()
+        // Personal projects only; team projects are listed per organization (Phase 24).
+        $projects = $user->projects()->whereNull('organization_id')
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()))
             ->orderByDesc('created_at')
             ->orderByDesc('id')

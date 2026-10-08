@@ -67,6 +67,20 @@ enum ErrorCode: string
     case SubscriptionInactive = 'SUBSCRIPTION_INACTIVE';
     case QuotaExceeded = 'QUOTA_EXCEEDED';
     case BillingUnavailable = 'BILLING_UNAVAILABLE';
+    // Organizations (Phase 24). An unknown organization, or one the caller
+    // is not a member of, is RESOURCE_NOT_FOUND, as for projects.
+    case OrganizationSuspended = 'ORGANIZATION_SUSPENDED';
+    case OrganizationArchived = 'ORGANIZATION_ARCHIVED';
+    case MembershipSuspended = 'MEMBERSHIP_SUSPENDED';
+    case InsufficientOrganizationRole = 'INSUFFICIENT_ORGANIZATION_ROLE';
+    case AlreadyAMember = 'ALREADY_A_MEMBER';
+    case InvitationExpired = 'INVITATION_EXPIRED';
+    case InvitationRevoked = 'INVITATION_REVOKED';
+    case InvitationAlreadyAccepted = 'INVITATION_ALREADY_ACCEPTED';
+    case InvitationEmailMismatch = 'INVITATION_EMAIL_MISMATCH';
+    case SeatLimitReached = 'SEAT_LIMIT_REACHED';
+    case CannotRemoveOwner = 'CANNOT_REMOVE_OWNER';
+    case CannotChangeOwnerRole = 'CANNOT_CHANGE_OWNER_ROLE';
     case InternalError = 'INTERNAL_ERROR';
     case ServiceUnavailable = 'SERVICE_UNAVAILABLE';
 
@@ -75,7 +89,7 @@ enum ErrorCode: string
         return match ($this) {
             self::BadRequest => 400,
             self::AuthenticationRequired => 401,
-            self::Forbidden => 403,
+            self::Forbidden, self::MembershipSuspended, self::InsufficientOrganizationRole, self::InvitationEmailMismatch => 403,
             self::ResourceNotFound => 404,
             self::MethodNotAllowed => 405,
             self::PayloadTooLarge, self::SourceArchiveTooLarge => 413,
@@ -86,12 +100,14 @@ enum ErrorCode: string
             self::ChallengeEvaluationUnavailable, self::ChallengeEvaluationPending, self::ChallengeClosed,
             self::RoadmapNoSkillGaps, self::RoadmapNoActionableGaps, self::RoadmapEvidenceInvalid,
             self::RoadmapNotActive, self::RoadmapStepPrerequisitesIncomplete,
-            self::GitHubAuthRequired, self::GitHubInstallationRequired, self::GitHubAlreadyConnected, self::GitHubNotConnected => 409,
+            self::GitHubAuthRequired, self::GitHubInstallationRequired, self::GitHubAlreadyConnected, self::GitHubNotConnected,
+            self::OrganizationSuspended, self::OrganizationArchived, self::AlreadyAMember, self::InvitationExpired,
+            self::InvitationRevoked, self::InvitationAlreadyAccepted, self::CannotRemoveOwner, self::CannotChangeOwnerRole => 409,
             self::ValidationFailed, self::InvalidCredentials, self::IdempotencyKeyReused,
             self::SourceArchiveInvalid, self::SourceArchiveUnsafe, self::SourceUncompressedSizeExceeded,
             self::SourceFileCountExceeded, self::SourceFileTooLarge,
             self::GitHubStateInvalid, self::GitHubRepositoryNotFound, self::GitHubBranchNotFound => 422,
-            self::FeatureNotIncluded, self::SubscriptionInactive, self::QuotaExceeded => 402,
+            self::FeatureNotIncluded, self::SubscriptionInactive, self::QuotaExceeded, self::SeatLimitReached => 402,
             self::RateLimited, self::GitHubRateLimited => 429,
             self::InternalError => 500,
             self::ServiceUnavailable, self::GitHubNotConfigured, self::GitHubUnavailable, self::BillingUnavailable => 503,
@@ -148,6 +164,18 @@ enum ErrorCode: string
             self::SubscriptionInactive => 'Your subscription is not active, so its features are paused.',
             self::QuotaExceeded => 'This would exceed what your plan includes for the current period.',
             self::BillingUnavailable => 'Billing is not available right now. Retry later.',
+            self::OrganizationSuspended => 'This organization is suspended; it can be read but not changed.',
+            self::OrganizationArchived => 'This organization is archived; it can be read but not changed.',
+            self::MembershipSuspended => 'Your membership in this organization is suspended.',
+            self::InsufficientOrganizationRole => 'Your role in this organization does not allow this.',
+            self::AlreadyAMember => 'This person is already a member of the organization.',
+            self::InvitationExpired => 'This invitation has expired. Ask for a new one.',
+            self::InvitationRevoked => 'This invitation was revoked.',
+            self::InvitationAlreadyAccepted => 'This invitation was already used.',
+            self::InvitationEmailMismatch => 'This invitation was sent to a different email address.',
+            self::SeatLimitReached => 'The organization has no free seat.',
+            self::CannotRemoveOwner => 'The owner cannot be removed from the organization.',
+            self::CannotChangeOwnerRole => "The owner's role and status cannot be changed.",
             self::GitHubUnavailable => 'GitHub is not reachable right now. Retry later.',
             self::InternalError => 'An unexpected error occurred.',
             self::ServiceUnavailable => 'The service is temporarily unavailable.',

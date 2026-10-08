@@ -236,6 +236,7 @@ references beyond the event ID:
   money, proration and dunning emails.
 - Self-service plan changes or cancellation from CodeDNA (they happen at the
   provider and arrive as webhooks).
-- Team or organization billing. `TEAM_READY` is reserved in the catalog and
-  cannot be bought.
+- Team payments. Since Phase 24 an organization is a billing subject with a
+  plan reference and seats ([team billing boundary](../teams/billing-boundary.md)),
+  but nothing can be bought for it; `TEAM_READY` stays reserved.
 - An admin UI for billing.

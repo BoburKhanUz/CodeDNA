@@ -98,7 +98,7 @@ final readonly class StartAnalysis
         $run->save();
         // Billing (Phase 23): a new run uses one analysis of the owner's plan
         // (refunded if it ends FAILED or CANCELLED); a reused run uses none.
-        $this->usage->consume($locked->user_id, QuotaKey::Analyses, 'analysis_run', $run->id);
+        $this->usage->consume($locked, QuotaKey::Analyses, 'analysis_run', $run->id);
 
         return new StartedAnalysis($run, true);
     }
