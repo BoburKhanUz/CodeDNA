@@ -67,6 +67,20 @@ REQUIRED_FOUNDATION = [
     "backend/.dockerignore",
     "frontend/.dockerignore",
     "analyzer/.dockerignore",
+    # Phase 25 — production deployment
+    "docker-compose.prod.yml",
+    ".env.production.example",
+    "docker/nginx/production/Dockerfile",
+    "docker/nginx/production/nginx.conf",
+    "docker/nginx/production/templates/default.conf.template",
+    "docker/php/conf.d/production.ini",
+    "docker/php/production-entrypoint.sh",
+    "evaluator/.dockerignore",
+    "docs/operations/production-deployment.md",
+    "docs/operations/backup-and-restore.md",
+    "docs/operations/rollback.md",
+    "docs/operations/security-baseline.md",
+    "docs/operations/production-configuration.md",
 ]
 
 # Variable names that must never carry a value in .env.example.
@@ -145,17 +159,19 @@ def check_links(markdown_files: list[str]) -> list[str]:
 
 
 def check_env_example() -> list[str]:
-    path = ROOT / ".env.example"
-    if not path.is_file():
-        return []
     errors: list[str] = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
+    # The development template and the production template (Phase 25).
+    for name in (".env.example", ".env.production.example"):
+        path = ROOT / name
+        if not path.is_file():
             continue
-        name, _, value = stripped.partition("=")
-        if SECRET_NAME.search(name.strip()) and value.strip():
-            errors.append(f".env.example:{number}: secret-like variable {name.strip()} must be empty")
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            variable, _, value = stripped.partition("=")
+            if SECRET_NAME.search(variable.strip()) and value.strip():
+                errors.append(f"{name}:{number}: secret-like variable {variable.strip()} must be empty")
     return errors
 
 
@@ -164,7 +180,7 @@ def check_no_env_files(files: list[str]) -> list[str]:
     return [
         f"real environment file must not be committed: {p}"
         for p in files
-        if pattern.search(p) and not p.endswith(".env.example")
+        if pattern.search(p) and not p.endswith((".env.example", ".env.production.example"))
     ]
 
 

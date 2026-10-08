@@ -62,6 +62,10 @@ now checks for 77 as a JSON value.
 | `codedna-internal` (no internet) | queue, analyzer, minio, minio-init |
 | none | evaluator |
 
+These are the development networks. Production splits them further:
+public, web, app, data, storage, analysis and egress, all internal except
+public and egress ([security baseline](../operations/security-baseline.md#network-segmentation)).
+
 The backend PHPUnit suite runs in the `queue` container (`make test`). It
 has the same image and code, and it can reach the analyzer for the
 integration tests.
@@ -127,18 +131,22 @@ integration tests.
 
 | Risk | Why it is acceptable now | Plan |
 |---|---|---|
-| The evaluator shares the host kernel (Docker's default seccomp profile, no gVisor/nsjail) | Many layers before the kernel: no network, no secrets, unprivileged slot users, rlimits, read-only root, `no-new-privileges`, memory, CPU and PID limits | gVisor or nsjail before untrusted code runs in production (Phase 25) |
+| In development the evaluator shares the host kernel (`runc`) | Development only. Production requires gVisor, attested at start, with no fallback (Phase 25, [production sandbox](../architecture/challenge-evaluator.md#production-sandbox)) | — |
 | The sandbox shares an interpreter with the runner, so submitted code can forge stdout records about its own cases | Grading is in Laravel against expected values the evaluator never sees. A forged record can only change the submission's own outcome, never produce a pass for wrong values. | Separate processes per case if verdict integrity needs more |
 | The evaluator uses `preexec_fn` in a threaded supervisor (a theoretical fork-time deadlock) | It would only stall the evaluator; the heartbeat makes it visible | Move to `Popen(user=, group=, process_group=)` and an exec wrapper |
-| The CSP has no `script-src` | The Next.js development server needs inline and eval'd scripts. Framing, plugins, `<base>` and form targets are restricted. | Nonce-based CSP with the production build (Phase 25) |
-| No HSTS from Nginx | There is no TLS in the development stack | The production TLS terminator sends HSTS |
+| The development CSP has no `script-src` | The Next.js development server needs inline and eval'd scripts. Production pages get a per-response nonce CSP without `unsafe-eval` (Phase 25, [CSP](../operations/security-baseline.md#content-security-policy)) | — |
+| No HSTS in development | There is no TLS in the development stack. The production Nginx sends HSTS on HTTPS only (Phase 25) | — |
 | DB-level immutability triggers exist for growth, GitHub, AI, challenge and roadmap rows, but not for DNA, competency and skill gap rows (model guards only) | Earlier phases' tests deliberately tamper with those rows; no application path updates them | Add triggers with a test-only bypass |
 | Unlinking GitHub does not revoke the tokens at GitHub | The tokens are deleted locally; a user token expires within 8 hours | Call GitHub's token revocation on unlink |
 | The per-account login limit (30 per hour) lets an attacker who keeps guessing block that account's logins for up to an hour | Standard trade-off against unlimited distributed guessing; the account itself is never locked, and an existing session keeps working | Per-account CAPTCHA or email unlock instead of a hard limit |
 | No breached-password check | It would require sending password-hash prefixes to an external service | Optional `uncompromised()` in production |
 | Registration reveals whether an email is registered | Common practice; registration is rate limited per IP (now the real IP) | Email-verification flow later |
-| The dev stack runs as the host user with writable source mounts, and most dev services have no `cap_drop` or `read_only` | Development only; the analyzer and evaluator are fully hardened | Production images in Phase 25 |
+| The dev stack runs as the host user with writable source mounts, and most dev services have no `cap_drop` or `read_only` | Development only. Production images and `docker-compose.prod.yml` harden every service (Phase 25, [security baseline](../operations/security-baseline.md#containers)) | — |
 | More than 100 GitHub installations per user are not paged | Real users have a handful | Paginate `GET /user/installations` |
+| Production pages accept inline style attributes (`style-src-attr 'unsafe-inline'`) | Used for widths and positioning. A style attribute cannot run script; scripts and `<style>` elements need the nonce | Replace with CSS variables set from classes |
+| gVisor attestation relies on gVisor's fixed synthetic kernel identity | A change in a gVisor release fails closed (the evaluator refuses to start), never open | Update the fingerprint with the gVisor upgrade |
+| PHP-FPM is reachable from the queue and scheduler on the data network | They are trusted Laravel processes with the same code and configuration | Bind PHP-FPM to the app network only, if the topology changes |
+| Postgres keeps `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETUID` and `SETGID` | The official entrypoint initialises the data volume as root, then drops to the `postgres` user | A pre-initialised volume and `user: postgres` |
 
 ## Secrets policy
 
@@ -155,25 +163,19 @@ integration tests.
 
 ## Production checklist
 
-1. **Environment and debug:** `APP_ENV` other than `local` or `testing`,
-   which enforces `APP_DEBUG=false`, https URLs, `SESSION_SECURE_COOKIE=true`,
-   stateful domains and a real AI provider.
-2. **Edge:** terminate TLS at the edge, send HSTS, and set Nginx
-   `set_real_ip_from` to the load balancer's addresses only.
-3. **Trusted proxies:** narrow `TRUSTED_PROXIES` to the proxy addresses.
-4. **Redis:** require a password and an ACL user, TLS where it crosses
-   hosts, and no public port.
-5. **PostgreSQL and storage:**
-   - PostgreSQL: no public port, least-privilege user.
-   - Storage: a private bucket, with application credentials scoped to that
-     bucket.
-6. **Images:** production images with no source bind mounts, read-only root
-   filesystems, `cap_drop: ALL`, `no-new-privileges`, and resource limits on
-   every service.
-7. **Evaluator:** run it in gVisor or nsjail, on its own node if possible.
-8. **Key rotation:** rotate `APP_KEY` (re-encrypts GitHub tokens),
-   `ANALYZER_HMAC_SECRET` (the previous secret is supported during
-   rotation), the GitHub App key, the AI key and storage keys after any
-   suspected exposure.
-9. **Before each release:** run `make verify`, `make scan-secrets` and the
-   dependency audits.
+The production profile now implements and checks this checklist (Phase 25).
+See [production deployment](../operations/production-deployment.md),
+[production configuration](../operations/production-configuration.md) and
+the [security baseline](../operations/security-baseline.md). What remains is
+the operator's:
+
+1. Keep `/etc/codedna/production.env` outside the repository (mode 0600),
+   with secrets generated once and also held in the secret manager.
+2. Install and register gVisor; run `make prod-evaluator-attest`.
+3. Behind an HTTP load balancer, configure `real_ip` for its addresses only.
+4. Rotate `APP_KEY` (re-encrypts GitHub tokens), `ANALYZER_HMAC_SECRET`
+   (the previous secret is supported during rotation), the GitHub App key,
+   the AI key and storage keys after any suspected exposure.
+5. Before each release: `make check`, `make test`, `make prod-smoke`,
+   `make scan-secrets` and `make audit`; back up before migrating
+   ([backup and restore](../operations/backup-and-restore.md)).

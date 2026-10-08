@@ -23,7 +23,7 @@ final class ConfigurationValidatorTest extends TestCase
     private const CHALLENGES = [
         'enabled' => true, 'catalog_version' => '1.0.0', 'evaluator' => 'spool', 'spool_path' => '/var/spool/codedna-challenges',
         'wait_seconds' => 45, 'max_source_bytes' => 16384, 'max_source_lines' => 400, 'max_attempts' => 5, 'job_timeout_seconds' => 90,
-        'queue_connection' => 'analysis',
+        'queue_connection' => 'analysis', 'required_isolation' => 'gvisor',
     ];
 
     /**
@@ -56,8 +56,19 @@ final class ConfigurationValidatorTest extends TestCase
             'app.url' => 'https://app.codedna.example',
             'app.timezone' => 'UTC',
             'database.default' => 'pgsql',
+            'database.connections.pgsql' => ['host' => 'postgres', 'database' => 'codedna', 'username' => 'codedna', 'password' => 'p', 'sslmode' => 'prefer'],
+            'database.redis.default' => ['url' => null, 'host' => 'redis', 'password' => 'r'],
+            'database.redis.cache' => ['url' => null, 'host' => 'redis', 'password' => 'r'],
             'session.driver' => 'redis',
             'session.secure' => true,
+            'session.http_only' => true,
+            'session.same_site' => 'lax',
+            'session.lifetime' => 120,
+            'logging.default' => 'stderr',
+            'logging.channels.stderr' => ['driver' => 'monolog', 'level' => 'info'],
+            'codedna.trusted_proxies' => ['172.16.0.0/12'],
+            'codedna.sources.disk' => 'sources',
+            'filesystems.disks.sources' => ['driver' => 's3', 'key' => 'k', 'secret' => 's', 'bucket' => 'codedna', 'endpoint' => 'http://minio:9000'],
             'cache.default' => 'redis',
             'queue.default' => 'redis',
             'sanctum.stateful' => ['app.codedna.example'],
@@ -418,6 +429,108 @@ final class ConfigurationValidatorTest extends TestCase
             $this->assertContains($message, (new ConfigurationValidator)->problems($this->config(['cors.allowed_origins' => $origins]), 'production'), json_encode($origins));
         }
         $this->assertContains('CORS origin patterns are not allowed.', (new ConfigurationValidator)->problems($this->config(['cors.allowed_origins_patterns' => ['~.*~']]), 'production'));
-        $this->assertSame([], (new ConfigurationValidator)->problems($this->config(['cors.allowed_origins' => ['https://app.codedna.example', 'http://localhost:3000']]), 'production'));
+        $this->assertSame([], (new ConfigurationValidator)->problems($this->config(['cors.allowed_origins' => ['https://app.codedna.example', 'https://admin.codedna.example:8443']]), 'production'));
+        $this->assertSame([], (new ConfigurationValidator)->problems($this->config(['cors.allowed_origins' => ['https://app.codedna.example', 'http://localhost:3000']]), 'local'));
+        // Phase 25: a deployment allows credentialed requests from https origins only.
+        $this->assertSame(['CORS_ALLOWED_ORIGINS must list https:// origins only in production.'],
+            (new ConfigurationValidator)->problems($this->config(['cors.allowed_origins' => ['https://app.codedna.example', 'http://localhost:3000']]), 'production'));
+    }
+
+    /**
+     * Phase 25: production fails closed on everything a deployment must never run with.
+     */
+    public function test_production_requires_database_redis_and_storage_credentials(): void
+    {
+        $problems = (new ConfigurationValidator)->problems($this->config([
+            'database.connections.pgsql' => ['host' => 'postgres', 'database' => 'codedna', 'username' => '', 'password' => null, 'sslmode' => 'off'],
+            'database.redis.default' => ['url' => null, 'host' => 'redis', 'password' => null],
+            'filesystems.disks.sources' => ['driver' => 's3', 'key' => '', 'secret' => null, 'bucket' => 'codedna', 'endpoint' => 'http://minio:9000'],
+        ]), 'production');
+
+        $this->assertSame([
+            'DB_USERNAME must be set in production.',
+            'DB_PASSWORD must be set in production.',
+            'DB_SSLMODE must be one of: disable, allow, prefer, require, verify-ca, verify-full.',
+            'REDIS_PASSWORD must be set in production.',
+            'SOURCE_STORAGE_ACCESS_KEY_ID must be set in production.',
+            'SOURCE_STORAGE_SECRET_ACCESS_KEY must be set in production.',
+        ], $problems);
+    }
+
+    public function test_a_redis_url_with_a_password_satisfies_redis_authentication(): void
+    {
+        $url = ['url' => 'rediss://default:secret@redis.internal:6380', 'host' => 'redis', 'password' => null];
+
+        $this->assertSame([], (new ConfigurationValidator)->problems($this->config(['database.redis.default' => $url, 'database.redis.cache' => $url]), 'production'));
+        $this->assertSame(['REDIS_PASSWORD must be set in production.'], (new ConfigurationValidator)->problems(
+            $this->config(['database.redis.cache' => ['url' => 'redis://redis.internal:6379', 'password' => '']]), 'production'));
+    }
+
+    public function test_storage_needs_tls_except_for_an_internal_service_name(): void
+    {
+        $problems = fn (string $endpoint) => (new ConfigurationValidator)->problems($this->config([
+            'filesystems.disks.sources' => ['driver' => 's3', 'key' => 'k', 'secret' => 's', 'bucket' => 'b', 'endpoint' => $endpoint],
+        ]), 'production');
+
+        $this->assertSame([], $problems('https://account.r2.example'));
+        $this->assertSame([], $problems('http://minio:9000'));
+        $this->assertSame(['SOURCE_STORAGE_ENDPOINT must use https:// (plain http only for an internal service name).'], $problems('http://storage.example.com'));
+        $this->assertSame(['SOURCE_STORAGE_ENDPOINT must use https:// (plain http only for an internal service name).'], $problems('ftp://minio'));
+        $this->assertSame(['SOURCE_STORAGE_ENDPOINT must not contain credentials.'], $problems('https://user:pass@account.r2.example'));
+    }
+
+    public function test_production_requires_a_gvisor_evaluator_or_no_evaluator(): void
+    {
+        $expected = 'CHALLENGE_EVALUATOR_ISOLATION must be "gvisor" in production (or set CHALLENGE_EVALUATOR=none).';
+
+        foreach (['production', 'staging'] as $deployed) {
+            $this->assertSame([$expected], (new ConfigurationValidator)->problems(
+                $this->config(['codedna.challenges' => ['required_isolation' => 'container'] + self::CHALLENGES]), $deployed));
+        }
+        $this->assertSame([], $this->challengeProblems(['evaluator' => 'none', 'required_isolation' => 'container']));
+        $this->assertSame([], (new ConfigurationValidator)->problems($this->config(['codedna.challenges' => ['required_isolation' => 'container'] + self::CHALLENGES]), 'local'));
+        $this->assertSame(['CHALLENGE_EVALUATOR_ISOLATION must be one of: container, gvisor.', $expected], $this->challengeProblems(['required_isolation' => 'none']));
+    }
+
+    public function test_session_cookie_cors_and_logging_are_production_safe(): void
+    {
+        $problems = (new ConfigurationValidator)->problems($this->config([
+            'session.http_only' => false,
+            'session.same_site' => 'none',
+            'session.lifetime' => 100000,
+            'cors.allowed_origins' => ['http://app.codedna.example'],
+            'logging.channels.stderr' => ['driver' => 'monolog', 'level' => 'debug'],
+        ]), 'production');
+
+        $this->assertSame([
+            'The session cookie must be HttpOnly.',
+            'SESSION_SAME_SITE must be "lax" or "strict" in production.',
+            'SESSION_LIFETIME must be between 5 and 1440 minutes in production.',
+            'CORS_ALLOWED_ORIGINS must list https:// origins only in production.',
+            'LOG_LEVEL must not be "debug" in production.',
+        ], $problems);
+    }
+
+    public function test_debug_logging_is_found_through_a_log_stack(): void
+    {
+        $this->assertContains('LOG_LEVEL must not be "debug" in production.', (new ConfigurationValidator)->problems($this->config([
+            'logging.default' => 'stack',
+            'logging.channels.stack' => ['driver' => 'stack', 'channels' => ['stderr']],
+            'logging.channels.stderr' => ['driver' => 'monolog', 'level' => 'debug'],
+        ]), 'production'));
+    }
+
+    public function test_trusted_proxies_are_explicit_everywhere(): void
+    {
+        $validator = new ConfigurationValidator;
+        $expected = 'TRUSTED_PROXIES must list explicit IP addresses or CIDR ranges; wildcards are not allowed.';
+
+        foreach (['*', '**', '0.0.0.0/0', '::/0', 'REMOTE_ADDR', 'proxy.example'] as $proxy) {
+            foreach (['production', 'local'] as $environment) {
+                $this->assertSame([$expected], $validator->problems($this->config(['codedna.trusted_proxies' => ['10.0.0.1', $proxy]]), $environment), $proxy);
+            }
+        }
+        $this->assertSame(['TRUSTED_PROXIES must list the reverse proxy addresses.'], $validator->problems($this->config(['codedna.trusted_proxies' => []]), 'production'));
+        $this->assertSame([], $validator->problems($this->config(['codedna.trusted_proxies' => ['10.0.0.0/8', '192.168.1.10', 'fd00::/8']]), 'production'));
     }
 }

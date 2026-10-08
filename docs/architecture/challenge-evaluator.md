@@ -5,6 +5,7 @@
 - **Code:** `evaluator/`
 - **Image:** `docker/evaluator/Dockerfile`
 - **Protocol:** `codedna-evaluator/1`
+- **Production runtime:** gVisor, attested and enforced (Phase 25, [production sandbox](#production-sandbox))
 - **Decision:** [ADR-008](../decisions/ADR-008-coding-challenges.md)
 
 The evaluator is the only place where submitted challenge code runs. All
@@ -215,16 +216,63 @@ running container, against the real sandbox. They check the protocol, and that s
 container: health, no network interface but loopback, a read-only root,
 the capability set, and no credentials in its environment.
 
+## Production sandbox
+
+Phase 25 makes a sandboxed runtime a hard requirement in production, enforced
+in code rather than by convention ([`evaluator/isolation.py`](../../evaluator/evaluator/isolation.py)):
+
+| Level | Meaning | Allowed |
+|---|---|---|
+| `container` | The layers above on the host kernel (`runc`) | Development and tests only |
+| `gvisor` | The same layers inside gVisor (`runsc`): submitted code talks to gVisor's user-space kernel, never to the host kernel | Required in production |
+
+- **Configuration.** `EVALUATOR_ISOLATION` (`container` | `gvisor`) and
+  `EVALUATOR_PRODUCTION` (`true` | `false`, strict values).
+  `EVALUATOR_PRODUCTION=true` with anything but `gvisor` is a configuration
+  error. The image's production target sets both.
+- **Attestation.** At start, before the spool is prepared or a heartbeat is
+  written, the service detects the runtime it actually runs under (gVisor's
+  fixed synthetic kernel identity in `/proc/version`). A runtime weaker than
+  configured stops the service (`evaluator.refused`, exit 2).
+- **No fallback.** There is no fallback to weaker isolation. A heartbeat left
+  by an earlier run is deleted first, so nothing vouches for a refused
+  start. If a gVisor upgrade changes the identity, attestation fails closed
+  until the fingerprint is updated.
+- **Heartbeat.** It now carries `isolation` and `production`. A heartbeat
+  without `isolation` (an older evaluator) counts as `container`.
+- **Laravel.** `CHALLENGE_EVALUATOR_ISOLATION` is the weakest level it
+  accepts (`container` locally, `gvisor` wherever it is deployed; the boot
+  validation refuses anything else). `SpoolChallengeEvaluator::available()`
+  requires a fresh heartbeat whose attested level meets it, and an unknown
+  level fails closed. Where `gvisor` is required, the queued job checks
+  again right before writing a request. A refused submission is retryable,
+  and nothing is executed.
+- **Compose.** `docker-compose.prod.yml` runs the evaluator with
+  `runtime: runsc`, no network, the same capabilities, tmpfs mounts and
+  limits as in development. Its health check requires `isolation ==
+  "gvisor"`.
+- **Host check.** `make prod-evaluator-attest` prints the level the image
+  attests under the host's runtime.
+
+Prerequisites, installation and the operator check are in
+[production deployment](../operations/production-deployment.md#3-install-gvisor-for-the-evaluator).
+Tests: `evaluator/tests/test_isolation.py` (attestation, strict
+configuration, refusal before any heartbeat, exit code) and
+`SpoolChallengeEvaluatorTest` (required level, unknown and stale
+heartbeats, no submission without attestation). The production smoke test
+starts the production image without gVisor and checks the refusal end to end.
+
 ## Residual risk
 
-The container runs on the default `runc` runtime and shares the host
-kernel. A kernel vulnerability reachable from an unprivileged process with
-no network is the remaining attack surface. For production:
+In development the container runs on the default `runc` runtime and shares
+the host kernel. In production gVisor removes that exposure, at the cost of
+trusting gVisor's own kernel implementation. Further options:
 
-- run the evaluator under a sandboxed runtime such as gVisor (`runsc`) or a
-  microVM runtime (Kata, Firecracker);
-- add a seccomp profile narrower than Docker's default;
-- give it its own host or node pool.
+- add a seccomp profile narrower than Docker's default (gVisor applies its
+  own to the sandbox);
+- give the evaluator its own host or node pool;
+- a microVM runtime (Kata, Firecracker), which would need its own
+  attestation.
 
 None of these change the protocol.
 

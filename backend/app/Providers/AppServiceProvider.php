@@ -65,7 +65,12 @@ class AppServiceProvider extends ServiceProvider
             $config = (array) $app['config']->get('codedna.challenges');
 
             return ($config['evaluator'] ?? null) === 'spool'
-                ? new SpoolChallengeEvaluator((string) $config['spool_path'], (int) $config['wait_seconds'], (int) $config['heartbeat_max_age_seconds'])
+                ? new SpoolChallengeEvaluator(
+                    (string) $config['spool_path'],
+                    (int) $config['wait_seconds'],
+                    (int) $config['heartbeat_max_age_seconds'],
+                    requiredIsolation: (string) $config['required_isolation'],
+                )
                 : new UnavailableChallengeEvaluator;
         });
 

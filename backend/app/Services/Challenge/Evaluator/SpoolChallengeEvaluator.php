@@ -26,11 +26,15 @@ final class SpoolChallengeEvaluator implements ChallengeEvaluator
 {
     private const MAX_RESULT_BYTES = 262144;
 
+    /** Isolation levels, weakest first (evaluator/evaluator/isolation.py). */
+    public const ISOLATION_LEVELS = ['container', 'gvisor'];
+
     public function __construct(
         private readonly string $spool,
         private readonly int $waitSeconds,
         private readonly int $heartbeatMaxAgeSeconds = 30,
         private readonly int $pollMilliseconds = 200,
+        private readonly string $requiredIsolation = 'container',
     ) {}
 
     public function name(): string
@@ -46,7 +50,18 @@ final class SpoolChallengeEvaluator implements ChallengeEvaluator
         }
         $decoded = json_decode($beat, true);
 
-        return is_array($decoded) && is_int($decoded['at'] ?? null) && time() - $decoded['at'] <= $this->heartbeatMaxAgeSeconds;
+        if (! is_array($decoded) || ! is_int($decoded['at'] ?? null) || time() - $decoded['at'] > $this->heartbeatMaxAgeSeconds) {
+            return false;
+        }
+
+        // Phase 25: the evaluator attests its runtime isolation; code is only
+        // submitted to one at least as isolated as required (gVisor in
+        // production). A heartbeat without the field predates the contract
+        // and counts as container isolation. Fail closed on anything else.
+        $attested = array_search($decoded['isolation'] ?? 'container', self::ISOLATION_LEVELS, true);
+        $required = array_search($this->requiredIsolation, self::ISOLATION_LEVELS, true);
+
+        return $attested !== false && $required !== false && $attested >= $required;
     }
 
     public function evaluate(EvaluationRequest $request): array
@@ -60,6 +75,12 @@ final class SpoolChallengeEvaluator implements ChallengeEvaluator
         $queued = "{$this->spool}/requests/{$id}.json";
 
         if (! is_file($result) && ! is_file($claimed) && ! is_file($queued)) {
+            // Where stronger isolation is required (production), the job checks
+            // the attestation again right before submitting: the queue may run
+            // long after the request was accepted. Retryable, never executed.
+            if ($this->requiredIsolation !== self::ISOLATION_LEVELS[0] && ! $this->available()) {
+                throw new EvaluatorException(SubmissionFailure::EvaluatorUnavailable, true, 'isolation_unverified');
+            }
             $this->submit($request, $queued);
         }
 

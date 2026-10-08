@@ -1,5 +1,6 @@
 # Build context for docker/python/Dockerfile. Only the requirement files are
-# needed at build time; source is bind-mounted in development.
+# needed by the development target (source is bind-mounted); the production
+# target also copies app/. Tests and caches never enter an image.
 .git
 .env
 .env.*
@@ -15,3 +16,4 @@ htmlcov
 coverage
 tmp
 *.log
+tests

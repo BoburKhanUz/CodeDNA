@@ -1,0 +1,14 @@
+# Build context for docker/evaluator/Dockerfile: only the package (and, for
+# the development target, the tests) are copied. Nothing generated or local.
+.git
+.env
+.env.*
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.venv
+venv
+tmp
+*.log

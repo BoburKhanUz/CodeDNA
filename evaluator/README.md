@@ -12,6 +12,11 @@ queue worker through a private spool volume.
 - It never receives expected outputs and never writes anything but result
   files. Challenge completion ≠ CodeDNA improvement.
 - Standard library only; the code is baked into the image (`make build`).
-- Tests: `make test-evaluator` runs the protocol tests and the sandbox
+- Isolation contract (Phase 25): `EVALUATOR_ISOLATION` (`container` |
+  `gvisor`) and `EVALUATOR_PRODUCTION`. In production the service attests a
+  gVisor runtime at start and refuses to run otherwise; the heartbeat
+  reports the attested level
+  ([production sandbox](../docs/architecture/challenge-evaluator.md#production-sandbox)).
+- Tests: `make test-evaluator` runs the protocol, isolation and sandbox
   security tests inside the running evaluator container. Lint:
   `make lint-evaluator` (ruff, mypy).

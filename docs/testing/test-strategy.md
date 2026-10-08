@@ -122,9 +122,10 @@ afterwards. A mutant must be killed. A surviving mutant is classified:
 
 | Job | When | Gates |
 |---|---|---|
-| `foundation` | Every push and pull request | Required files, links, `.env.example` hygiene, contract parity, Markdown, YAML, workflow, shell and Dockerfile linters, compose config |
+| `foundation` | Every push and pull request | Required files, links, `.env.example` and `.env.production.example` hygiene, contract parity, Markdown, YAML, workflow, shell and Dockerfile linters, dev compose config, the production baseline check (`make prod-config`) |
 | `secrets` | Every push and pull request | Gitleaks over the full history and the working tree |
 | `infrastructure` | Every push and pull request | Image build, `make up`, `make verify`, `make test`, ESLint, `tsc`, Pint, Ruff and mypy (analyzer and evaluator), `next build`, dependency audits |
+| `production` | Every push and pull request | `make prod-config`, the production image build, and the [production smoke test](#production-smoke-test). Nothing is deployed and there are no credentials |
 | `regression` | Nightly (03:17 UTC) and on demand | Images built without cache, every suite three times, dependency audits |
 
 Each step is one command; a failing test fails the step, and the job.
@@ -139,6 +140,46 @@ Each step is one command; a failing test fails the step, and the job.
   `make test` sets `CODEDNA_REQUIRE_SANDBOX=1`, which makes the suite fail at
   import anywhere else.
 
+## Production smoke test
+
+[`scripts/smoke-production.sh`](../../scripts/smoke-production.sh)
+(`make prod-smoke`, CI job `production`) starts `docker-compose.prod.yml` on
+loopback. It uses random throwaway secrets and a self-signed certificate for
+the reserved name `codedna.test`, then checks the running stack from outside
+and inside. About 80 checks cover:
+
+- **TLS edge:** HSTS, the nonce CSP on every script, the strict API CSP,
+  security headers, the redirect pinned to the configured domain, rejected
+  unknown names and spoofed hosts, TLS 1.1 refused, `/internal` and
+  dotfiles never routed, error bodies without internals.
+- **Forwarded headers:** spoofed headers never weaken cookies or escape the
+  login limit.
+- **Evaluator:** fail-closed without gVisor (refusal, no heartbeat, Laravel
+  reports unavailable), or healthy when `runsc` is registered.
+- **Containers:**
+  - only Nginx publishes ports;
+  - read-only roots, `no-new-privileges`, dropped capabilities and limits;
+  - no bind mounts, no root users;
+  - network segmentation.
+- **Fail fast:** a positive control, then every unsafe override.
+- **Secrets:** no generated secret in logs, image metadata or the frontend.
+
+[`scripts/check_production.py`](../../scripts/check_production.py)
+(`make prod-config`) is its static counterpart. It checks the rendered
+Compose model, the Nginx configuration and the production image stages
+against the [security baseline](../operations/security-baseline.md).
+
+At each phase end, a browser run against the production-like stack adds the
+following (scratch Playwright, as for the dev stack):
+
+- registration;
+- upload to private storage;
+- analysis in the production analyzer image;
+- the DNA dashboard;
+- challenge submission refused without gVisor;
+- logout;
+- no CSP violation on any page.
+
 ## Limitations
 
 - **Browser end-to-end tests are not in CI.** They run against the dev stack
@@ -146,7 +187,10 @@ Each step is one command; a failing test fails the step, and the job.
   the smoke test, the HTTP contract test and the component tests instead.
 - **GitHub Actions runners share a kernel with the evaluator's sandbox.**
   This is the same as in development. The sandbox tests prove the controls
-  that are configured, not kernel isolation (see the
+  that are configured, not kernel isolation. Neither CI nor the development
+  environment has gVisor, so the gVisor path itself (attestation passing,
+  the Phase 16 controls under `runsc`) is verified on the production host
+  with `make prod-evaluator-attest` (see the
   [security hardening](../security/security-hardening.md#residual-risks)
   residual risks).
 - **Browser runs against the dev server send twice the requests.** React

@@ -1,6 +1,6 @@
-# Build context for docker/node/Dockerfile. The development image copies no
-# application source (it is bind-mounted); this keeps the context small and
-# guarantees secrets and generated files never enter an image.
+# Build context for docker/node/Dockerfile. The development target copies no
+# application source (it is bind-mounted); the production target builds from
+# it. Secrets, local state and generated files never enter an image.
 .git
 .env
 .env.*
@@ -14,3 +14,8 @@ test-results
 next-env.d.ts
 tmp
 *.log
+**/*.test.ts
+**/*.test.tsx
+src/test
+vitest.config.mts
+vitest.setup.ts

@@ -18,7 +18,8 @@
 # cannot reach PHP-FPM, Redis or PostgreSQL.
 #
 # Host ports are bound to 127.0.0.1 only. This file is for development, not
-# production.
+# production: the production profile is docker-compose.prod.yml (Phase 25,
+# docs/operations/production-deployment.md).
 
 name: ${COMPOSE_PROJECT_NAME:-codedna}
 
@@ -121,6 +122,9 @@ x-backend-environment: &backend-environment
   CHALLENGE_ENABLED: ${CHALLENGE_ENABLED:-true}
   CHALLENGE_EVALUATOR: ${CHALLENGE_EVALUATOR:-spool}
   CHALLENGE_EVALUATOR_SPOOL: /var/spool/codedna-challenges
+  # Development accepts the hardened container alone; every deployed
+  # environment requires an evaluator that attests gVisor (Phase 25).
+  CHALLENGE_EVALUATOR_ISOLATION: ${CHALLENGE_EVALUATOR_ISOLATION:-container}
   CHALLENGE_MAX_SOURCE_BYTES: ${CHALLENGE_MAX_SOURCE_BYTES:-16384}
   CHALLENGE_MAX_ATTEMPTS: ${CHALLENGE_MAX_ATTEMPTS:-5}
   # Billing (Phase 23): "none" (default, everyone on FREE) or "fake" (signed
@@ -162,6 +166,7 @@ services:
     build:
       context: ./frontend
       dockerfile: ../docker/node/Dockerfile
+      target: development
       additional_contexts:
         node: ./docker/node
       args:
@@ -200,6 +205,7 @@ services:
     build:
       context: ./backend
       dockerfile: ../docker/php/Dockerfile
+      target: development
       additional_contexts:
         php: ./docker/php
       args:
@@ -285,6 +291,7 @@ services:
     build:
       context: ./analyzer
       dockerfile: ../docker/python/Dockerfile
+      target: development
     image: codedna-analyzer:dev
     # Internal analyzer contract (docs/api/internal-analyzer-contract.md).
     # No storage credentials: sources arrive as pre-signed URLs.
@@ -351,6 +358,7 @@ services:
     build:
       context: ./evaluator
       dockerfile: ../docker/evaluator/Dockerfile
+      target: development
     image: codedna-evaluator:dev
     # tini as PID 1 reaps killed sandbox processes (zombies would count
     # against the slot's process limit).

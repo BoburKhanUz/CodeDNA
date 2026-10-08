@@ -23,6 +23,14 @@ COMPOSE_CHECK_ENV := APP_KEY=check DB_PASSWORD=check REDIS_PASSWORD=check MINIO_
 	SOURCE_STORAGE_ACCESS_KEY_ID=check SOURCE_STORAGE_SECRET_ACCESS_KEY=check \
 	ANALYZER_HMAC_SECRET=check
 
+# The same for docker-compose.prod.yml (Phase 25): placeholders only, so the
+# production model can be rendered and checked; never deployable values.
+PROD_CHECK_ENV := APP_VERSION=check CODEDNA_DOMAIN=codedna.example APP_KEY=check DB_PASSWORD=check \
+	REDIS_PASSWORD=check SOURCE_STORAGE_ACCESS_KEY_ID=check SOURCE_STORAGE_SECRET_ACCESS_KEY=check \
+	MINIO_ROOT_USER=check MINIO_ROOT_PASSWORD=check ANALYZER_HMAC_SECRET=check \
+	TLS_CERTIFICATE_FILE=/dev/null TLS_PRIVATE_KEY_FILE=/dev/null
+PROD_COMPOSE := docker compose -f docker-compose.prod.yml --env-file .env.production.example
+
 .PHONY: help
 help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -123,7 +131,7 @@ verify: ## Runtime smoke test of the running environment (routing, networking, s
 # Repository checks (same checks as CI)
 # ---------------------------------------------------------------------------
 .PHONY: check
-check: check-repo check-contracts lint-docs lint-yaml lint-workflows lint-shell lint-docker compose-config ## Run all static checks
+check: check-repo check-contracts lint-docs lint-yaml lint-workflows lint-shell lint-docker compose-config prod-config ## Run all static checks
 
 .PHONY: check-repo
 check-repo: ## Required files, Markdown links/anchors, .env.example hygiene
@@ -147,15 +155,38 @@ lint-workflows: ## Lint GitHub Actions workflows (requires actionlint)
 
 .PHONY: lint-shell
 lint-shell: ## Lint shell scripts (requires shellcheck)
-	shellcheck scripts/*.sh docker/*/*.sh
+	shellcheck scripts/*.sh docker/*/*.sh docker/nginx/production/entrypoint/*.sh
 
 .PHONY: lint-docker
 lint-docker: ## Lint Dockerfiles (requires hadolint)
-	hadolint docker/*/Dockerfile
+	hadolint docker/*/Dockerfile docker/nginx/production/Dockerfile
 
 .PHONY: compose-config
 compose-config: ## Validate docker-compose.yml without starting anything
 	$(COMPOSE_CHECK_ENV) $(COMPOSE) --env-file .env.example config --quiet
+
+# ---------------------------------------------------------------------------
+# Production profile (Phase 25, docs/operations/production-deployment.md).
+# Nothing here deploys or needs a real credential.
+# ---------------------------------------------------------------------------
+.PHONY: prod-config
+prod-config: ## Render docker-compose.prod.yml with placeholders and check the production baseline
+	@mkdir -p tmp
+	$(PROD_CHECK_ENV) $(PROD_COMPOSE) --profile migrate config --format json > tmp/prod-compose.json
+	python3 scripts/check_production.py tmp/prod-compose.json
+
+.PHONY: prod-build
+prod-build: ## Build every production image (tag: APP_VERSION, default "local")
+	$(PROD_CHECK_ENV) APP_VERSION=$${APP_VERSION:-local} $(PROD_COMPOSE) --profile migrate build
+
+.PHONY: prod-smoke
+prod-smoke: ## Production-like smoke test: build, start with throwaway values on loopback, check, remove
+	./scripts/smoke-production.sh
+
+.PHONY: prod-evaluator-attest
+prod-evaluator-attest: ## On a production host: show the isolation the evaluator image attests under runsc
+	docker run --rm --runtime=$${EVALUATOR_RUNTIME:-runsc} --network none --entrypoint python3 \
+		codedna-evaluator:$${APP_VERSION:?set APP_VERSION} -c 'from evaluator import isolation; print(isolation.detect())'
 
 .PHONY: scan-secrets
 scan-secrets: ## Scan git history and uncommitted changes for secrets (requires gitleaks)

@@ -9,6 +9,7 @@ use App\Services\Assessment\Provider\FakeAiProvider;
 use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
 use App\Services\Billing\Provider\FakePaymentProvider;
 use App\Services\Challenge\ChallengeCatalog;
+use App\Services\Challenge\Evaluator\SpoolChallengeEvaluator;
 use App\Services\Competency\CompetencySpecification;
 use App\Services\Dna\ScoringSpecification;
 use App\Services\GitHub\GitHubSettings;
@@ -99,6 +100,20 @@ final class ConfigurationValidator
             $problems[] = 'CORS origin patterns are not allowed.';
         }
 
+        // Trusted proxies (Phase 21/25): X-Forwarded-* is honored only from
+        // listed addresses. Trusting every address would let any client spoof
+        // its IP (and escape the IP-keyed rate limits), scheme and host.
+        $proxies = (array) $config->get('codedna.trusted_proxies');
+        if ($proxies === []) {
+            $problems[] = 'TRUSTED_PROXIES must list the reverse proxy addresses.';
+        }
+        foreach ($proxies as $proxy) {
+            if (! is_string($proxy) || in_array($proxy, ['*', '**', 'REMOTE_ADDR', '0.0.0.0/0', '::/0'], true) || preg_match('#^[0-9A-Fa-f:.]+(/[0-9]{1,3})?$#', $proxy) !== 1) {
+                $problems[] = 'TRUSTED_PROXIES must list explicit IP addresses or CIDR ranges; wildcards are not allowed.';
+                break;
+            }
+        }
+
         if (self::isDeployed($environment)) {
             if ($config->get('app.debug') === true) {
                 $problems[] = 'APP_DEBUG must be false in production.';
@@ -115,6 +130,102 @@ final class ConfigurationValidator
             if (array_filter((array) $config->get('sanctum.stateful')) === []) {
                 $problems[] = 'SANCTUM_STATEFUL_DOMAINS must list the production frontend domain.';
             }
+
+            $problems = [...$problems, ...$this->deployedProblems($config)];
+        }
+
+        return $problems;
+    }
+
+    /**
+     * Production fail-closed checks (Phase 25,
+     * docs/operations/production-configuration.md): what a deployment must
+     * never run with, beyond the Phase 21 checks above. Messages name the
+     * variable, never its value.
+     *
+     * @return list<string>
+     */
+    private function deployedProblems(Repository $config): array
+    {
+        $problems = [];
+
+        // Database: explicit credentials, and a valid TLS mode (a managed
+        // database outside the private network needs "require" or stronger).
+        $database = (array) $config->get('database.connections.pgsql', []);
+        foreach (['host' => 'DB_HOST', 'database' => 'DB_DATABASE', 'username' => 'DB_USERNAME', 'password' => 'DB_PASSWORD'] as $key => $variable) {
+            if (! is_string($database[$key] ?? null) || $database[$key] === '') {
+                $problems[] = "{$variable} must be set in production.";
+            }
+        }
+        if (! in_array($database['sslmode'] ?? null, ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'], true)) {
+            $problems[] = 'DB_SSLMODE must be one of: disable, allow, prefer, require, verify-ca, verify-full.';
+        }
+
+        // Redis holds sessions, cache, locks and queues: never unauthenticated.
+        foreach (['default', 'cache'] as $connection) {
+            $password = $config->get("database.redis.{$connection}.password");
+            $url = (string) $config->get("database.redis.{$connection}.url");
+            if ((! is_string($password) || $password === '') && preg_match('#^rediss?://[^@/]*:[^@/]+@#', $url) !== 1) {
+                $problems[] = 'REDIS_PASSWORD must be set in production.';
+                break;
+            }
+        }
+
+        // Session cookie: HttpOnly, a SameSite policy, and a bounded lifetime.
+        if ($config->get('session.http_only') !== true) {
+            $problems[] = 'The session cookie must be HttpOnly.';
+        }
+        if (! in_array($config->get('session.same_site'), ['lax', 'strict'], true)) {
+            $problems[] = 'SESSION_SAME_SITE must be "lax" or "strict" in production.';
+        }
+        $lifetime = $config->get('session.lifetime');
+        if (! is_int($lifetime) || $lifetime < 5 || $lifetime > 1440) {
+            $problems[] = 'SESSION_LIFETIME must be between 5 and 1440 minutes in production.';
+        }
+
+        // CORS origins, when any are listed, are https origins.
+        foreach ((array) $config->get('cors.allowed_origins') as $origin) {
+            if (is_string($origin) && ! str_starts_with($origin, 'https://')) {
+                $problems[] = 'CORS_ALLOWED_ORIGINS must list https:// origins only in production.';
+                break;
+            }
+        }
+
+        // Debug-level logs may carry request details; production logs at info or above.
+        $default = (string) $config->get('logging.default');
+        $channels = $config->get("logging.channels.{$default}.driver") === 'stack' ? (array) $config->get("logging.channels.{$default}.channels") : [$default];
+        foreach ($channels as $channel) {
+            if ($config->get("logging.channels.{$channel}.level") === 'debug') {
+                $problems[] = 'LOG_LEVEL must not be "debug" in production.';
+                break;
+            }
+        }
+
+        // Object storage: credentials, a bucket and a TLS endpoint. Plain
+        // http is accepted only for an internal service name (no dot, e.g. the
+        // private "minio" container), never for a public host.
+        $storage = (array) $config->get('filesystems.disks.'.$config->get('codedna.sources.disk'), []);
+        foreach (['key' => 'SOURCE_STORAGE_ACCESS_KEY_ID', 'secret' => 'SOURCE_STORAGE_SECRET_ACCESS_KEY', 'bucket' => 'SOURCE_STORAGE_BUCKET'] as $key => $variable) {
+            if (! is_string($storage[$key] ?? null) || $storage[$key] === '') {
+                $problems[] = "{$variable} must be set in production.";
+            }
+        }
+        $endpoint = $storage['endpoint'] ?? null;
+        if (is_string($endpoint) && $endpoint !== '') {
+            $host = parse_url($endpoint, PHP_URL_HOST);
+            $scheme = parse_url($endpoint, PHP_URL_SCHEME);
+            if (! is_string($host) || ! in_array($scheme, ['https', 'http'], true) || ($scheme === 'http' && str_contains($host, '.'))) {
+                $problems[] = 'SOURCE_STORAGE_ENDPOINT must use https:// (plain http only for an internal service name).';
+            }
+            if (parse_url($endpoint, PHP_URL_USER) !== null) {
+                $problems[] = 'SOURCE_STORAGE_ENDPOINT must not contain credentials.';
+            }
+        }
+
+        // Coding challenges execute untrusted code: in production only in an
+        // evaluator that attests a gVisor sandbox (fail closed).
+        if ($config->get('codedna.challenges.evaluator') === 'spool' && $config->get('codedna.challenges.required_isolation') !== 'gvisor') {
+            $problems[] = 'CHALLENGE_EVALUATOR_ISOLATION must be "gvisor" in production (or set CHALLENGE_EVALUATOR=none).';
         }
 
         return $problems;
@@ -370,6 +481,9 @@ final class ConfigurationValidator
         }
         if (! in_array($challenges['evaluator'] ?? null, ['spool', 'none'], true)) {
             $problems[] = 'CHALLENGE_EVALUATOR must be "spool" or "none".';
+        }
+        if (! in_array($challenges['required_isolation'] ?? null, SpoolChallengeEvaluator::ISOLATION_LEVELS, true)) {
+            $problems[] = 'CHALLENGE_EVALUATOR_ISOLATION must be one of: '.implode(', ', SpoolChallengeEvaluator::ISOLATION_LEVELS).'.';
         }
         $spool = $challenges['spool_path'] ?? null;
         if (! is_string($spool) || preg_match('#^/[A-Za-z0-9._/-]+$#', $spool) !== 1 || str_contains($spool, '..')) {

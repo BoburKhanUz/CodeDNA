@@ -40,6 +40,9 @@ class Config:
     slots: tuple[Slot, ...]
     limits: Limits
     poll_seconds: float
+    # Runtime isolation contract (Phase 25, evaluator/isolation.py).
+    isolation: str = "container"
+    production: bool = False
 
 
 def _int(name: str, default: int, low: int, high: int) -> int:
@@ -51,6 +54,13 @@ def _int(name: str, default: int, low: int, high: int) -> int:
     if not low <= value <= high:
         raise ConfigError(f"{name} must be between {low} and {high}")
     return value
+
+
+def _flag(name: str) -> bool:
+    raw = os.environ.get(name, "false")
+    if raw not in ("true", "false"):
+        raise ConfigError(f"{name} must be true or false")
+    return raw == "true"
 
 
 def load() -> Config:
@@ -71,4 +81,18 @@ def load() -> Config:
         max_source_bytes=_int("CHALLENGE_MAX_SOURCE_BYTES", 16384, 1024, 65536),
         max_cases=64,
     )
-    return Config(spool=Path(os.environ.get("EVALUATOR_SPOOL", "/spool")), slots=slots, limits=limits, poll_seconds=0.2)
+    isolation = os.environ.get("EVALUATOR_ISOLATION", "container")
+    if isolation not in ("container", "gvisor"):
+        raise ConfigError("EVALUATOR_ISOLATION must be container or gvisor")
+    production = _flag("EVALUATOR_PRODUCTION")
+    if production and isolation != "gvisor":
+        # Fail closed: production never executes code with container isolation only.
+        raise ConfigError("EVALUATOR_PRODUCTION=true requires EVALUATOR_ISOLATION=gvisor")
+    return Config(
+        spool=Path(os.environ.get("EVALUATOR_SPOOL", "/spool")),
+        slots=slots,
+        limits=limits,
+        poll_seconds=0.2,
+        isolation=isolation,
+        production=production,
+    )

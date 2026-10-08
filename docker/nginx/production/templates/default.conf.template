@@ -1,0 +1,159 @@
+# CodeDNA — production router (Phase 25, docs/operations/production-deployment.md).
+# Rendered at container start from this template; only CODEDNA_* variables
+# are substituted (NGINX_ENVSUBST_FILTER).
+#
+#   https://${CODEDNA_DOMAIN}
+#     /api/*, /sanctum/*, /up  -> Laravel (PHP-FPM, backend:9000)
+#     /internal/*              -> 404, always (the analyzer is internal-only)
+#     everything else          -> Next.js (frontend:3000, standalone server)
+#   http://                    -> 301 to https (except the container healthcheck)
+#   other Host names / no SNI  -> TLS handshake rejected
+#   :8081 (unpublished)        -> the Next.js server's own calls to Laravel
+
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+map $host $codedna_domain {
+    default "${CODEDNA_DOMAIN}";
+}
+
+# API and health endpoints: a policy under which nothing loads or runs.
+# Pages: the baseline (the Next.js server adds the nonce policy).
+map $uri $codedna_csp {
+    ~^/(api|sanctum)/  "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+    =/up               "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+    default            "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'";
+}
+
+# Access log without secrets: invitation tokens in request paths are redacted
+# (Phase 24); query strings are never logged (they may carry OAuth codes).
+map $uri $codedna_log_uri {
+    "~^(?<uri_head>/api/v1/organizations/invitations/)[^/]+(?<uri_tail>.*)$" "${uri_head}[redacted]${uri_tail}";
+    default $uri;
+}
+log_format codedna escape=json '{"time":"$time_iso8601","remote_addr":"$remote_addr","method":"$request_method",'
+                               '"uri":"$codedna_log_uri","status":$status,"bytes":$body_bytes_sent,'
+                               '"duration":$request_time,"upstream_duration":"$upstream_response_time",'
+                               '"request_id":"$request_id","user_agent":"$http_user_agent"}';
+
+# Per-client request ceiling in front of Laravel's own rate limits (defense in
+# depth against floods; generous enough for normal browsing bursts).
+limit_req_zone $binary_remote_addr zone=codedna_per_ip:10m rate=20r/s;
+limit_req_status 429;
+
+# Plain HTTP: redirect to the configured domain only (never to a client-chosen Host).
+server {
+    listen 8080 default_server;
+    server_name _;
+    access_log off;
+
+    location = /nginx-health {
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / {
+        return 301 https://${CODEDNA_DOMAIN}$request_uri;
+    }
+}
+
+# Unknown names (and clients without SNI) never reach the application.
+server {
+    listen 8443 ssl default_server;
+    server_name _;
+    ssl_reject_handshake on;
+    # A handshake for the real name followed by another Host header lands
+    # here too: refuse it (421 Misdirected Request), never serve it.
+    access_log off;
+    return 421;
+}
+
+server {
+    listen 8443 ssl;
+    http2 on;
+    server_name ${CODEDNA_DOMAIN};
+    access_log /dev/stdout codedna;
+
+    include /etc/nginx/snippets/tls.conf;
+    include /etc/nginx/snippets/security-headers.conf;
+
+    limit_req zone=codedna_per_ip burst=200 nodelay;
+
+    location = /nginx-health {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location ^~ /internal/ {
+        return 404;
+    }
+
+    # Dotfiles (.env, .git) do not exist in the images; never route them anyway.
+    location ~ /\.(?!well-known/) {
+        return 404;
+    }
+
+    location ^~ /api/ {
+        # Source archive uploads: 50 MiB limit plus multipart overhead. Keep in
+        # sync with post_max_size in docker/php/conf.d/production.ini.
+        client_max_body_size 55m;
+        include /etc/nginx/snippets/laravel-fastcgi.conf;
+        error_page 413 = @api_payload_too_large;
+    }
+
+    location @api_payload_too_large {
+        default_type application/json;
+        return 413 '{"error":{"code":"PAYLOAD_TOO_LARGE","message":"The request body is too large.","request_id":null}}';
+    }
+
+    location ^~ /sanctum/ {
+        include /etc/nginx/snippets/laravel-fastcgi.conf;
+    }
+
+    location = /up {
+        access_log off;
+        include /etc/nginx/snippets/laravel-fastcgi.conf;
+    }
+
+    location / {
+        set $frontend_upstream http://frontend:3000;
+        proxy_pass $frontend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        # Forwarded headers are set here, never passed through from a client.
+        proxy_set_header Host $codedna_domain;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $codedna_domain;
+        proxy_set_header Forwarded "";
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 60s;
+    }
+}
+
+# Internal listener for the Next.js server's calls to Laravel (session check
+# during server rendering). Not published; reachable only on the web network,
+# whose only other member is the frontend. Here, and only here, the
+# X-Forwarded-For the Next.js server forwards is taken as the client address,
+# and only from the web network's fixed subnet (docker-compose.prod.yml).
+server {
+    listen 8081;
+    server_name _;
+    access_log /dev/stdout codedna;
+
+    set_real_ip_from 172.30.20.0/24;
+    real_ip_header X-Forwarded-For;
+    real_ip_recursive off;
+
+    include /etc/nginx/snippets/security-headers.conf;
+
+    location ^~ /api/ {
+        include /etc/nginx/snippets/laravel-fastcgi.conf;
+    }
+
+    location / {
+        return 404;
+    }
+}

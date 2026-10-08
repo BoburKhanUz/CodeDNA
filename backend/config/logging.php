@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\Logging\RedactSecrets;
+use App\Support\Logging\RedactSecretsTap;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -63,6 +65,7 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
+            'tap' => [RedactSecretsTap::class],
         ],
 
         'daily' => [
@@ -71,6 +74,7 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'max_files' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+            'tap' => [RedactSecretsTap::class],
         ],
 
         'monthly' => [
@@ -79,6 +83,7 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'max_files' => 3,
             'replace_placeholders' => true,
+            'tap' => [RedactSecretsTap::class],
         ],
 
         'slack' => [
@@ -109,8 +114,10 @@ return [
             'handler_with' => [
                 'stream' => 'php://stderr',
             ],
-            'formatter' => env('LOG_STDERR_FORMATTER'),
-            'processors' => [PsrLogMessageProcessor::class],
+            // An empty value means the default line formatter (an empty string
+            // would otherwise be resolved as a class name and break logging).
+            'formatter' => env('LOG_STDERR_FORMATTER') ?: null,
+            'processors' => [PsrLogMessageProcessor::class, RedactSecrets::class],
         ],
 
         'syslog' => [

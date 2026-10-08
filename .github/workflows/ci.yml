@@ -5,6 +5,10 @@
 # - infrastructure: the full Docker stack, runtime smoke test, every test
 #   suite (a failing test fails the job), linters, type checks, the frontend
 #   production build and dependency audits;
+# - production: the production images (docker-compose.prod.yml), the
+#   static production baseline check and the production-like smoke test,
+#   on loopback with throwaway values. Nothing is deployed and no
+#   production credential exists in CI;
 # - regression (nightly and on demand): every suite three times on a fresh
 #   stack, to surface flaky tests.
 #
@@ -87,6 +91,9 @@ jobs:
 
       - name: Validate docker-compose.yml
         run: make compose-config
+
+      - name: Validate docker-compose.prod.yml against the production baseline
+        run: make prod-config
 
   secrets:
     name: Secret scan
@@ -171,6 +178,35 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  production:
+    name: Production images and production-like smoke test
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # An image tag only: no credential, registry or deployment is involved.
+      APP_VERSION: ci-${{ github.run_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check the production configuration (static)
+        run: make prod-config
+
+      - name: Build the production images
+        run: make prod-build
+
+      # The runner has no gVisor: the smoke test therefore also proves that
+      # the evaluator refuses to execute code without it (fail closed).
+      - name: Production-like smoke test (loopback, throwaway values)
+        run: SMOKE_BUILD=0 ./scripts/smoke-production.sh
+
+      - name: Remove the production images
+        if: always()
+        run: docker image ls --format '{{.Repository}}:{{.Tag}}' | grep ":${APP_VERSION}$" | xargs -r docker image rm -f
 
   regression:
     name: Nightly regression (suites repeated for flakiness)

@@ -202,4 +202,48 @@ final class SpoolChallengeEvaluatorTest extends TestCase
         file_put_contents($this->spool.'/heartbeat', 'garbage');
         $this->assertFalse($this->evaluator()->available());
     }
+
+    public function test_a_required_gvisor_isolation_is_only_satisfied_by_a_gvisor_heartbeat(): void
+    {
+        $production = new SpoolChallengeEvaluator($this->spool, 1, 30, 10, 'gvisor');
+        $beat = fn (array $fields) => file_put_contents($this->spool.'/heartbeat', json_encode(['at' => time(), 'version' => '1.0.0'] + $fields));
+
+        $beat([]);
+        $this->assertFalse($production->available(), 'a heartbeat without isolation is container isolation');
+        $this->assertTrue($this->evaluator()->available());
+        $beat(['isolation' => 'container', 'production' => false]);
+        $this->assertFalse($production->available());
+        $beat(['isolation' => 'GVISOR']);
+        $this->assertFalse($production->available(), 'unknown levels fail closed');
+        $this->assertFalse($this->evaluator()->available(), 'unknown levels fail closed everywhere');
+        $beat(['isolation' => ['gvisor']]);
+        $this->assertFalse($production->available());
+        $beat(['isolation' => 'gvisor', 'production' => true]);
+        $this->assertTrue($production->available());
+        $this->assertTrue($this->evaluator()->available(), 'stronger isolation satisfies a weaker requirement');
+        file_put_contents($this->spool.'/heartbeat', json_encode(['at' => time() - 31, 'isolation' => 'gvisor']));
+        $this->assertFalse($production->available(), 'a stale gVisor heartbeat is still stale');
+    }
+
+    public function test_an_unknown_required_isolation_fails_closed(): void
+    {
+        file_put_contents($this->spool.'/heartbeat', json_encode(['at' => time(), 'isolation' => 'gvisor']));
+
+        $this->assertFalse((new SpoolChallengeEvaluator($this->spool, 1, 30, 10, 'none'))->available());
+    }
+
+    public function test_production_never_submits_code_to_an_evaluator_without_attested_gvisor(): void
+    {
+        $production = new SpoolChallengeEvaluator($this->spool, 1, 30, 10, 'gvisor');
+        file_put_contents($this->spool.'/heartbeat', json_encode(['at' => time(), 'isolation' => 'container']));
+
+        try {
+            $production->evaluate($this->request());
+            $this->fail('Expected an EvaluatorException');
+        } catch (EvaluatorException $e) {
+            // Refused before writing a request: not submitted-then-withdrawn.
+            $this->assertSame([SubmissionFailure::EvaluatorUnavailable, true, 'isolation_unverified'], [$e->failure, $e->retryable, $e->detail]);
+        }
+        $this->assertSame([], glob($this->spool.'/requests/*') ?: [], 'nothing was submitted');
+    }
 }

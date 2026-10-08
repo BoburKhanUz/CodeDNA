@@ -1,7 +1,13 @@
-# docker/ — Development container configuration
+# docker/ — Container configuration
 
-Used by the root `docker-compose.yml`. Full documentation:
-[docs/architecture/infrastructure.md](../docs/architecture/infrastructure.md).
+Used by the root `docker-compose.yml` (development) and
+`docker-compose.prod.yml` (production, Phase 25). Full documentation:
+[docs/architecture/infrastructure.md](../docs/architecture/infrastructure.md) and
+[docs/operations/production-deployment.md](../docs/operations/production-deployment.md).
+
+Each application Dockerfile has two targets: `development` (the default,
+source bind-mounted) and `production` (code baked in, owned by root,
+read-only, no development dependencies, unprivileged user).
 
 | Path | Purpose |
 |---|---|
@@ -15,6 +21,8 @@ Used by the root `docker-compose.yml`. Full documentation:
 | `nginx/conf.d/default.conf` | Single-origin router (mounted read-only) |
 | `nginx/snippets/laravel-fastcgi.conf` | FastCGI hand-off to Laravel's front controller |
 | `minio/init.sh` | Idempotent bucket and bucket-scoped app user provisioning (`minio-init`) |
-
-These are **development** images: source is bind-mounted and nothing is
-optimized for production. Production images come in Phase 25.
+| `minio/Dockerfile` | The same script baked into the pinned client image (production `minio-init`) |
+| `evaluator/Dockerfile` | Challenge evaluator; the production target enforces gVisor |
+| `php/conf.d/production.ini`, `php/conf.d/fpm-production.conf` | Production PHP and FPM settings (no displayed errors, immutable OPcache) |
+| `php/production-entrypoint.sh` | Builds Laravel's caches from the runtime environment; refuses to start without `APP_KEY` or with an invalid configuration |
+| `nginx/production/` | Production TLS edge: config, snippets, template, fail-fast start check, image |

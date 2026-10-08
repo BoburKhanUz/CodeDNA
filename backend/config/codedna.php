@@ -202,6 +202,10 @@ return [
         // evaluator's heartbeat may be before it counts as unavailable.
         'wait_seconds' => (int) env('CHALLENGE_EVALUATOR_WAIT_SECONDS', 45),
         'heartbeat_max_age_seconds' => 30,
+        // The weakest runtime isolation the evaluator may attest before code
+        // is submitted to it (Phase 25): "container" (development) or
+        // "gvisor" (required wherever the application is deployed).
+        'required_isolation' => (string) env('CHALLENGE_EVALUATOR_ISOLATION', 'container'),
         // Submission limits, enforced before anything is stored or evaluated.
         'max_source_bytes' => (int) env('CHALLENGE_MAX_SOURCE_BYTES', 16384),
         'max_source_lines' => (int) env('CHALLENGE_MAX_SOURCE_LINES', 400),

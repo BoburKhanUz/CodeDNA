@@ -406,9 +406,25 @@ and prints no secrets:
 | Submissions answer `409 CHALLENGE_EVALUATION_UNAVAILABLE` | The evaluator is down or its heartbeat is stale: `make logs s=evaluator`. Check that `CHALLENGE_EVALUATOR=spool` and that backend and queue have `group_add: 10500` |
 | Stale Next.js dependencies after switching branches | `docker compose down`, `docker volume rm codedna_frontend_node_modules`, then `make up` |
 
+## Production profile
+
+`docker-compose.yml` is for development only. Production uses
+[`docker-compose.prod.yml`](../../docker-compose.prod.yml) (Phase 25). It is
+built from the `production` targets of the same Dockerfiles; each Dockerfile
+has a `development` target (the default, used here) and a `production`
+target. The production profile adds:
+
+- Nginx as the TLS edge;
+- segmented internal networks;
+- read-only, capability-less containers;
+- the gVisor runtime for the evaluator;
+- explicit migrations.
+
+See [production deployment](../operations/production-deployment.md),
+[production configuration](../operations/production-configuration.md) and
+the [security baseline](../operations/security-baseline.md).
+
 ## Not included yet (later phases)
 
 Analyzer replay protection shared across instances (when the analyzer is
-scaled out), a gVisor or microVM runtime for the challenge evaluator, TLS and production images
-(Phase 25), and the R2 bucket and credentials (Phase 25; the application
-side needs only `SOURCE_STORAGE_*`).
+scaled out).

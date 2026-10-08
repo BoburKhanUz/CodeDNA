@@ -114,7 +114,22 @@ processed; `/app/billing` shows the plan, usage and catalog
 single-use links, owns team projects that every member works on, keeps an append-only audit
 log and shows read-only team analytics. Team projects use the team's own plan and seats,
 never a member's, and nobody's own CodeDNA changes by joining a team
-([teams architecture](docs/teams/teams-architecture.md)). The full plan is in
+([teams architecture](docs/teams/teams-architecture.md)). Since Phase 25 CodeDNA is
+**production-ready and reproducible to deploy**:
+
+- production images and a hardened, segmented `docker-compose.prod.yml` with
+  Nginx as the TLS edge;
+- a per-response nonce Content Security Policy;
+- configuration that fails closed at boot;
+- a challenge evaluator that refuses to run code outside an attested gVisor
+  sandbox;
+- structured, redacted logs;
+- a production-like smoke test in CI;
+- runbooks for [deployment](docs/operations/production-deployment.md),
+  [backup and restore](docs/operations/backup-and-restore.md) and
+  [rollback](docs/operations/rollback.md).
+
+Nothing in the repository is a production value or credential. The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
 ## Architecture at a glance
@@ -139,7 +154,8 @@ code runs only in the network-less evaluator and never changes CodeDNA.
 - Product: [vision](docs/product/vision.md) · [MVP](docs/product/mvp.md)
 - Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md) · [coding challenges](docs/architecture/coding-challenges-v1.md) · [challenge evaluator](docs/architecture/challenge-evaluator.md) · [learning roadmap](docs/architecture/learning-roadmap-v1.md) · [growth tracking](docs/architecture/growth-tracking-v1.md) · [GitHub integration](docs/architecture/github-integration-v1.md) · [historical DNA](docs/architecture/historical-dna-v1.md)
 - Testing: [test strategy](docs/testing/test-strategy.md) · [QA matrix](docs/testing/qa-matrix.md)
-- Security: [threat model](docs/security/threat-model.md) · [security hardening](docs/security/security-hardening.md) (after pulling Phase 21, run `make setup` once to add `REDIS_PASSWORD` to `.env`)
+- Security: [threat model](docs/security/threat-model.md) · [security hardening](docs/security/security-hardening.md) (after pulling Phase 21, run `make setup` once to add `REDIS_PASSWORD` to `.env`) · [production security baseline](docs/operations/security-baseline.md)
+- Operations: [production deployment](docs/operations/production-deployment.md) · [production configuration](docs/operations/production-configuration.md) · [backup and restore](docs/operations/backup-and-restore.md) · [rollback](docs/operations/rollback.md)
 - Billing: [architecture](docs/billing/billing-architecture.md) · [subscription state machine](docs/billing/subscription-state-machine.md) · [entitlements and quotas](docs/billing/entitlements-and-quotas.md)
 - Teams: [architecture](docs/teams/teams-architecture.md) · [authorization](docs/teams/authorization.md) · [invitations](docs/teams/invitations.md) · [billing boundary](docs/teams/billing-boundary.md) · [team analytics](docs/teams/team-analytics.md)
 - API: [public conventions](docs/api/README.md) · [internal analyzer contract](docs/api/internal-analyzer-contract.md)
@@ -159,7 +175,9 @@ codedna/
 ├── scripts/            Repository helper scripts
 ├── .github/workflows/  CI
 ├── docker-compose.yml  Development environment (services + minio-init)
+├── docker-compose.prod.yml  Production profile (Phase 25; no values, no secrets)
 ├── .env.example        Documented environment variables (no secrets)
+├── .env.production.example  Production environment template (no values)
 └── Makefile            Developer commands
 ```
 
@@ -199,7 +217,12 @@ make build-frontend  # production Next.js build (CI gate)
 make audit     # dependency audits: Composer, npm runtime, analyzer Python (needs internet)
 make down      # stop (data volumes are kept)
 make check     # static checks run in CI, including cross-service contract parity
+make prod-config  # render docker-compose.prod.yml with placeholders and check the production baseline
+make prod-smoke   # production-like stack on loopback with throwaway values: edge, isolation, fail-closed checks
 ```
+
+Production deployment is a separate, provider-neutral procedure:
+[docs/operations/production-deployment.md](docs/operations/production-deployment.md).
 
 The first start installs Composer and npm dependencies inside the
 containers, so it takes a few minutes. Ports, volumes, environment
@@ -218,3 +241,6 @@ Nginx. Code submitted for coding challenges is the one thing that is
 executed. It runs only in the evaluator, which has no network interface,
 no credentials, a read-only filesystem and per-run unprivileged users with
 resource limits ([challenge-evaluator.md](docs/architecture/challenge-evaluator.md)).
+In production it must run under gVisor. It attests the runtime at start
+and refuses to execute anything otherwise
+([production baseline](docs/operations/security-baseline.md)).

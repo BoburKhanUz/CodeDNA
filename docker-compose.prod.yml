@@ -1,0 +1,601 @@
+# CodeDNA — production deployment profile (Phase 25).
+#
+# A standalone file (it does not extend docker-compose.yml): no bind mounts,
+# no development commands, no published data or internal service ports.
+# Images are built from the production targets; configuration and secrets
+# are injected at runtime from an environment file kept OUTSIDE the
+# repository:
+#
+#   docker compose -f docker-compose.prod.yml --env-file /etc/codedna/production.env config --quiet
+#   docker compose -f docker-compose.prod.yml --env-file /etc/codedna/production.env build
+#   docker compose -f docker-compose.prod.yml --env-file /etc/codedna/production.env run --rm migrate
+#   docker compose -f docker-compose.prod.yml --env-file /etc/codedna/production.env up -d
+#
+# See docs/operations/production-deployment.md (steps, TLS, gVisor),
+# docs/operations/production-configuration.md (every variable) and
+# .env.production.example (the template, without values).
+#
+# Networks (docs/operations/security-baseline.md#network-segmentation):
+#   public    nginx only (published 80/443); egress allowed
+#   web       nginx <-> frontend                         (internal)
+#   app       nginx <-> backend (PHP-FPM)                (internal)
+#   data      Laravel containers <-> postgres, redis     (internal)
+#   storage   backend, queue, minio-init <-> minio       (internal)
+#   analysis  queue <-> analyzer, analyzer -> minio      (internal)
+#   egress    backend, queue -> GitHub, AI provider, external object storage
+# The evaluator has no network at all; it exchanges files with the queue
+# worker through the challenge-spool volume, and runs under gVisor.
+
+name: ${COMPOSE_PROJECT_NAME:-codedna-prod}
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  logging: *logging
+  restart: unless-stopped
+
+# Shared by every Laravel container (backend, queue, scheduler, migrate).
+# Values a deployment must never change are fixed here; everything else is
+# required (:?) or has a safe default. No value below is a secret.
+x-backend-environment: &backend-environment
+  APP_NAME: ${APP_NAME:-CodeDNA}
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_KEY: ${APP_KEY:?APP_KEY is required (docs/operations/production-configuration.md)}
+  APP_URL: https://${CODEDNA_DOMAIN:?CODEDNA_DOMAIN is required}
+  APP_VERSION: ${APP_VERSION:?APP_VERSION is required (the release identifier)}
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  LOG_STDERR_FORMATTER: Monolog\Formatter\JsonFormatter
+  DB_CONNECTION: pgsql
+  DB_HOST: ${DB_HOST:-postgres}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_DATABASE: ${DB_DATABASE:-codedna}
+  DB_USERNAME: ${DB_USERNAME:-codedna}
+  DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+  DB_SSLMODE: ${DB_SSLMODE:-prefer}
+  REDIS_CLIENT: phpredis
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+  CACHE_STORE: redis
+  QUEUE_CONNECTION: redis
+  SESSION_DRIVER: redis
+  SESSION_LIFETIME: ${SESSION_LIFETIME:-120}
+  SESSION_DOMAIN: ${SESSION_DOMAIN:-}
+  SESSION_SECURE_COOKIE: "true"
+  SESSION_SAME_SITE: ${SESSION_SAME_SITE:-lax}
+  SANCTUM_STATEFUL_DOMAINS: ${CODEDNA_DOMAIN:?CODEDNA_DOMAIN is required}
+  # Only Nginx, on the app network's fixed subnet, may set X-Forwarded-*.
+  TRUSTED_PROXIES: 172.30.10.0/24
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+  MAIL_MAILER: ${MAIL_MAILER:-log}
+  # S3-compatible source storage (ADR-003): the bundled private MinIO by
+  # default; an external provider by setting SOURCE_STORAGE_ENDPOINT (https).
+  SOURCE_STORAGE_ENDPOINT: ${SOURCE_STORAGE_ENDPOINT:-http://minio:9000}
+  SOURCE_STORAGE_REGION: ${SOURCE_STORAGE_REGION:-us-east-1}
+  SOURCE_STORAGE_BUCKET: ${SOURCE_STORAGE_BUCKET:-codedna}
+  SOURCE_STORAGE_USE_PATH_STYLE: ${SOURCE_STORAGE_USE_PATH_STYLE:-true}
+  SOURCE_STORAGE_ACCESS_KEY_ID: ${SOURCE_STORAGE_ACCESS_KEY_ID:?SOURCE_STORAGE_ACCESS_KEY_ID is required}
+  SOURCE_STORAGE_SECRET_ACCESS_KEY: ${SOURCE_STORAGE_SECRET_ACCESS_KEY:?SOURCE_STORAGE_SECRET_ACCESS_KEY is required}
+  SOURCE_STORAGE_PREFIX: ${SOURCE_STORAGE_PREFIX:-}
+  SOURCE_MAX_ARCHIVE_BYTES: ${SOURCE_MAX_ARCHIVE_BYTES:-52428800}
+  SOURCE_MAX_UNCOMPRESSED_BYTES: ${SOURCE_MAX_UNCOMPRESSED_BYTES:-209715200}
+  SOURCE_MAX_FILES: ${SOURCE_MAX_FILES:-20000}
+  SOURCE_MAX_SINGLE_FILE_BYTES: ${SOURCE_MAX_SINGLE_FILE_BYTES:-26214400}
+  SOURCE_MAX_PATH_LENGTH: ${SOURCE_MAX_PATH_LENGTH:-512}
+  SOURCE_URL_TTL_SECONDS: ${SOURCE_URL_TTL_SECONDS:-900}
+  ANALYZER_URL: http://analyzer:8000
+  ANALYZER_HMAC_SECRET: ${ANALYZER_HMAC_SECRET:?ANALYZER_HMAC_SECRET is required}
+  ANALYZER_HMAC_SECRET_PREVIOUS: ${ANALYZER_HMAC_SECRET_PREVIOUS:-}
+  ANALYZER_HARD_TIMEOUT_SECONDS: ${ANALYZER_HARD_TIMEOUT_SECONDS:-240}
+  ANALYZER_CONNECT_TIMEOUT_SECONDS: ${ANALYZER_CONNECT_TIMEOUT_SECONDS:-5}
+  ANALYZER_TIMEOUT_SECONDS: ${ANALYZER_TIMEOUT_SECONDS:-300}
+  ANALYZER_MAX_ATTEMPTS: ${ANALYZER_MAX_ATTEMPTS:-3}
+  ANALYSIS_JOB_TIMEOUT_SECONDS: ${ANALYSIS_JOB_TIMEOUT_SECONDS:-330}
+  ANALYSIS_QUEUE_RETRY_AFTER: ${ANALYSIS_QUEUE_RETRY_AFTER:-360}
+  ANALYZER_CONTRACTS_PATH: /var/www/contracts/analyzer/v1
+  CODEDNA_SCORING_VERSION: ${CODEDNA_SCORING_VERSION:-1.0.0}
+  CODEDNA_COMPETENCY_VERSION: ${CODEDNA_COMPETENCY_VERSION:-1.0.0}
+  CODEDNA_SKILL_GAP_VERSION: ${CODEDNA_SKILL_GAP_VERSION:-1.0.0}
+  CODEDNA_ROADMAP_VERSION: ${CODEDNA_ROADMAP_VERSION:-1.0.0}
+  CODEDNA_ROADMAP_RULES_VERSION: ${CODEDNA_ROADMAP_RULES_VERSION:-1.0.0}
+  CODEDNA_GROWTH_RULES_VERSION: ${CODEDNA_GROWTH_RULES_VERSION:-1.0.0}
+  CODEDNA_ASSESSMENT_VERSION: ${CODEDNA_ASSESSMENT_VERSION:-1.0.0}
+  GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+  GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+  GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID:-}
+  GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET:-}
+  GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+  GITHUB_CALLBACK_URL: https://${CODEDNA_DOMAIN:?CODEDNA_DOMAIN is required}/app/github/callback
+  GITHUB_API_URL: https://api.github.com
+  GITHUB_WEB_URL: https://github.com
+  GITHUB_ARCHIVE_ORIGINS: https://codeload.github.com
+  AI_ENABLED: ${AI_ENABLED:-false}
+  AI_PROVIDER: ${AI_PROVIDER:-openai_compatible}
+  AI_MODEL: ${AI_MODEL:-}
+  AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+  AI_API_KEY: ${AI_API_KEY:-}
+  AI_STRUCTURED_OUTPUT: ${AI_STRUCTURED_OUTPUT:-json_schema}
+  AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
+  AI_JOB_TIMEOUT_SECONDS: ${AI_JOB_TIMEOUT_SECONDS:-90}
+  AI_MAX_ATTEMPTS: ${AI_MAX_ATTEMPTS:-3}
+  # Coding challenges: only through an evaluator that attests gVisor (or
+  # CHALLENGE_EVALUATOR=none to disable execution entirely).
+  CHALLENGE_ENABLED: ${CHALLENGE_ENABLED:-true}
+  CHALLENGE_EVALUATOR: ${CHALLENGE_EVALUATOR:-spool}
+  CHALLENGE_EVALUATOR_ISOLATION: gvisor
+  CHALLENGE_EVALUATOR_SPOOL: /var/spool/codedna-challenges
+  CHALLENGE_MAX_SOURCE_BYTES: ${CHALLENGE_MAX_SOURCE_BYTES:-16384}
+  CHALLENGE_MAX_ATTEMPTS: ${CHALLENGE_MAX_ATTEMPTS:-5}
+  # Billing: no real payment provider exists yet; "fake" is refused at boot.
+  BILLING_PROVIDER: none
+  BILLING_WEBHOOK_SECRET: ""
+
+x-backend: &backend
+  <<: *hardening
+  image: ${CODEDNA_IMAGE_PREFIX:-codedna}-backend:${APP_VERSION:?APP_VERSION is required}
+  environment: *backend-environment
+  # Writable state is memory-only: Laravel's caches, compiled views and
+  # upload temporaries. Nothing persistent lives in a container.
+  tmpfs:
+    - /var/www/backend/storage:size=160m,mode=0700,uid=10010,gid=10010
+    - /tmp:size=16m,mode=1777
+  group_add:
+    # The challenge spool group (Phase 16).
+    - "10500"
+
+services:
+  nginx:
+    <<: *hardening
+    build:
+      context: ./docker/nginx/production
+    image: ${CODEDNA_IMAGE_PREFIX:-codedna}-nginx:${APP_VERSION:?APP_VERSION is required}
+    environment:
+      CODEDNA_DOMAIN: ${CODEDNA_DOMAIN:?CODEDNA_DOMAIN is required}
+    # The only published ports. Bind address configurable (e.g. a private
+    # address behind a TCP load balancer).
+    ports:
+      - "${PUBLIC_BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-80}:8080"
+      - "${PUBLIC_BIND_ADDRESS:-0.0.0.0}:${HTTPS_PORT:-443}:8443"
+    # File secrets keep their host ownership and mode (Compose without Swarm
+    # ignores uid/gid/mode): the key must be readable by group 101, the
+    # unprivileged nginx user, e.g. root:101 mode 0640
+    # (docs/operations/production-deployment.md#tls).
+    secrets:
+      - tls_certificate
+      - tls_private_key
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      - public
+      - web
+      - app
+    mem_limit: 256m
+    cpus: 1
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/nginx-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    <<: *hardening
+    build:
+      context: ./frontend
+      dockerfile: ../docker/node/Dockerfile
+      target: production
+    image: ${CODEDNA_IMAGE_PREFIX:-codedna}-frontend:${APP_VERSION:?APP_VERSION is required}
+    environment:
+      NODE_ENV: production
+      # Server-side only; never sent to the browser. 8081 is Nginx's
+      # internal listener (the only one that accepts a forwarded client IP).
+      BACKEND_INTERNAL_URL: http://nginx:8081
+      FRONTEND_URL: https://${CODEDNA_DOMAIN:?CODEDNA_DOMAIN is required}
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks:
+      - web
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 128
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        # A route that never calls the API (Nginx waits for this check).
+        - "fetch('http://127.0.0.1:3000/healthz').then(r => process.exit(r.status === 404 ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  backend:
+    <<: *backend
+    build:
+      context: ./backend
+      dockerfile: ../docker/php/Dockerfile
+      target: production
+      additional_contexts:
+        php: ./docker/php
+        contracts: ./packages/api-contracts
+    volumes:
+      - challenge-spool:/var/spool/codedna-challenges
+    # SIGQUIT lets PHP-FPM finish in-flight requests (process_control_timeout).
+    stop_signal: SIGQUIT
+    stop_grace_period: 35s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - app
+      - data
+      - storage
+      - egress
+    mem_limit: 768m
+    cpus: 2
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "codedna-healthcheck"]
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  # Queue worker: every queued job (analysis, AI assessment, challenge
+  # evaluation, GitHub import) is on the "analysis" connection, in that
+  # priority. `queue:work` runs the immutable image code; it exits after
+  # 500 jobs or an hour (bounded memory) and is restarted. On `docker
+  # stop` it finishes the running job first: the grace period exceeds the
+  # job timeout. Retries and backoff are per job class; a retried challenge
+  # evaluation never executes a submission twice (spool protocol).
+  queue:
+    <<: *backend
+    command:
+      - php
+      - artisan
+      - queue:work
+      - analysis
+      - --queue=analysis,assessment,challenge,github
+      - --timeout=${ANALYSIS_JOB_TIMEOUT_SECONDS:-330}
+      - --sleep=3
+      - --tries=0
+      - --max-jobs=500
+      - --max-time=3600
+      - --memory=256
+    stop_signal: SIGTERM
+    stop_grace_period: 360s
+    volumes:
+      - challenge-spool:/var/spool/codedna-challenges
+    depends_on:
+      backend:
+        condition: service_healthy
+      analyzer:
+        condition: service_healthy
+    networks:
+      - data
+      - storage
+      - analysis
+      - egress
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 128
+    healthcheck:
+      disable: true
+
+  # Exactly one scheduler (never scale this service): it runs the stale-run
+  # sweepers and subscription expiry, each withoutOverlapping().
+  scheduler:
+    <<: *backend
+    command: ["php", "artisan", "schedule:work"]
+    stop_grace_period: 60s
+    volumes:
+      - challenge-spool:/var/spool/codedna-challenges
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - data
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+    healthcheck:
+      disable: true
+
+  # One-shot, run explicitly by the deployment procedure (never at start):
+  #   docker compose -f docker-compose.prod.yml --env-file ... run --rm migrate
+  migrate:
+    <<: *backend
+    command: ["php", "artisan", "migrate", "--force", "--no-interaction"]
+    profiles: ["migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - data
+    healthcheck:
+      disable: true
+
+  analyzer:
+    <<: *hardening
+    build:
+      context: ./analyzer
+      dockerfile: ../docker/python/Dockerfile
+      target: production
+    image: ${CODEDNA_IMAGE_PREFIX:-codedna}-analyzer:${APP_VERSION:?APP_VERSION is required}
+    # No storage credentials: sources arrive as short-lived pre-signed URLs
+    # whose host must be on the allow-list.
+    environment:
+      ANALYZER_HMAC_SECRET: ${ANALYZER_HMAC_SECRET:?ANALYZER_HMAC_SECRET is required}
+      ANALYZER_HMAC_SECRET_PREVIOUS: ${ANALYZER_HMAC_SECRET_PREVIOUS:-}
+      ANALYZER_ALLOWED_SOURCE_HOSTS: ${ANALYZER_ALLOWED_SOURCE_HOSTS:-minio}
+      ANALYZER_LOCAL_SOURCE_HOSTS: ${ANALYZER_LOCAL_SOURCE_HOSTS:-minio}
+      ANALYZER_HARD_TIMEOUT_SECONDS: ${ANALYZER_HARD_TIMEOUT_SECONDS:-240}
+      ANALYZER_MAX_CONCURRENCY: ${ANALYZER_MAX_CONCURRENCY:-2}
+      ANALYZER_MAX_ARCHIVE_BYTES: ${ANALYZER_MAX_ARCHIVE_BYTES:-52428800}
+      ANALYZER_MAX_EXTRACTED_BYTES: ${ANALYZER_MAX_EXTRACTED_BYTES:-209715200}
+      ANALYZER_MAX_FILES: ${ANALYZER_MAX_FILES:-20000}
+      ANALYZER_MAX_ENTRY_BYTES: ${ANALYZER_MAX_ENTRY_BYTES:-26214400}
+      ANALYZER_MAX_FILE_BYTES: ${ANALYZER_MAX_FILE_BYTES:-1048576}
+      ANALYZER_MAX_PATH_LENGTH: ${ANALYZER_MAX_PATH_LENGTH:-512}
+      ANALYZER_PARSE_TIMEOUT_MS: ${ANALYZER_PARSE_TIMEOUT_MS:-5000}
+      ANALYZER_MAX_AST_NODES: ${ANALYZER_MAX_AST_NODES:-1000000}
+      ANALYZER_MAX_TOTAL_AST_NODES: ${ANALYZER_MAX_TOTAL_AST_NODES:-10000000}
+      ANALYZER_MAX_PARSED_FILES: ${ANALYZER_MAX_PARSED_FILES:-20000}
+      ANALYZER_WORKSPACE_ROOT: /tmp/codedna
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      # Per-run workspaces: ANALYZER_MAX_CONCURRENCY x (archive + extracted).
+      - /tmp/codedna:size=512m,mode=0700,uid=10001,gid=10001
+    networks:
+      - analysis
+    mem_limit: 1536m
+    cpus: 2
+    pids_limit: 256
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/internal/v1/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Challenge evaluator: runs untrusted code. Production requires the gVisor
+  # runtime (runsc) on the host; the image runs in production mode and
+  # refuses to start unless it attests gVisor (no fallback). Without it the
+  # evaluator stays down and Laravel reports challenge evaluation as
+  # unavailable. EVALUATOR_RUNTIME exists only to name a differently
+  # registered runsc runtime (e.g. "runsc-kvm"); any non-gVisor runtime is
+  # refused by the evaluator itself.
+  evaluator:
+    <<: *hardening
+    build:
+      context: ./evaluator
+      dockerfile: ../docker/evaluator/Dockerfile
+      target: production
+    image: ${CODEDNA_IMAGE_PREFIX:-codedna}-evaluator:${APP_VERSION:?APP_VERSION is required}
+    runtime: ${EVALUATOR_RUNTIME:-runsc}
+    init: true
+    environment:
+      EVALUATOR_PRODUCTION: "true"
+      EVALUATOR_ISOLATION: gvisor
+      CHALLENGE_EXECUTION_TIMEOUT: ${CHALLENGE_EXECUTION_TIMEOUT:-5}
+      CHALLENGE_MAX_MEMORY_MB: ${CHALLENGE_MAX_MEMORY_MB:-256}
+      CHALLENGE_MAX_PROCESSES: ${CHALLENGE_MAX_PROCESSES:-16}
+      CHALLENGE_MAX_OUTPUT_BYTES: ${CHALLENGE_MAX_OUTPUT_BYTES:-65536}
+      CHALLENGE_MAX_SOURCE_BYTES: ${CHALLENGE_MAX_SOURCE_BYTES:-16384}
+      # Must match the /sandbox/N tmpfs mounts below (one per slot).
+      CHALLENGE_MAX_CONCURRENT_EVALUATIONS: "2"
+    network_mode: none
+    tmpfs:
+      - /tmp:size=8m,mode=0700
+      - /sandbox/0:size=16m,mode=0700,uid=10002,gid=10002
+      - /sandbox/1:size=16m,mode=0700,uid=10003,gid=10003
+      - /dev/shm:size=64k,mode=0755
+    sysctls:
+      kernel.shmmni: "0"
+      kernel.msgmni: "0"
+      kernel.sem: "0 0 0 0"
+    volumes:
+      - challenge-spool:/spool
+    group_add:
+      - "10500"
+    cap_add:
+      - SETUID
+      - SETGID
+      - KILL
+    mem_limit: 768m
+    cpus: 1
+    pids_limit: 128
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import json,time; b=json.load(open('/spool/heartbeat')); assert time.time() - b['at'] < 15 and b['isolation'] == 'gvisor'"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  postgres:
+    <<: *hardening
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-codedna}
+      POSTGRES_USER: ${DB_USERNAME:-codedna}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      # scram-sha-256 for every connection (the image default for new clusters).
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
+    # The entrypoint initialises the volume as root, then drops to postgres.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    tmpfs:
+      - /var/run/postgresql:size=1m,uid=70,gid=70,mode=0775
+      - /tmp:size=64m,mode=1777
+    shm_size: 256m
+    stop_grace_period: 60s
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - data
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    <<: *hardening
+    image: redis:7.4-alpine
+    # Password required; append-only persistence so queued jobs survive a
+    # restart; bounded memory without eviction: queued jobs and sessions are
+    # never silently dropped (writes fail loudly at the limit instead; see
+    # docs/operations/production-configuration.md#redis). Sessions, cache and
+    # queues use separate logical databases (REDIS_DB / REDIS_CACHE_DB).
+    command:
+      - sh
+      - -c
+      - >-
+        exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --appendfsync everysec
+        --maxmemory ${REDIS_MAXMEMORY:-384mb} --maxmemory-policy noeviction --protected-mode yes
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    # Runs as the image's unprivileged redis user (owner of /data); no
+    # capability is needed.
+    user: redis
+    volumes:
+      - redis_data:/data
+    networks:
+      - data
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Bundled private object storage (ADR-003). Never published; reachable
+  # only on the storage and analysis networks. An external S3-compatible
+  # provider can replace it (docs/operations/production-configuration.md#object-storage).
+  minio:
+    <<: *hardening
+    image: cgr.dev/chainguard/minio:latest-dev@sha256:f4420fd36b8ea52655addd4bf3458c16ce78af7d0ceb605cf25039b8488a63f4
+    command: ["server", "/data", "--address", ":9000", "--console-address", "127.0.0.1:9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      MINIO_SITE_REGION: ${SOURCE_STORAGE_REGION:-us-east-1}
+      MINIO_BROWSER: "off"
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - minio_data:/data
+    networks:
+      - storage
+      - analysis
+    mem_limit: 1g
+    cpus: 1
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: the bucket (no anonymous access) and the bucket-scoped
+  # application user. Idempotent.
+  minio-init:
+    <<: *hardening
+    build:
+      context: ./docker/minio
+    image: ${CODEDNA_IMAGE_PREFIX:-codedna}-minio-init:${APP_VERSION:?APP_VERSION is required}
+    restart: "no"
+    environment:
+      MC_CONFIG_DIR: /tmp/.mc
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      SOURCE_STORAGE_BUCKET: ${SOURCE_STORAGE_BUCKET:-codedna}
+      SOURCE_STORAGE_ACCESS_KEY_ID: ${SOURCE_STORAGE_ACCESS_KEY_ID:?SOURCE_STORAGE_ACCESS_KEY_ID is required}
+      SOURCE_STORAGE_SECRET_ACCESS_KEY: ${SOURCE_STORAGE_SECRET_ACCESS_KEY:?SOURCE_STORAGE_SECRET_ACCESS_KEY is required}
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - storage
+
+# TLS certificate and key for Nginx: files on the host, outside the
+# repository, readable only by the deploying user. Never in an image.
+secrets:
+  tls_certificate:
+    file: ${TLS_CERTIFICATE_FILE:?TLS_CERTIFICATE_FILE is required (path to the PEM certificate chain)}
+  tls_private_key:
+    file: ${TLS_PRIVATE_KEY_FILE:?TLS_PRIVATE_KEY_FILE is required (path to the PEM private key)}
+
+networks:
+  public:
+  web:
+    internal: true
+    ipam:
+      config:
+        # Fixed: Nginx's internal listener trusts X-Forwarded-For from here only.
+        - subnet: 172.30.20.0/24
+  app:
+    internal: true
+    ipam:
+      config:
+        # Fixed: Laravel's TRUSTED_PROXIES.
+        - subnet: 172.30.10.0/24
+  data:
+    internal: true
+  storage:
+    internal: true
+  analysis:
+    internal: true
+  egress:
+
+volumes:
+  challenge-spool:
+  postgres_data:
+  redis_data:
+  minio_data:

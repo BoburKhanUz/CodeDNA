@@ -22,7 +22,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from evaluator import VERSION, protocol, sandbox
+from evaluator import VERSION, isolation, protocol, sandbox
 from evaluator import config as configuration
 from evaluator.config import Config, Slot
 
@@ -132,20 +132,33 @@ def process(claimed: Path, slot: Slot, conf: Config) -> str:
         claimed.unlink(missing_ok=True)
 
 
-def heartbeat(spool: Path) -> None:
+def heartbeat(spool: Path, attested: isolation.Attestation) -> None:
     beat = spool / ".heartbeat.tmp"
-    beat.write_text(json.dumps({"at": int(time.time()), "version": VERSION}), encoding="utf-8")
+    # Laravel submits only when the attested isolation meets its requirement.
+    record = {"at": int(time.time()), "version": VERSION, "isolation": attested.level, "production": attested.production}
+    beat.write_text(json.dumps(record), encoding="utf-8")
     os.chmod(beat, 0o640)
     os.replace(beat, spool / "heartbeat")
 
 
 def serve(conf: Config) -> None:
+    # Before anything else: a runtime without the required isolation stops
+    # the service (fail closed, no fallback), and a heartbeat left by an
+    # earlier run never vouches for this one.
+    (conf.spool / "heartbeat").unlink(missing_ok=True)
+    attested = isolation.attest(conf.isolation, conf.production)
     prepare_spool(conf.spool)
     for slot in conf.slots:
         if not slot.directory.is_dir():
             raise configuration.ConfigError(f"sandbox directory {slot.directory} is missing")
         sandbox.kill_slot_processes(slot.uid)
-    log.info("evaluator.started slots=%s recovered=%s", len(conf.slots), recover(conf.spool))
+    log.info(
+        "evaluator.started slots=%s recovered=%s isolation=%s production=%s",
+        len(conf.slots),
+        recover(conf.spool),
+        attested.level,
+        attested.production,
+    )
 
     stopping = {"flag": False}
     signal.signal(signal.SIGTERM, lambda *_: stopping.update(flag=True))
@@ -153,7 +166,7 @@ def serve(conf: Config) -> None:
     running: dict[Future[str], Slot] = {}
     with ThreadPoolExecutor(max_workers=len(conf.slots)) as pool:
         while not stopping["flag"]:
-            heartbeat(conf.spool)
+            heartbeat(conf.spool, attested)
             for future in [f for f in running if f.done()]:
                 slot = running.pop(future)
                 error = future.exception()
@@ -185,7 +198,12 @@ def serve(conf: Config) -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    serve(configuration.load())
+    try:
+        serve(configuration.load())
+    except (configuration.ConfigError, isolation.IsolationError) as error:
+        # No heartbeat was written: Laravel sees the evaluator as unavailable.
+        log.critical("evaluator.refused reason=%s", error)
+        raise SystemExit(2) from error
 
 
 if __name__ == "__main__":
