@@ -72,6 +72,16 @@ return [
         // delay before each retry; an analyzer Retry-After is honoured if longer.
         'max_attempts' => (int) env('ANALYZER_MAX_ATTEMPTS', 3),
         'backoff_seconds' => [30, 120],
+        // Phase 26 (docs/performance/queue-performance.md#analyzer-slots): the
+        // analyzer runs at most this many analyses at once (same variable as
+        // the analyzer) and answers more with ANALYZER_BUSY. Workers take one
+        // of these slots (a Redis semaphore) before calling it, so extra
+        // workers wait instead of spending attempts on BUSY answers.
+        'max_concurrency' => (int) env('ANALYZER_MAX_CONCURRENCY', 2),
+        // How long a worker waits for a slot before handing the run to a
+        // fresh, delayed job (no attempt is used). ANALYZER_TIMEOUT_SECONDS
+        // plus this must stay below ANALYSIS_JOB_TIMEOUT_SECONDS.
+        'slot_wait_seconds' => (int) env('ANALYZER_SLOT_WAIT_SECONDS', 20),
         // Lifetime of the pre-signed source URL generated for each attempt.
         'source_url_ttl_seconds' => (int) env('SOURCE_URL_TTL_SECONDS', 900),
         // JSON Schemas of the analyzer responses (packages/api-contracts/analyzer/v1).

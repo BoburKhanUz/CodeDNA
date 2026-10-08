@@ -74,7 +74,7 @@ final class OrganizationAuditTest extends TestCase
         $member = OrganizationFixtures::member($organization)->user;
         $url = "/api/v1/organizations/{$organization->id}/audit-events";
 
-        $this->asUser($admin)->getJson($url)->assertOk()->assertJsonPath('meta.total', 1);
+        $this->asUser($admin)->getJson($url)->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('meta.next_cursor', null);
         $this->asUser($member)->getJson($url)->assertForbidden()->assertJsonPath('error.code', 'INSUFFICIENT_ORGANIZATION_ROLE');
         $this->asUser(User::factory()->create())->getJson($url)->assertNotFound();
         foreach (['POST', 'PUT', 'PATCH', 'DELETE'] as $method) {

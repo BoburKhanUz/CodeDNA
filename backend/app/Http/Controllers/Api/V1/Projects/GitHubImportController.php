@@ -6,8 +6,10 @@ namespace App\Http\Controllers\Api\V1\Projects;
 
 use App\Actions\GitHub\RequestGitHubImport;
 use App\Http\Controllers\Controller;
+use App\Http\Pagination\KeysetPaginator;
 use App\Http\Requests\GitHub\ListGitHubImportsRequest;
 use App\Http\Requests\GitHub\StoreGitHubImportRequest;
+use App\Http\Resources\CursorCollection;
 use App\Http\Resources\GitHubImportResource;
 use App\Http\Resources\PaginatedCollection;
 use App\Models\GitHubImport;
@@ -22,9 +24,17 @@ use Illuminate\Http\JsonResponse;
  */
 final class GitHubImportController extends Controller
 {
-    public function index(ListGitHubImportsRequest $request, Project $project, Gate $gate): PaginatedCollection
+    public function index(ListGitHubImportsRequest $request, Project $project, Gate $gate, KeysetPaginator $keyset): PaginatedCollection|CursorCollection
     {
         $gate->authorize('view', $project);
+
+        if ($request->usesCursor()) {
+            return new CursorCollection($keyset->paginate(
+                $project->githubImports()->getQuery()->with('sourceSnapshot'), ['github_imports.created_at', 'github_imports.id'],
+                fn (GitHubImport $import): array => [(string) $import->getRawOriginal('created_at'), $import->id],
+                'github-imports:'.$project->id, $request->cursor(), $request->perPage(), indexPrefix: 1,
+            ), GitHubImportResource::class);
+        }
 
         $imports = $project->githubImports()
             ->with('sourceSnapshot')

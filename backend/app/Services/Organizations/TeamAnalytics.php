@@ -26,6 +26,14 @@ use Illuminate\Support\Facades\DB;
  *
  * Every figure is one SQL aggregate: the query count does not grow with the
  * organization's history, and no snapshot is loaded into memory.
+ *
+ * Performance (Phase 26, docs/performance/database-performance.md#team-analytics):
+ * the latest snapshot of each active project is found with one index probe
+ * per project (LATERAL … ORDER BY created_at DESC, id DESC LIMIT 1 on the
+ * (project_id, created_at) index), never by sorting every snapshot of the
+ * table, so the cost follows the organization's size, not the platform's.
+ * Each "latest" set is computed once per request (a MATERIALIZED CTE shared
+ * by the figures that need it).
  */
 final readonly class TeamAnalytics
 {
@@ -94,12 +102,18 @@ final readonly class TeamAnalytics
      */
     private function analyses(string $id): array
     {
+        // Per project through its (project_id, created_at) index: the runs of
+        // other organizations are never read.
         $row = DB::selectOne(<<<'SQL'
-            SELECT count(*) FILTER (WHERE r.status = 'SUCCEEDED') AS succeeded,
-                   count(*) FILTER (WHERE r.status = 'FAILED') AS failed,
-                   count(*) FILTER (WHERE r.status = 'SUCCEEDED' AND r.completed_at >= ?) AS recent,
-                   max(r.completed_at) FILTER (WHERE r.status = 'SUCCEEDED') AS last_completed_at
-            FROM analysis_runs r JOIN projects p ON p.id = r.project_id
+            SELECT coalesce(sum(a.succeeded), 0) AS succeeded, coalesce(sum(a.failed), 0) AS failed,
+                   coalesce(sum(a.recent), 0) AS recent, max(a.last_completed_at) AS last_completed_at
+            FROM projects p CROSS JOIN LATERAL (
+                SELECT count(*) FILTER (WHERE r.status = 'SUCCEEDED') AS succeeded,
+                       count(*) FILTER (WHERE r.status = 'FAILED') AS failed,
+                       count(*) FILTER (WHERE r.status = 'SUCCEEDED' AND r.completed_at >= ?) AS recent,
+                       max(r.completed_at) FILTER (WHERE r.status = 'SUCCEEDED') AS last_completed_at
+                FROM analysis_runs r WHERE r.project_id = p.id
+            ) a
             WHERE p.organization_id = ?
         SQL, [Carbon::now()->subDays(30), $id]);
 
@@ -118,25 +132,28 @@ final readonly class TeamAnalytics
      */
     private function dna(string $id): array
     {
-        $latest = <<<'SQL'
-            SELECT DISTINCT ON (d.project_id) d.project_id, d.user_id, d.scoring_version, d.overall_score
-            FROM dna_snapshots d JOIN projects p ON p.id = d.project_id
-            WHERE p.organization_id = ? AND p.status = 'ACTIVE'
-            ORDER BY d.project_id, d.created_at DESC, d.id DESC
-        SQL;
-        $groups = DB::select(<<<SQL
-            SELECT scoring_version, count(*) AS projects, count(overall_score) AS scored, avg(overall_score) AS average
-            FROM ({$latest}) latest GROUP BY scoring_version ORDER BY scoring_version
-        SQL, [$id]);
-        // Members with DNA: ACTIVE members who created a team project that has a DNA snapshot.
-        $members = DB::selectOne(<<<SQL
-            SELECT count(DISTINCT latest.user_id) AS n FROM ({$latest}) latest
-            JOIN organization_memberships m ON m.user_id = latest.user_id AND m.organization_id = ? AND m.status = 'ACTIVE'
+        // One query: the latest DNA of each active project (one index probe
+        // per project), its groups, and the ACTIVE members who created a team
+        // project that has a DNA snapshot.
+        $groups = DB::select(<<<'SQL'
+            WITH latest AS MATERIALIZED (
+                SELECT d.user_id, d.scoring_version, d.overall_score
+                FROM projects p CROSS JOIN LATERAL (
+                    SELECT d.user_id, d.scoring_version, d.overall_score FROM dna_snapshots d
+                    WHERE d.project_id = p.id ORDER BY d.created_at DESC, d.id DESC LIMIT 1
+                ) d
+                WHERE p.organization_id = ? AND p.status = 'ACTIVE'
+            )
+            SELECT scoring_version, count(*) AS projects, count(overall_score) AS scored, avg(overall_score) AS average,
+                   (SELECT count(DISTINCT l.user_id) FROM latest l
+                    JOIN organization_memberships m ON m.user_id = l.user_id AND m.organization_id = ? AND m.status = 'ACTIVE') AS members
+            FROM latest GROUP BY scoring_version ORDER BY scoring_version
         SQL, [$id, $id]);
+        $membersWithDna = $groups === [] ? 0 : (int) $groups[0]->members;
 
         return [
             'projects_with_dna' => array_sum(array_map(fn (object $g): int => (int) $g->projects, $groups)),
-            'members_with_dna' => (int) $members->n,
+            'members_with_dna' => $membersWithDna,
             'by_version' => array_map(fn (object $g): array => [
                 'scoring_version' => $g->scoring_version,
                 'projects' => (int) $g->projects,
@@ -155,20 +172,27 @@ final readonly class TeamAnalytics
      */
     private function competencies(string $id): array
     {
+        // The latest skill gap snapshot of each active project (one index
+        // probe per project), shared by both aggregates of one query each.
         $latest = <<<'SQL'
-            SELECT DISTINCT ON (s.project_id) s.id, s.project_id, s.status, s.competency_version, s.skill_gap_version,
-                   s.target_profile, s.target_profile_version
-            FROM skill_gap_snapshots s JOIN projects p ON p.id = s.project_id
-            WHERE p.organization_id = ? AND p.status = 'ACTIVE'
-            ORDER BY s.project_id, s.created_at DESC, s.id DESC
+            WITH latest AS MATERIALIZED (
+                SELECT s.id, s.status, s.competency_version, s.skill_gap_version, s.target_profile, s.target_profile_version
+                FROM projects p CROSS JOIN LATERAL (
+                    SELECT s.id, s.status, s.competency_version, s.skill_gap_version, s.target_profile, s.target_profile_version
+                    FROM skill_gap_snapshots s WHERE s.project_id = p.id ORDER BY s.created_at DESC, s.id DESC LIMIT 1
+                ) s
+                WHERE p.organization_id = ? AND p.status = 'ACTIVE'
+            )
         SQL;
         $measured = self::MEASURED;
         $snapshots = DB::select(<<<SQL
+            {$latest}
             SELECT competency_version, skill_gap_version, target_profile, target_profile_version, status, count(*) AS n
-            FROM ({$latest}) latest
+            FROM latest
             GROUP BY 1, 2, 3, 4, 5
         SQL, [$id]);
         $rows = DB::select(<<<SQL
+            {$latest}
             SELECT l.competency_version, l.skill_gap_version, l.target_profile, l.target_profile_version, r.competency_key,
                    count(*) FILTER (WHERE r.status IN {$measured}) AS measured,
                    avg(r.current_score) FILTER (WHERE r.status IN {$measured}) AS average,
@@ -177,7 +201,7 @@ final readonly class TeamAnalytics
                    count(*) FILTER (WHERE r.priority = 'MEDIUM') AS medium,
                    count(*) FILTER (WHERE r.priority = 'LOW') AS low,
                    count(*) FILTER (WHERE r.status IN ('INSUFFICIENT_EVIDENCE', 'MISSING', 'UNSUPPORTED')) AS insufficient
-            FROM ({$latest}) l JOIN skill_gap_results r ON r.skill_gap_snapshot_id = l.id
+            FROM latest l JOIN skill_gap_results r ON r.skill_gap_snapshot_id = l.id
             GROUP BY 1, 2, 3, 4, 5
             ORDER BY 1, 2, 3, 4, min(r.position), 5
         SQL, [$id]);

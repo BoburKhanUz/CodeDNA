@@ -259,10 +259,13 @@ describe("OrganizationAudit", () => {
   it("shows admins the timeline with safe descriptions", async () => {
     serve([
       orgRoute("ADMIN"),
-      ["GET", /\/audit-events\?/, () => jsonResponse(page([
-        auditEvent("MEMBER_ROLE_CHANGED", { metadata: { user_id: "x", role: { from: "MEMBER", to: "ADMIN" } } }),
-        auditEvent("MEMBER_INVITED", { metadata: { email: "dev@example.com", role: "MEMBER" } }),
-      ], { total: 30, last_page: 2 }))],
+      ["GET", /\/audit-events\?/, () => jsonResponse({
+        data: [
+          auditEvent("MEMBER_ROLE_CHANGED", { metadata: { user_id: "x", role: { from: "MEMBER", to: "ADMIN" } } }),
+          auditEvent("MEMBER_INVITED", { metadata: { email: "dev@example.com", role: "MEMBER" } }),
+        ],
+        meta: { per_page: 25, next_cursor: "older.tag", prev_cursor: null },
+      })],
     ]);
     render(<OrganizationAudit organizationId={ORG_ID} />);
 
@@ -270,8 +273,12 @@ describe("OrganizationAudit", () => {
     expect(within(events).getByText("Role changed")).toBeInTheDocument();
     expect(events).toHaveTextContent("member → admin");
     expect(events).toHaveTextContent("dev@example.com");
+    expect(requests("GET", /\/audit-events\?cursor=&per_page=25$/)).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Newer" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Older" }));
-    await waitFor(() => expect(requests("GET", /\/audit-events\?page=2/)).toHaveLength(1));
+    // The opaque cursor is sent back exactly as received; no page numbers.
+    await waitFor(() => expect(requests("GET", /\/audit-events\?cursor=older\.tag&per_page=25$/)).toHaveLength(1));
+    expect(requests("GET", /[?&]page=/)).toHaveLength(0);
   });
 
   it("does not ask the API for a member", async () => {

@@ -97,6 +97,16 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            // Phase 26 (docs/performance/database-performance.md#connections):
+            // keep each PHP-FPM worker's connection open between requests
+            // instead of connecting and authenticating (SCRAM) every request.
+            // PDO rolls back a transaction left open by a request before the
+            // connection is reused, and the application keeps no session
+            // state (temporary tables, advisory locks, SET) across requests.
+            // Off by default; docker-compose.prod.yml turns it on.
+            'options' => extension_loaded('pdo_pgsql') ? array_filter([
+                PDO::ATTR_PERSISTENT => (bool) env('DB_PERSISTENT', false),
+            ]) : [],
         ],
 
         'sqlsrv' => [

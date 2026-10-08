@@ -80,7 +80,7 @@ final class ConfigurationValidatorTest extends TestCase
             'codedna.analyzer' => [
                 'url' => 'http://analyzer:8000', 'hmac_secret' => str_repeat('s', 64), 'hmac_secret_previous' => '',
                 'hard_timeout_seconds' => 240, 'timeout_seconds' => 300, 'connect_timeout_seconds' => 5,
-                'max_attempts' => 3, 'source_url_ttl_seconds' => 900,
+                'max_attempts' => 3, 'source_url_ttl_seconds' => 900, 'max_concurrency' => 2, 'slot_wait_seconds' => 20,
             ],
             'codedna.analysis' => ['job_timeout_seconds' => 330],
             'queue.connections.analysis.retry_after' => 360,
@@ -215,6 +215,19 @@ final class ConfigurationValidatorTest extends TestCase
 
         $this->assertContains('ANALYZER_HARD_TIMEOUT_SECONDS must be lower than ANALYZER_TIMEOUT_SECONDS.', $problems);
         $this->assertContains('ANALYSIS_JOB_TIMEOUT_SECONDS must be lower than ANALYSIS_QUEUE_RETRY_AFTER.', $problems);
+    }
+
+    public function test_analyzer_slots_are_bounded_and_waiting_fits_inside_the_job_timeout(): void
+    {
+        $analyzer = $this->config()->get('codedna.analyzer');
+        $problems = fn (array $overrides): array => (new ConfigurationValidator)->problems($this->config(['codedna.analyzer' => $overrides + $analyzer]), 'production');
+
+        $this->assertContains('ANALYZER_MAX_CONCURRENCY must be between 1 and 64.', $problems(['max_concurrency' => 0]));
+        $this->assertContains('ANALYZER_MAX_CONCURRENCY must be between 1 and 64.', $problems(['max_concurrency' => 65]));
+        $this->assertContains('ANALYZER_SLOT_WAIT_SECONDS must be a positive integer.', $problems(['slot_wait_seconds' => 0]));
+        // 300 s analyzer timeout + 30 s wait reaches the 330 s job timeout: a worker could be killed while waiting.
+        $this->assertContains('ANALYZER_TIMEOUT_SECONDS plus ANALYZER_SLOT_WAIT_SECONDS must be lower than ANALYSIS_JOB_TIMEOUT_SECONDS.', $problems(['slot_wait_seconds' => 30]));
+        $this->assertSame([], $problems(['slot_wait_seconds' => 29, 'max_concurrency' => 64]));
     }
 
     public function test_the_analyzer_needs_a_secret_an_internal_url_and_bounded_settings(): void

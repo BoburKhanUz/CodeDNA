@@ -230,10 +230,17 @@ before stopping (grace period 360 s). PHP-FPM finishes in-flight requests
 
 ## Operating notes
 
-- **Scaling:** `queue` can run several replicas (`--scale queue=N`); jobs are
-  idempotent and retried with backoff per job class. Never scale `scheduler`
-  or `migrate`. The analyzer's replay protection is per process: run one
-  analyzer.
+- **Scaling:** `queue` can run several replicas (`--scale queue=N`). Jobs
+  are idempotent and retried with backoff per job class. Since Phase 26,
+  workers share the analyzer's slots through Redis
+  (`ANALYZER_MAX_CONCURRENCY`), so more workers than slots wait instead of
+  failing analyses. Run slots + 1–2 workers. Never scale `scheduler` or
+  `migrate`. The analyzer's replay protection is per process: run one
+  analyzer and give it more CPU. See the
+  [scaling guide](../performance/scaling-guide.md).
+- **Persistent database connections** are on by default (`DB_PERSISTENT`).
+  Size PostgreSQL's `max_connections` for the sum of FPM children and
+  workers ([database performance](../performance/database-performance.md#connections)).
 - **External object storage:** see
   [production configuration](production-configuration.md#object-storage).
 - **Managed PostgreSQL:** set `DB_HOST` and `DB_SSLMODE=verify-full`, and

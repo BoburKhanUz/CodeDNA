@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services\History;
 
 use App\Enums\AnalysisRunStatus;
+use App\Http\Pagination\CursorPage;
+use App\Http\Pagination\KeysetPaginator;
 use App\Models\CompetencySnapshot;
 use App\Models\DnaSnapshot;
 use App\Models\GrowthSnapshot;
@@ -48,6 +50,27 @@ final readonly class HistoryReader
         );
     }
 
+    /**
+     * A keyset page of the same history, in the same order (Phase 26): no
+     * COUNT and no OFFSET, one bounded walk of the project's history index.
+     *
+     * @return CursorPage<HistoryPoint>
+     */
+    public function cursorPage(Project $project, ?string $cursor, int $perPage, KeysetPaginator $keyset): CursorPage
+    {
+        $page = $keyset->paginate(
+            $this->eligible($project)->addSelect('analysis_runs.completed_at as history_completed_at'),
+            ['analysis_runs.completed_at', 'analysis_runs.id', 'dna_snapshots.created_at', 'dna_snapshots.id'],
+            fn (DnaSnapshot $dna): array => [
+                (string) $dna->getRawOriginal('history_completed_at'), $dna->analysis_run_id,
+                (string) $dna->getRawOriginal('created_at'), $dna->id,
+            ],
+            'history:'.$project->id, $cursor, $perPage, indexPrefix: 2,
+        );
+
+        return new CursorPage($this->points(new Collection($page->items)), $page->perPage, $page->nextCursor, $page->previousCursor);
+    }
+
     public function find(Project $project, string $dnaSnapshotId): ?HistoryPoint
     {
         return $this->findMany($project, [$dnaSnapshotId])[0] ?? null;
@@ -80,9 +103,18 @@ final readonly class HistoryReader
             $point->dna->getRawOriginal('created_at'), $point->dna->id,
         ];
         $tuple = '(analysis_runs.completed_at, analysis_runs.id, dna_snapshots.created_at, dna_snapshots.id)';
-        $previous = self::ordered($this->eligible($project)->whereRaw("{$tuple} < (?, ?, ?, ?)", $key))
+        // The run prefix (completed_at, id) is a range on the project's history
+        // index, so each neighbour is found by a short index walk from the
+        // point instead of a scan of the whole history (Phase 26); the full
+        // tuple then decides between DNA snapshots of the same run.
+        $prefix = '(analysis_runs.completed_at, analysis_runs.id)';
+        $previous = self::ordered($this->eligible($project)
+            ->whereRaw("{$prefix} <= (?, ?)", array_slice($key, 0, 2))
+            ->whereRaw("{$tuple} < (?, ?, ?, ?)", $key))
             ->addSelect('analysis_runs.completed_at as analyzed_at')->first();
-        $next = self::ordered($this->eligible($project)->whereRaw("{$tuple} > (?, ?, ?, ?)", $key), 'asc')
+        $next = self::ordered($this->eligible($project)
+            ->whereRaw("{$prefix} >= (?, ?)", array_slice($key, 0, 2))
+            ->whereRaw("{$tuple} > (?, ?, ?, ?)", $key), 'asc')
             ->addSelect('analysis_runs.completed_at as analyzed_at')->first();
 
         return ['previous' => self::reference($previous), 'next' => self::reference($next)];

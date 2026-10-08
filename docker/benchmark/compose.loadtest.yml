@@ -1,0 +1,36 @@
+# Load-test overlay (Phase 26, docs/performance/load-testing.md), applied and
+# removed by scripts/benchmark/loadtest.sh; never used otherwise.
+#
+# - Points the backend and queue worker at the benchmark database and Redis
+#   databases of their own: a load test never touches development data or
+#   queues.
+# - Runs the PRODUCTION backend image (make prod-build or the image built by
+#   make loadtest): immutable OPcache, the production PHP-FPM pool, no source
+#   bind mount, APP_DEBUG off. The development image (5 FPM children, debug
+#   on, OPcache revalidating a bind mount) would measure the laptop setup,
+#   not the application. APP_ENV stays "local" only because this edge is
+#   plain HTTP (production refuses non-https URLs and insecure cookies).
+services:
+  backend:
+    image: ${LOADTEST_BACKEND_IMAGE:-codedna-backend:production}
+    pull_policy: never
+    build: !reset null
+    volumes: !override
+      - challenge-spool:/var/spool/codedna-challenges
+    tmpfs:
+      - /var/www/backend/storage:size=160m,mode=0700,uid=10010,gid=10010
+      - /tmp:size=16m,mode=1777
+    environment:
+      DB_DATABASE: codedna_benchmark
+      REDIS_DB: "5"
+      REDIS_CACHE_DB: "6"
+      APP_DEBUG: "false"
+      LOG_LEVEL: warning
+      DB_PERSISTENT: ${LOADTEST_DB_PERSISTENT:-true}
+      SOURCE_STORAGE_PREFIX: benchmark/
+  queue:
+    environment:
+      DB_DATABASE: codedna_benchmark
+      REDIS_DB: "5"
+      REDIS_CACHE_DB: "6"
+      SOURCE_STORAGE_PREFIX: benchmark/

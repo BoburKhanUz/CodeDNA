@@ -82,6 +82,31 @@ final class TeamAnalyticsTest extends TestCase
         }
     }
 
+    public function test_older_assessments_of_a_project_never_count(): void
+    {
+        $projects = [$this->teamProject(), $this->teamProject()];
+        // Each project also has OLDER snapshots (of another version, a far lower
+        // score): only the latest of each project counts.
+        foreach (['dna_snapshots' => ['overall_score' => '0', 'scoring_version' => '0.9.0'], 'skill_gap_snapshots' => ['skill_gap_version' => '0.1.0']] as $table => $changed) {
+            $columns = array_values(array_diff(DB::getSchemaBuilder()->getColumnListing($table), ['id', 'created_at', ...array_keys($changed)]));
+            foreach ($projects as $project) {
+                $list = implode(', ', $columns);
+                DB::insert("INSERT INTO {$table} (id, created_at, ".implode(', ', array_keys($changed)).", {$list})
+                    SELECT ?, created_at - interval '1 day', ".implode(', ', array_fill(0, count($changed), '?')).", {$list} FROM {$table} WHERE project_id = ?",
+                    [strtolower((string) Str::ulid()), ...array_values($changed), $project->id]);
+            }
+        }
+
+        $data = $this->analytics();
+
+        $latest = (float) DB::table('dna_snapshots')->whereIn('project_id', array_map(fn (Project $p) => $p->id, $projects))->where('overall_score', '>', 0)->avg('overall_score');
+        $this->assertSame(2, $data['dna']['projects_with_dna']);
+        $this->assertSame(['1.0.0'], array_column($data['dna']['by_version'], 'scoring_version'));
+        $this->assertSame(round($latest, 4), $data['dna']['by_version'][0]['average_overall_score']);
+        $this->assertCount(1, $data['competencies'], 'the older skill gap version is not reported');
+        $this->assertSame(2, $data['competencies'][0]['projects']);
+    }
+
     public function test_thin_evidence_gives_no_average(): void
     {
         $this->teamProject();

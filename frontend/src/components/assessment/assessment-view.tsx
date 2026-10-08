@@ -13,6 +13,7 @@ import { isApiError } from "@/lib/api/errors";
 import type { AiAssessment, AssessmentClaim, AssessmentEvidence, Project } from "@/lib/api/types";
 import { getAssessment, listAssessments, requestAssessment } from "@/lib/assessment/client";
 import { factLabel, formatFact } from "@/lib/assessment/format";
+import { usePageVisible } from "@/lib/polling/use-page-visible";
 import { getProject, isProjectId } from "@/lib/projects/client";
 import { formatDateTime } from "@/lib/projects/format";
 import { listSkillGapSnapshots } from "@/lib/skill-gap/client";
@@ -72,8 +73,10 @@ export function AssessmentView({ projectId }: { projectId: string }) {
     state.status === "loaded" && state.assessment && (state.assessment.status === "QUEUED" || state.assessment.status === "RUNNING")
       ? state.assessment.id
       : null;
+  // Paused while the tab is hidden (Phase 26); resumes when it is shown again.
+  const visible = usePageVisible();
   useEffect(() => {
-    if (pendingId === null) return;
+    if (pendingId === null || !visible) return;
     const timer = setTimeout(() => {
       getAssessment(projectId, pendingId)
         // A late answer about an assessment that is no longer shown (a newer one was requested) is ignored.
@@ -83,7 +86,7 @@ export function AssessmentView({ projectId }: { projectId: string }) {
         .catch(handleError);
     }, POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
-  }, [pendingId, state, projectId, handleError]);
+  }, [pendingId, visible, state, projectId, handleError]);
 
   const submit = useCallback(() => {
     setRequest({ status: "sending" });

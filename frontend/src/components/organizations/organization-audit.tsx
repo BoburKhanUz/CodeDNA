@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiErrorAlert } from "@/components/auth/api-error-alert";
 import { OrganizationFrame, useOrganizationErrors } from "@/components/organizations/organization-frame";
 import { Button } from "@/components/ui/button";
-import type { Organization, OrganizationAuditEvent, Paginated } from "@/lib/api/types";
+import type { CursorPaginated, Organization, OrganizationAuditEvent } from "@/lib/api/types";
 import { isAdmin, listAuditEvents } from "@/lib/organizations/client";
 import { formatDateTime } from "@/lib/projects/format";
 
@@ -24,7 +24,7 @@ const ACTION_LABELS: Record<string, string> = {
   PROJECT_ARCHIVED: "Project archived",
 };
 
-type State = { status: "loading" } | { status: "error"; error: unknown } | { status: "ready"; page: Paginated<OrganizationAuditEvent> };
+type State = { status: "loading" } | { status: "error"; error: unknown } | { status: "ready"; page: CursorPaginated<OrganizationAuditEvent> };
 
 /** /app/organizations/[organization]/audit: the append-only audit log, newest first (admins and the owner). */
 export function OrganizationAudit({ organizationId }: { organizationId: string }) {
@@ -44,18 +44,19 @@ export function OrganizationAudit({ organizationId }: { organizationId: string }
 }
 
 function Timeline({ organization }: { organization: Organization }) {
-  const [page, setPage] = useState(1);
+  // The log is paged by opaque cursors (no page numbers or totals: it can be very long).
+  const [cursor, setCursor] = useState<string | null>(null);
   const [state, setState] = useState<State>({ status: "loading" });
   const fail = useOrganizationErrors(useCallback((error: unknown) => setState({ status: "error", error }), []));
   const load = useCallback(
-    (n: number) => {
-      listAuditEvents(organization.id, n)
+    (at: string | null) => {
+      listAuditEvents(organization.id, at)
         .then((result) => setState({ status: "ready", page: result }))
         .catch(fail);
     },
     [organization.id, fail],
   );
-  useEffect(() => load(page), [load, page]);
+  useEffect(() => load(cursor), [load, cursor]);
 
   if (state.status === "loading") return <p role="status">Loading audit log…</p>;
   if (state.status === "error") return <ApiErrorAlert error={state.error} />;
@@ -76,19 +77,21 @@ function Timeline({ organization }: { organization: Organization }) {
           </li>
         ))}
       </ol>
-      {meta.last_page > 1 ? (
+      {meta.next_cursor !== null || meta.prev_cursor !== null ? (
         <nav aria-label="Pagination" className="flex items-center gap-3 text-sm">
-          <Button variant="outline" size="sm" disabled={meta.current_page <= 1} onClick={() => (setState({ status: "loading" }), setPage(meta.current_page - 1))}>
-            Newer
-          </Button>
-          <span>
-            Page {meta.current_page} of {meta.last_page}
-          </span>
           <Button
             variant="outline"
             size="sm"
-            disabled={meta.current_page >= meta.last_page}
-            onClick={() => (setState({ status: "loading" }), setPage(meta.current_page + 1))}
+            disabled={meta.prev_cursor === null}
+            onClick={() => (setState({ status: "loading" }), setCursor(meta.prev_cursor))}
+          >
+            Newer
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={meta.next_cursor === null}
+            onClick={() => (setState({ status: "loading" }), setCursor(meta.next_cursor))}
           >
             Older
           </Button>

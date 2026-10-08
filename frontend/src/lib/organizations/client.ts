@@ -12,6 +12,7 @@ import type {
   OrganizationInvitation,
   OrganizationMembership,
   OrganizationRole,
+  CursorPaginated,
   Paginated,
   Project,
 } from "@/lib/api/types";
@@ -124,8 +125,11 @@ export async function createOrganizationProject(organizationId: string, input: C
   return (await api.post<DataEnvelope<Project>>(path(organizationId, "/projects"), input)).data;
 }
 
-export function listAuditEvents(organizationId: string, n = 1, perPage = 25): Promise<Paginated<OrganizationAuditEvent>> {
-  return api.get<Paginated<OrganizationAuditEvent>>(path(organizationId, `/audit-events${page(n, perPage)}`));
+/** One keyset page of the audit log: `cursor` is null for the newest page, else a cursor the API returned. */
+export function listAuditEvents(organizationId: string, cursor: string | null = null, perPage = 25): Promise<CursorPaginated<OrganizationAuditEvent>> {
+  return api.get<CursorPaginated<OrganizationAuditEvent>>(
+    path(organizationId, `/audit-events?cursor=${encodeURIComponent(cursor ?? "")}&per_page=${perPage}`),
+  );
 }
 
 export async function getAnalytics(organizationId: string): Promise<OrganizationAnalytics> {

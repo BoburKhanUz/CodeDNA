@@ -96,7 +96,7 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `POST` | `/api/v1/organizations/invitations/{token}/accept` | invited user | 200 | Accept an invitation |
 | `GET` | `/api/v1/organizations/{organization}/projects` | member | 200 | The organization's projects |
 | `POST` | `/api/v1/organizations/{organization}/projects` | ADMIN+ | 201 | Create a team project |
-| `GET` | `/api/v1/organizations/{organization}/audit-events` | ADMIN+ | 200 | The audit log (paginated, newest first) |
+| `GET` | `/api/v1/organizations/{organization}/audit-events` | ADMIN+ | 200 | The audit log (cursor-paginated, newest first) |
 | `GET` | `/api/v1/organizations/{organization}/analytics` | member | 200 | Read-only team analytics |
 
 There is no `DELETE` for projects (`405`) and no update, delete or download
@@ -1623,7 +1623,8 @@ projects. `GET /api/v1/projects` lists personal projects only.
 
 ### `GET .../audit-events`
 
-ADMIN+, paginated, newest first: `action`, `actor`, `target` (`type`, `id`),
+ADMIN+, newest first, cursor-paginated only ([pagination](#pagination);
+`?page` is refused): `action`, `actor`, `target` (`type`, `id`),
 `metadata` and `request_id`. Read-only; there is no write method.
 
 ### `GET .../analytics`
@@ -1728,6 +1729,41 @@ name); clients build page links from `meta`:
 ```json
 { "data": [ { "id": "…", "type": "project" } ], "meta": { "current_page": 2, "per_page": 25, "total": 60, "last_page": 3 } }
 ```
+
+### Pagination
+
+Phase 26 added **cursor (keyset) pagination** to long, append-only lists
+([performance architecture](../performance/performance-architecture.md#cursor-vs-offset-pagination)).
+Page mode counts every row and skips `OFFSET` rows. A cursor page costs the
+same at any depth and never shifts or repeats items when new ones are
+added while a client is paging.
+
+| List | Modes |
+|---|---|
+| `GET /organizations/{organization}/audit-events` | **cursor only** (`?page` is `422`) |
+| `GET /projects/{project}/history` | page (default) or cursor |
+| `GET /projects/{project}/analyses` | page (default) or cursor |
+| `GET /projects/{project}/source-snapshots` | page (default) or cursor |
+| `GET /projects/{project}/growth/timeline` | page (default) or cursor |
+| `GET /projects/{project}/github/imports` | page (default) or cursor |
+| `GET /billing/usage` | page (default) or cursor |
+| every other collection | page |
+
+Send `?cursor=` (empty) for the first page, then the `next_cursor` or
+`prev_cursor` of the previous response. `per_page` works as in page mode.
+`page` and `cursor` together are `422`. A `null` cursor means there is
+nothing further in that direction:
+
+```json
+{ "data": [ … ], "meta": { "per_page": 25, "next_cursor": "eyJsIjoi…", "prev_cursor": null } }
+```
+
+Cursors are opaque: treat them as strings and never build or alter them.
+Each is signed with the server's key and bound to its list, so a cursor
+that was altered, comes from another list, or was signed before an
+`APP_KEY` rotation is refused with `422 VALIDATION_FAILED` (field
+`cursor`). Restart from `?cursor=` in that case. Cursor responses have no
+`total`. Items appear in the same order as in page mode.
 
 ## Errors
 

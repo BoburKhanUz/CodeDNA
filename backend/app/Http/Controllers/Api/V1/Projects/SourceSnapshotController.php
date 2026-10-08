@@ -6,8 +6,10 @@ namespace App\Http\Controllers\Api\V1\Projects;
 
 use App\Actions\Snapshots\StoreUploadedSource;
 use App\Http\Controllers\Controller;
+use App\Http\Pagination\KeysetPaginator;
 use App\Http\Requests\Projects\ListSourceSnapshotsRequest;
 use App\Http\Requests\Projects\StoreSourceSnapshotRequest;
+use App\Http\Resources\CursorCollection;
 use App\Http\Resources\PaginatedCollection;
 use App\Http\Resources\SourceSnapshotResource;
 use App\Models\Project;
@@ -24,9 +26,17 @@ use Illuminate\Http\JsonResponse;
  */
 final class SourceSnapshotController extends Controller
 {
-    public function index(ListSourceSnapshotsRequest $request, Project $project, Gate $gate): PaginatedCollection
+    public function index(ListSourceSnapshotsRequest $request, Project $project, Gate $gate, KeysetPaginator $keyset): PaginatedCollection|CursorCollection
     {
         $gate->authorize('view', $project);
+
+        if ($request->usesCursor()) {
+            return new CursorCollection($keyset->paginate(
+                $project->sourceSnapshots()->getQuery(), ['source_snapshots.version'],
+                fn (SourceSnapshot $snapshot): array => [(string) $snapshot->version],
+                'source-snapshots:'.$project->id, $request->cursor(), $request->perPage(),
+            ), SourceSnapshotResource::class);
+        }
 
         $snapshots = $project->sourceSnapshots()
             ->orderByDesc('version')

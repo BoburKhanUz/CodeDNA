@@ -352,6 +352,18 @@ final class ConfigurationValidator
             }
         }
 
+        $slots = $analyzer['max_concurrency'] ?? null;
+        if (! is_int($slots) || $slots < 1 || $slots > 64) {
+            $problems[] = 'ANALYZER_MAX_CONCURRENCY must be between 1 and 64.';
+        }
+        $wait = $analyzer['slot_wait_seconds'] ?? null;
+        if (! is_int($wait) || $wait < 1) {
+            $problems[] = 'ANALYZER_SLOT_WAIT_SECONDS must be a positive integer.';
+        } elseif (is_int($chain['ANALYZER_TIMEOUT_SECONDS']) && is_int($chain['ANALYSIS_JOB_TIMEOUT_SECONDS'])
+            && $chain['ANALYSIS_JOB_TIMEOUT_SECONDS'] <= $chain['ANALYZER_TIMEOUT_SECONDS'] + $wait) {
+            $problems[] = 'ANALYZER_TIMEOUT_SECONDS plus ANALYZER_SLOT_WAIT_SECONDS must be lower than ANALYSIS_JOB_TIMEOUT_SECONDS.';
+        }
+
         $attempts = $analyzer['max_attempts'] ?? null;
         if (! is_int($attempts) || $attempts < 1 || $attempts > 10) {
             $problems[] = 'ANALYZER_MAX_ATTEMPTS must be between 1 and 10.';

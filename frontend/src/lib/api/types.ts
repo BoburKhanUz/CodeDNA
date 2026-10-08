@@ -30,6 +30,19 @@ export interface Paginated<T> {
   meta: PaginationMeta;
 }
 
+/** Cursor information of a keyset page (`?cursor=…&per_page=…`); a null cursor means nothing further that way. */
+export interface CursorMeta {
+  per_page: number;
+  next_cursor: string | null;
+  prev_cursor: string | null;
+}
+
+/** A keyset page of a long, append-only list: no total, opaque cursors. */
+export interface CursorPaginated<T> {
+  data: T[];
+  meta: CursorMeta;
+}
+
 /** The public API's error vocabulary (backend ErrorCode enum). */
 export const API_ERROR_CODES = [
   "BAD_REQUEST",

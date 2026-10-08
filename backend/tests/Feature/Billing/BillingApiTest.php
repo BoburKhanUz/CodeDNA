@@ -12,6 +12,7 @@ use App\Models\SourceSnapshot;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\BillingFixtures;
 use Tests\TestCase;
@@ -65,6 +66,25 @@ final class BillingApiTest extends TestCase
         $this->assertSame([1, 60, 59, '2026-11-01T00:00:00Z'], [$quotas['ANALYSES']['used'], $quotas['ANALYSES']['limit'], $quotas['ANALYSES']['remaining'], $quotas['ANALYSES']['resets_at']]);
         $usage = $this->asUser($this->user)->getJson('/api/v1/billing/usage')->assertOk();
         $usage->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.quota', 'ANALYSES')->assertJsonPath('data.0.outcome', 'ACCEPTED')->assertJsonPath('data.0.resource_type', 'analysis_run');
+    }
+
+    public function test_every_monthly_counter_of_the_current_period_is_reported(): void
+    {
+        // Read together in one query since Phase 26: each quota still gets
+        // its own counter, and last month's counters are not this month's.
+        $monthly = array_values(array_filter(QuotaKey::cases(), fn (QuotaKey $k): bool => $k !== QuotaKey::ActiveProjects));
+        foreach ($monthly as $i => $key) {
+            DB::table('billing_usage_counters')->insert([
+                ['user_id' => $this->user->id, 'quota_key' => $key->value, 'period_start' => '2026-10-01 00:00:00', 'used' => $i + 1],
+                ['user_id' => $this->user->id, 'quota_key' => $key->value, 'period_start' => '2026-09-01 00:00:00', 'used' => 50],
+            ]);
+        }
+
+        $quotas = collect($this->asUser($this->user)->getJson('/api/v1/billing')->json('data.quotas'))->keyBy('key');
+
+        foreach ($monthly as $i => $key) {
+            $this->assertSame($i + 1, $quotas[$key->value]['used'], $key->value);
+        }
     }
 
     public function test_a_subscriber_sees_their_plan_period_and_history_without_provider_references(): void

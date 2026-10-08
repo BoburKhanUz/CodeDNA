@@ -129,6 +129,19 @@ never a member's, and nobody's own CodeDNA changes by joining a team
   [backup and restore](docs/operations/backup-and-restore.md) and
   [rollback](docs/operations/rollback.md).
 
+Since Phase 26 CodeDNA is **measured at scale**. A deterministic benchmark generator
+(`make benchmark-seed`, isolated from development data) and an HTTP load harness
+(`make loadtest`, scenarios A–F) produced a baseline. Then:
+
+- team analytics is 7× faster on a 2,000-project organization;
+- long histories and the audit log page by signed cursors at constant cost;
+- query counts are pinned against N+1 regressions;
+- queue workers share the analyzer's capacity instead of failing analyses;
+- persistent database connections double request throughput.
+
+Every number, before and after, is in
+[performance architecture](docs/performance/performance-architecture.md).
+
 Nothing in the repository is a production value or credential. The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
@@ -156,6 +169,7 @@ code runs only in the network-less evaluator and never changes CodeDNA.
 - Testing: [test strategy](docs/testing/test-strategy.md) · [QA matrix](docs/testing/qa-matrix.md)
 - Security: [threat model](docs/security/threat-model.md) · [security hardening](docs/security/security-hardening.md) (after pulling Phase 21, run `make setup` once to add `REDIS_PASSWORD` to `.env`) · [production security baseline](docs/operations/security-baseline.md)
 - Operations: [production deployment](docs/operations/production-deployment.md) · [production configuration](docs/operations/production-configuration.md) · [backup and restore](docs/operations/backup-and-restore.md) · [rollback](docs/operations/rollback.md)
+- Performance: [architecture](docs/performance/performance-architecture.md) · [benchmarking](docs/performance/benchmarking.md) · [load testing](docs/performance/load-testing.md) · [database](docs/performance/database-performance.md) · [queues](docs/performance/queue-performance.md) · [scaling guide](docs/performance/scaling-guide.md)
 - Billing: [architecture](docs/billing/billing-architecture.md) · [subscription state machine](docs/billing/subscription-state-machine.md) · [entitlements and quotas](docs/billing/entitlements-and-quotas.md)
 - Teams: [architecture](docs/teams/teams-architecture.md) · [authorization](docs/teams/authorization.md) · [invitations](docs/teams/invitations.md) · [billing boundary](docs/teams/billing-boundary.md) · [team analytics](docs/teams/team-analytics.md)
 - API: [public conventions](docs/api/README.md) · [internal analyzer contract](docs/api/internal-analyzer-contract.md)

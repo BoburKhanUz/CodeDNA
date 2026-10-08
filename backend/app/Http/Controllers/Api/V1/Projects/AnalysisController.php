@@ -9,9 +9,11 @@ use App\Enums\AnalysisRunStatus;
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Errors\ErrorCode;
+use App\Http\Pagination\KeysetPaginator;
 use App\Http\Requests\Analysis\ListAnalysesRequest;
 use App\Http\Requests\Analysis\StoreAnalysisRequest;
 use App\Http\Resources\AnalysisRunResource;
+use App\Http\Resources\CursorCollection;
 use App\Http\Resources\PaginatedCollection;
 use App\Models\AnalysisResult;
 use App\Models\AnalysisRun;
@@ -26,9 +28,17 @@ use Illuminate\Http\JsonResponse;
  */
 final class AnalysisController extends Controller
 {
-    public function index(ListAnalysesRequest $request, Project $project, Gate $gate): PaginatedCollection
+    public function index(ListAnalysesRequest $request, Project $project, Gate $gate, KeysetPaginator $keyset): PaginatedCollection|CursorCollection
     {
         $gate->authorize('view', $project);
+
+        if ($request->usesCursor()) {
+            return new CursorCollection($keyset->paginate(
+                $project->analysisRuns()->getQuery(), ['analysis_runs.created_at', 'analysis_runs.id'],
+                fn (AnalysisRun $run): array => [(string) $run->getRawOriginal('created_at'), $run->id],
+                'analyses:'.$project->id, $request->cursor(), $request->perPage(), indexPrefix: 1,
+            ), AnalysisRunResource::class);
+        }
 
         $runs = $project->analysisRuns()
             ->orderByDesc('created_at')

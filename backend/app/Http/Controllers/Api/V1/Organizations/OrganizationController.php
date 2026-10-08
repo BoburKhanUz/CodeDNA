@@ -91,7 +91,7 @@ final class OrganizationController extends Controller
             'type' => 'organization_billing',
             'plan' => ['key' => $context->plan->key, 'version' => $context->plan->version, 'name' => $context->plan->name],
             'entitlement_version' => $account->entitlement_version,
-            'seats' => $quotas->seats($organization),
+            'seats' => $quotas->seats($organization, $account),
             'period' => ['start' => $context->periodStart->toIso8601ZuluString(), 'end' => $context->periodEnd->toIso8601ZuluString()],
             'quotas' => array_map(fn (array $q): array => [
                 'key' => $q['key']->value, 'label' => $q['key']->label(), 'unit' => $q['key']->unit(), 'period' => $q['key']->period()->value,

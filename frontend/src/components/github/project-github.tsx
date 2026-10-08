@@ -24,6 +24,7 @@ import {
   startGitHubAuthorization,
 } from "@/lib/github/client";
 import { importFailureMessage, importStatusLabel, isSafeRedirect, shortSha } from "@/lib/github/format";
+import { usePageVisible } from "@/lib/polling/use-page-visible";
 import { getProject, isProjectId } from "@/lib/projects/client";
 import { formatDateTime } from "@/lib/projects/format";
 
@@ -81,13 +82,31 @@ export function ProjectGitHubView({ projectId, notice }: { projectId: string; no
     void load();
   }, [load]);
 
-  // Follow an import in progress until it finishes.
+  // Follow an import in progress until it finishes: only the connection (its
+  // latest import) is polled; the whole page reloads once when it is done
+  // (Phase 26: one request per tick instead of three). Paused while the tab is hidden.
   const importing = state.status === "ready" && (state.github.latest_import?.status === "QUEUED" || state.github.latest_import?.status === "RUNNING");
+  const visible = usePageVisible();
   useEffect(() => {
-    if (!importing) return;
-    const timer = window.setTimeout(() => void load(), POLL_MS);
+    if (!importing || !visible) return;
+    const timer = window.setTimeout(() => {
+      const sequence = loads.current;
+      getProjectGitHub(projectId)
+        .then((github) => {
+          if (sequence !== loads.current) return;
+          const status = github.latest_import?.status;
+          if (status === "QUEUED" || status === "RUNNING") {
+            setState((current) => (current.status === "ready" ? { ...current, github } : current));
+          } else {
+            void load();
+          }
+        })
+        .catch((error: unknown) => {
+          if (sequence === loads.current) handleError(error);
+        });
+    }, POLL_MS);
     return () => window.clearTimeout(timer);
-  }, [importing, load, state]);
+  }, [importing, visible, load, state, projectId, handleError]);
 
   const act = useCallback(
     async (action: () => Promise<unknown>) => {

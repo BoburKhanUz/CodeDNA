@@ -63,6 +63,10 @@ x-backend-environment: &backend-environment
   DB_USERNAME: ${DB_USERNAME:-codedna}
   DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
   DB_SSLMODE: ${DB_SSLMODE:-prefer}
+  # One connection per PHP-FPM worker, kept between requests: no TCP and
+  # SCRAM authentication per request (Phase 26: twice the request throughput
+  # measured). Plan max_connections for it (docs/performance/scaling-guide.md).
+  DB_PERSISTENT: ${DB_PERSISTENT:-true}
   REDIS_CLIENT: phpredis
   REDIS_HOST: redis
   REDIS_PORT: "6379"
@@ -101,6 +105,10 @@ x-backend-environment: &backend-environment
   ANALYZER_CONNECT_TIMEOUT_SECONDS: ${ANALYZER_CONNECT_TIMEOUT_SECONDS:-5}
   ANALYZER_TIMEOUT_SECONDS: ${ANALYZER_TIMEOUT_SECONDS:-300}
   ANALYZER_MAX_ATTEMPTS: ${ANALYZER_MAX_ATTEMPTS:-3}
+  # The analyzer's concurrency (same variable): workers wait for one of its
+  # slots instead of collecting ANALYZER_BUSY answers (Phase 26).
+  ANALYZER_MAX_CONCURRENCY: ${ANALYZER_MAX_CONCURRENCY:-2}
+  ANALYZER_SLOT_WAIT_SECONDS: ${ANALYZER_SLOT_WAIT_SECONDS:-20}
   ANALYSIS_JOB_TIMEOUT_SECONDS: ${ANALYSIS_JOB_TIMEOUT_SECONDS:-330}
   ANALYSIS_QUEUE_RETRY_AFTER: ${ANALYSIS_QUEUE_RETRY_AFTER:-360}
   ANALYZER_CONTRACTS_PATH: /var/www/contracts/analyzer/v1

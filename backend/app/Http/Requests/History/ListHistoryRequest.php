@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\History;
 
+use App\Http\Requests\Concerns\CursorPaginated;
 use App\Http\Requests\GitHub\OnlyFields;
 use App\Http\Requests\PaginatedRequest;
 
@@ -13,10 +14,11 @@ use App\Http\Requests\PaginatedRequest;
  */
 final class ListHistoryRequest extends PaginatedRequest
 {
+    use CursorPaginated;
     use OnlyFields;
 
     protected function allowedFields(): array
     {
-        return ['page', 'per_page'];
+        return ['page', 'per_page', 'cursor'];
     }
 }

@@ -6,11 +6,13 @@ namespace App\Http\Controllers\Api\V1\Billing;
 
 use App\Enums\Billing\Feature;
 use App\Http\Controllers\Controller;
+use App\Http\Pagination\KeysetPaginator;
 use App\Http\Requests\Billing\ListBillingUsageRequest;
 use App\Http\Resources\Billing\BillingPlanResource;
 use App\Http\Resources\Billing\BillingSubscriptionEventResource;
 use App\Http\Resources\Billing\BillingSubscriptionResource;
 use App\Http\Resources\Billing\BillingUsageEventResource;
+use App\Http\Resources\CursorCollection;
 use App\Http\Resources\PaginatedCollection;
 use App\Models\BillingSubscription;
 use App\Models\BillingSubscriptionEvent;
@@ -70,10 +72,17 @@ final class BillingController extends Controller
     }
 
     /** GET /api/v1/billing/usage: the caller's usage ledger, newest first. */
-    public function usage(ListBillingUsageRequest $request): PaginatedCollection
+    public function usage(ListBillingUsageRequest $request, KeysetPaginator $keyset): PaginatedCollection|CursorCollection
     {
         /** @var User $user */
         $user = $request->user();
+        if ($request->usesCursor()) {
+            return new CursorCollection($keyset->paginate(
+                BillingUsageEvent::query()->where('user_id', $user->getKey()), ['billing_usage_events.created_at', 'billing_usage_events.id'],
+                fn (BillingUsageEvent $event): array => [(string) $event->getRawOriginal('created_at'), $event->id],
+                'billing-usage:'.$user->getKey(), $request->cursor(), $request->perPage(), indexPrefix: 1,
+            ), BillingUsageEventResource::class);
+        }
         $events = BillingUsageEvent::query()->where('user_id', $user->getKey())
             ->orderByDesc('created_at')->orderByDesc('id')
             ->paginate($request->perPage(), page: $request->page());

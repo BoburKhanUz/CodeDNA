@@ -15,6 +15,7 @@ import type { Challenge, ChallengeSubmission, Project } from "@/lib/api/types";
 import { getChallenge, getSubmission, submitSolution } from "@/lib/challenge/client";
 import { challengeStatusLabel, competencyName, difficultyLabel, formatValue, ruleLabel, ruleLimit, selectionRuleLabel, submissionStatusLabel } from "@/lib/challenge/format";
 import { formatScore } from "@/lib/dna/format";
+import { usePageVisible } from "@/lib/polling/use-page-visible";
 import { getProject, isProjectId } from "@/lib/projects/client";
 import { formatDateTime } from "@/lib/projects/format";
 
@@ -68,8 +69,10 @@ export function ChallengeDetail({ projectId, challengeId }: { projectId: string;
         ? state.selected.id
         : (state.challenge.recent_attempts.find((attempt) => attempt.status === "QUEUED" || attempt.status === "RUNNING")?.id ?? null)
       : null;
+  // Paused while the tab is hidden (Phase 26); resumes when it is shown again.
+  const visible = usePageVisible();
   useEffect(() => {
-    if (pending === null) return;
+    if (pending === null || !visible) return;
     const timer = setTimeout(() => {
       getSubmission(projectId, challengeId, pending)
         .then((submission) => {
@@ -99,7 +102,7 @@ export function ChallengeDetail({ projectId, challengeId }: { projectId: string;
         .catch(handleError);
     }, POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
-  }, [pending, state, projectId, challengeId, handleError]);
+  }, [pending, visible, state, projectId, challengeId, handleError]);
 
   const send = useCallback(
     (language: string, code: string) => {

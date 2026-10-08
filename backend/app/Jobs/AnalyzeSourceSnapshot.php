@@ -20,6 +20,7 @@ use App\Services\Competency\CompetencyException;
 use App\Services\Dna\DnaScoringException;
 use App\Services\Growth\GrowthException;
 use App\Services\SkillGap\SkillGapException;
+use Closure;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Foundation\Queue\Queueable;
@@ -27,6 +28,7 @@ use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -93,25 +95,44 @@ final class AnalyzeSourceSnapshot implements ShouldQueue
         CalculateSkillGapSnapshot $skillGaps,
         CalculateGrowthSnapshot $growth,
     ): void {
-        $claim = $db->transaction(fn (): ?array => $this->claim());
-        if ($claim === null) {
+        // Phase 26: claim and call the analyzer only while holding one of its
+        // slots (docs/performance/queue-performance.md#analyzer-slots). With
+        // more workers than analyzer slots, the extra workers wait here; a
+        // run is claimed (and an attempt counted) only once a slot is held,
+        // and the slot is released as soon as the analyzer has answered.
+        $outcome = $this->withAnalyzerSlot(function () use ($db, $client): ?array {
+            $claim = $db->transaction(fn (): ?array => $this->claim());
+            if ($claim === null) {
+                return null;
+            }
+            /** @var AnalysisRun $run */
+            [$run, $attempt, $requestId] = $claim;
+            $snapshot = SourceSnapshot::query()->findOrFail($run->source_snapshot_id);
+            $context = $this->context($run) + ['attempt' => $attempt, 'request_id' => $requestId];
+            Log::info('analysis.started', $context);
+            $started = microtime(true);
+            try {
+                return [$run, $attempt, $context, $started, $client->analyze($run, $snapshot, $attempt, $requestId)];
+            } catch (Throwable $e) {
+                return [$run, $attempt, $context, $started, $e];
+            }
+        });
+        if ($outcome === false) {
+            $this->defer();
+
             return;
         }
-        /** @var AnalysisRun $run */
-        [$run, $attempt, $requestId] = $claim;
-        $snapshot = SourceSnapshot::query()->findOrFail($run->source_snapshot_id);
-        $context = $this->context($run) + ['attempt' => $attempt, 'request_id' => $requestId];
-        Log::info('analysis.started', $context);
-        $started = microtime(true);
-
-        try {
-            $result = $client->analyze($run, $snapshot, $attempt, $requestId);
-        } catch (AnalyzerException $e) {
-            $this->handleFailure($db, $e, $attempt, $context + ['duration_ms' => $this->elapsed($started)]);
+        if ($outcome === null) {
+            return;
+        }
+        [$run, $attempt, $context, $started, $result] = $outcome;
+        if ($result instanceof AnalyzerException) {
+            $this->handleFailure($db, $result, $attempt, $context + ['duration_ms' => $this->elapsed($started)]);
 
             return;
-        } catch (Throwable $e) {
-            $this->failRun($db, AnalysisFailure::AnalysisFailed, $context + ['duration_ms' => $this->elapsed($started), 'exception' => $e::class]);
+        }
+        if ($result instanceof Throwable) {
+            $this->failRun($db, AnalysisFailure::AnalysisFailed, $context + ['duration_ms' => $this->elapsed($started), 'exception' => $result::class]);
 
             return;
         }
@@ -132,6 +153,42 @@ final class AnalyzeSourceSnapshot implements ShouldQueue
                 $this->trackGrowth($growth, $run, $skillGapSnapshotId);
             }
         }
+    }
+
+    /**
+     * Runs the callback while holding one of the analyzer's slots, a Redis
+     * semaphore shared by every worker and sized to the analyzer's own
+     * concurrency limit. A slot frees itself after the job's timeout if a
+     * worker dies holding it.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $callback
+     * @return T|false false when no slot became free in time
+     */
+    private function withAnalyzerSlot(Closure $callback): mixed
+    {
+        $result = false;
+        Redis::funnel('codedna:analyzer-slots')
+            ->limit(max(1, (int) config('codedna.analyzer.max_concurrency')))
+            ->releaseAfter($this->timeout + 30)
+            ->block(max(1, (int) config('codedna.analyzer.slot_wait_seconds')))
+            ->then(function () use ($callback, &$result): void {
+                $result = $callback();
+            }, static function (): void {});
+
+        return $result;
+    }
+
+    /**
+     * Every analyzer slot stayed busy: a fresh job takes the run over a few
+     * seconds later. The run was not claimed, so no attempt is used and its
+     * state is unchanged; waiting for capacity never fails an analysis.
+     */
+    private function defer(): void
+    {
+        Log::info('analysis.deferred', ['analysis_run_id' => $this->analysisRunId, 'reason' => 'analyzer_slots_busy']);
+        dispatch(new self($this->analysisRunId))->delay(Carbon::now()->addSeconds(5));
     }
 
     /**

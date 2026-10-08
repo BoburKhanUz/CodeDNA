@@ -55,6 +55,9 @@ Set in `docker-compose.prod.yml` and checked by `make prod-config`:
 | `CODEDNA_IMAGE_PREFIX` | `codedna` | Image name prefix (e.g. a private registry path) |
 | `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` | bundled `postgres` | A managed database: set `DB_HOST` and `DB_SSLMODE` |
 | `DB_SSLMODE` | `prefer` | `require` or `verify-full` for a database outside the private network |
+| `DB_PERSISTENT` | `true` | One PostgreSQL connection kept per PHP-FPM worker (Phase 26: ×2 throughput). `false` connects per request, e.g. behind PgBouncer in transaction mode; see [database performance](../performance/database-performance.md#connections) |
+| `ANALYZER_MAX_CONCURRENCY` | `2` | Analyses the analyzer runs at once. The **backend** reads the same variable to size its shared slot pool, so set it once in `.env`; 1–64. See [queue performance](../performance/queue-performance.md#analyzer-slots) |
+| `ANALYZER_SLOT_WAIT_SECONDS` | `20` | How long a worker waits for an analyzer slot before handing the run to a delayed job (no attempt used); `ANALYZER_TIMEOUT_SECONDS` + this must stay below `ANALYSIS_JOB_TIMEOUT_SECONDS` |
 | `REDIS_MAXMEMORY` | `384mb` | See [Redis](#redis) |
 | `SESSION_LIFETIME` | `120` | Minutes, 5 to 1440 |
 | `SESSION_SAME_SITE` | `lax` | `lax` or `strict` |
@@ -97,7 +100,9 @@ naming the variable, never its value:
   other than an internal service name; credentials in the endpoint URL;
 - `CHALLENGE_EVALUATOR=spool` without `CHALLENGE_EVALUATOR_ISOLATION=gvisor`;
 - a missing or short analyzer HMAC secret; the fake AI or billing provider;
-  insecure GitHub or AI URLs; the earlier timeout-chain and version checks.
+  insecure GitHub or AI URLs; the earlier timeout-chain and version checks;
+- `ANALYZER_MAX_CONCURRENCY` outside 1–64, or an analyzer timeout plus slot
+  wait that does not fit inside the analysis job timeout (everywhere).
 
 `ConfigurationValidatorTest` covers each rule.
 

@@ -14,6 +14,7 @@ use App\Models\AiAssessment;
 use App\Models\AnalysisRun;
 use App\Models\ChallengeSubmission;
 use App\Models\GitHubImport;
+use App\Policies\ViewDecisions;
 use App\Services\Assessment\Provider\AiProvider;
 use App\Services\Assessment\Provider\FakeAiProvider;
 use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
@@ -81,6 +82,7 @@ class AppServiceProvider extends ServiceProvider
         // Billing (Phase 23): the plan catalog is read once per request or job;
         // the payment provider is the configured one only.
         $this->app->scoped(PlanCatalog::class);
+        $this->app->singleton(ViewDecisions::class);
         $this->app->scoped(PaymentProviders::class, static fn ($app): PaymentProviders => new PaymentProviders((array) $app['config']->get('codedna.billing', [])));
 
         // Growth tracking (Phase 18): the deterministic, versioned rules.

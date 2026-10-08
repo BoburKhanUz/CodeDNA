@@ -41,9 +41,23 @@ Rules that keep the figures honest:
 
 ## Performance
 
-Every figure is a single SQL aggregate (`DISTINCT ON` per project, then
-`GROUP BY`). The query count is constant (tested with 2 and 5 projects), and
-no snapshot is loaded into PHP memory. The scans are bounded by the
-organization's projects and use the existing `project_id, created_at`
-indexes. Very large organizations would need a stored, incrementally updated
-team read model; that, and any "team DNA snapshot", is a Phase 25+ concern.
+Every figure is a single SQL aggregate. The query count is constant
+(`QueryBudgetTest`), and no snapshot is loaded into PHP memory.
+
+Since Phase 26, each active team project's latest DNA, competency and
+skill-gap snapshot is found with **one index probe per project**: a
+`LATERAL … ORDER BY created_at DESC, id DESC LIMIT 1` on the
+`(project_id, created_at)` indexes, inside a `MATERIALIZED` CTE shared by
+the figures. The earlier `DISTINCT ON` form sorted the whole snapshot
+tables. The figures are unchanged (output compared byte for byte on 31
+organizations), and the cost now follows the organization's own projects,
+not the platform's data.
+
+| Organization | Before | After (p50 / p95) |
+|---|---|---|
+| 2,000 members, 2,000 projects (medium benchmark) | 592 / 687 ms | 84 / 127 ms |
+
+Organizations past ~5,000 active projects would need a stored,
+incrementally updated team read model
+([scaling guide](../performance/scaling-guide.md#postgresql)). Any "team
+DNA snapshot" is out of scope.

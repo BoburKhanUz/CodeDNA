@@ -81,6 +81,12 @@ REQUIRED_FOUNDATION = [
     "docs/operations/rollback.md",
     "docs/operations/security-baseline.md",
     "docs/operations/production-configuration.md",
+    "docs/performance/performance-architecture.md",
+    "docs/performance/benchmarking.md",
+    "docs/performance/load-testing.md",
+    "docs/performance/database-performance.md",
+    "docs/performance/queue-performance.md",
+    "docs/performance/scaling-guide.md",
 ]
 
 # Variable names that must never carry a value in .env.example.

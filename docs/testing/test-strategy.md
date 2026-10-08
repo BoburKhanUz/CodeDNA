@@ -33,6 +33,8 @@ fixing a bug. What each area covers, and its known gaps, is in the
 | Cross-service contracts | PHPUnit, pytest, `scripts/check_contracts.py` | See [contracts](#cross-service-contracts) | Containers and the host |
 | Runtime smoke test | `scripts/verify-infra.sh` | Routing, networks, isolation, storage | Host, against the running stack |
 | Browser end-to-end | Playwright (Chromium) | Run per phase against the dev stack | Host; not in CI yet (see [limitations](#limitations)) |
+| Performance regression | PHPUnit | `tests/Feature/Performance` (query counts independent of data size, response size per item, keyset pagination, index shape), `AnalyzerSlotsTest` | `queue` container, default suite |
+| Benchmarks and load tests | Artisan commands, Python | `make benchmark-*`, `make loadtest`; `tests/Benchmark` (opt-in, not in the default suites) | Dev stack on the isolated benchmark database ([benchmarking](../performance/benchmarking.md)) |
 | Mutation testing | Scripted source mutations | Per phase, for new and security-critical logic | Host, against the running stack |
 
 ## Doubles
@@ -181,6 +183,12 @@ following (scratch Playwright, as for the dev stack):
 - no CSP violation on any page.
 
 ## Limitations
+
+- **No test asserts a response time.** Shared CI runners make timings
+  flaky. Performance is guarded by structural limits (query counts, bytes
+  per item, memory, index definitions). The timings in
+  [docs/performance](../performance/performance-architecture.md) come from
+  the benchmark commands on a known host, not from CI.
 
 - **Browser end-to-end tests are not in CI.** They run against the dev stack
   at the end of each phase (Chromium through Playwright on the host). CI has

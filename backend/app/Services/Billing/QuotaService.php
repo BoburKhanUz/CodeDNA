@@ -60,9 +60,18 @@ final readonly class QuotaService
      */
     public function summary(BillingContext $context): array
     {
-        return array_map(function (QuotaKey $key) use ($context): array {
+        // Read-only: every monthly counter of the period in one query (Phase 26;
+        // it was one query per quota). Decisions that consume a quota still
+        // read and lock their own counter row (UsageService).
+        $monthly = array_values(array_filter(QuotaKey::cases(), static fn (QuotaKey $key): bool => $key->period() !== QuotaPeriod::Current));
+        $counters = DB::table($context->counterTable())->where($context->subject())
+            ->where('period_start', $context->periodStart)
+            ->whereIn('quota_key', array_map(static fn (QuotaKey $key): string => $key->value, $monthly))
+            ->pluck('used', 'quota_key')->all();
+
+        return array_map(function (QuotaKey $key) use ($context, $counters): array {
             $limit = $this->limit($context, $key);
-            $used = $this->used($context, $key);
+            $used = $key->period() === QuotaPeriod::Current ? $this->used($context, $key) : (int) ($counters[$key->value] ?? 0);
 
             return [
                 'key' => $key,
@@ -96,10 +105,13 @@ final readonly class QuotaService
         }
     }
 
-    /** The organization's seat entitlement and the seats in use (ACTIVE memberships). */
-    public function seats(Organization $organization): array
+    /**
+     * The organization's seat entitlement and the seats in use (ACTIVE
+     * memberships). A caller that already read the billing account passes it.
+     */
+    public function seats(Organization $organization, ?OrganizationBillingAccount $account = null): array
     {
-        $account = OrganizationBillingAccount::query()->find($organization->getKey())
+        $account ??= OrganizationBillingAccount::query()->find($organization->getKey())
             ?? throw new ApiException(ErrorCode::BillingUnavailable);
         $used = OrganizationMembership::query()->where('organization_id', $organization->getKey())
             ->where('status', MembershipStatus::Active->value)->count();

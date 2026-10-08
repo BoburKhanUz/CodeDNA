@@ -7,8 +7,10 @@ namespace App\Http\Controllers\Api\V1\Projects;
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Errors\ErrorCode;
+use App\Http\Pagination\KeysetPaginator;
 use App\Http\Requests\History\CompareHistoryRequest;
 use App\Http\Requests\History\ListHistoryRequest;
+use App\Http\Resources\CursorCollection;
 use App\Http\Resources\HistoryPointResource;
 use App\Http\Resources\PaginatedCollection;
 use App\Models\GrowthObservation;
@@ -37,9 +39,12 @@ final class HistoryController extends Controller
     /**
      * Every point of the project's history, newest first.
      */
-    public function index(ListHistoryRequest $request, Project $project, Gate $gate, HistoryReader $reader): PaginatedCollection
+    public function index(ListHistoryRequest $request, Project $project, Gate $gate, HistoryReader $reader, KeysetPaginator $keyset): PaginatedCollection|CursorCollection
     {
         $gate->authorize('view', $project);
+        if ($request->usesCursor()) {
+            return new CursorCollection($reader->cursorPage($project, $request->cursor(), $request->perPage(), $keyset), HistoryPointResource::class);
+        }
 
         return new PaginatedCollection($reader->page($project, $request->page(), $request->perPage()), HistoryPointResource::class);
     }

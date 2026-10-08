@@ -224,6 +224,51 @@ describe("ProjectGitHubView", () => {
     expect(await screen.findByTestId("github-import-success")).toHaveTextContent("Ready for analysis");
   });
 
+  it("polls only the connection while an import runs, pauses in a hidden tab, and reloads the page once when it ends", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let latest: GitHubImport | null = githubImport({ status: "RUNNING", commit_sha: null, source_snapshot: null, created_snapshot: false, completed_at: null });
+    respondWith({ github: () => projectGitHub({ connection: connection(), latest_import: latest }) });
+    render(<ProjectGitHubView projectId={project.id} />);
+    expect(await screen.findByTestId("github-latest-import")).toBeInTheDocument();
+    const gets = () => fetchMock.mock.calls.filter(([, init]) => (init?.method ?? "GET") === "GET").map(([input]) => new URL(String(input), "http://localhost").pathname);
+    const before = gets().length;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS);
+    });
+    // One request per tick: the connection (with its latest import), not the project and import list.
+    expect(gets().slice(before)).toEqual([`/api/v1/projects/${project.id}/github`]);
+
+    // A hidden tab does not poll.
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    const hidden = gets().length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS * 3);
+    });
+    expect(gets().length).toBe(hidden);
+
+    // Shown again with the import finished: one more status check, then the full page reloads once.
+    latest = githubImport();
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS);
+    });
+    expect(await screen.findByTestId("github-import-success")).toHaveTextContent("Ready for analysis");
+    const after = gets().slice(hidden);
+    expect(after.filter((path) => path === `/api/v1/projects/${project.id}`)).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS * 3);
+    });
+    // Terminal: polling stopped.
+    expect(gets().slice(hidden)).toEqual(after);
+  });
+
   it("keeps Import disabled until the page has reloaded, so one click sends one request", async () => {
     let posted = false;
     respondWith({

@@ -155,7 +155,7 @@ lint-workflows: ## Lint GitHub Actions workflows (requires actionlint)
 
 .PHONY: lint-shell
 lint-shell: ## Lint shell scripts (requires shellcheck)
-	shellcheck scripts/*.sh docker/*/*.sh docker/nginx/production/entrypoint/*.sh
+	shellcheck scripts/*.sh scripts/benchmark/*.sh docker/*/*.sh docker/nginx/production/entrypoint/*.sh
 
 .PHONY: lint-docker
 lint-docker: ## Lint Dockerfiles (requires hadolint)
@@ -187,6 +187,55 @@ prod-smoke: ## Production-like smoke test: build, start with throwaway values on
 prod-evaluator-attest: ## On a production host: show the isolation the evaluator image attests under runsc
 	docker run --rm --runtime=$${EVALUATOR_RUNTIME:-runsc} --network none --entrypoint python3 \
 		codedna-evaluator:$${APP_VERSION:?set APP_VERSION} -c 'from evaluator import isolation; print(isolation.detect())'
+
+# ---------------------------------------------------------------------------
+# Performance (Phase 26, docs/performance/benchmarking.md). Everything runs
+# against a dedicated database (codedna_benchmark), Redis databases 5 and 6,
+# and the benchmark/ storage prefix; development data is never touched.
+# ---------------------------------------------------------------------------
+BENCH_SCALE ?= small
+BENCH_ENV := -e DB_DATABASE=codedna_benchmark -e REDIS_DB=5 -e REDIS_CACHE_DB=6 -e SOURCE_STORAGE_PREFIX=benchmark/ -e LOG_LEVEL=warning
+BENCH_SOURCES := backend/storage/app/benchmark/sources
+
+.PHONY: benchmark-sources
+benchmark-sources: ## Generate the deterministic synthetic archives used by the benchmarks
+	@mkdir -p $(BENCH_SOURCES) backend/storage/app/benchmark/results
+	python3 scripts/benchmark/make_sources.py $(BENCH_SOURCES)
+	@chmod -R a+rwX backend/storage/app/benchmark
+
+.PHONY: benchmark-seed
+benchmark-seed: benchmark-sources ## Create codedna_benchmark and seed it (BENCH_SCALE=small|medium|large)
+	$(COMPOSE) exec -T postgres psql -U codedna -d codedna -qc "DROP DATABASE IF EXISTS codedna_benchmark" -c "CREATE DATABASE codedna_benchmark"
+	$(COMPOSE) exec -T $(BENCH_ENV) queue php artisan migrate --force
+	$(COMPOSE) exec -T $(BENCH_ENV) queue php artisan benchmark:seed --scale=$(BENCH_SCALE) --sources=storage/app/benchmark/sources
+
+.PHONY: benchmark-clean
+benchmark-clean: ## Remove every benchmark trace: stored objects, the database, Redis databases 5 and 6, local results
+	-$(COMPOSE) exec -T $(BENCH_ENV) queue php artisan benchmark:clean
+	$(COMPOSE) exec -T postgres psql -U codedna -d codedna -qc "DROP DATABASE IF EXISTS codedna_benchmark"
+	$(COMPOSE) exec -T redis sh -c 'redis-cli -n 5 flushdb >/dev/null; redis-cli -n 6 flushdb >/dev/null'
+	rm -rf backend/storage/app/benchmark
+
+.PHONY: benchmark-api
+benchmark-api: ## In-process API benchmark on the benchmark database (latency, queries, response sizes; BENCH_API_ARGS="--filter=x --show-queries")
+	@mkdir -p backend/storage/app/benchmark/results && chmod a+rwX backend/storage/app/benchmark/results
+	$(COMPOSE) exec -T $(BENCH_ENV) queue php artisan benchmark:api --iterations=30 --json=storage/app/benchmark/results/api.json $(BENCH_API_ARGS)
+
+.PHONY: benchmark-queue
+benchmark-queue: benchmark-sources ## Real workers and analyzer: enqueue, queue wait, execution, throughput at 1, 2, 4 workers
+	$(COMPOSE) exec -T $(BENCH_ENV) queue php artisan benchmark:queue --workers=1,2,4 --analyses=24 --archive=storage/app/benchmark/sources/medium.zip
+
+.PHONY: benchmark-analyzer
+benchmark-analyzer: benchmark-sources ## Analyzer stages, peak memory and concurrency, in a container with the service's limits
+	$(COMPOSE) run --rm --no-deps -T -v ./scripts/benchmark:/bench:ro -v ./$(BENCH_SOURCES):/sources:ro analyzer python /bench/analyzer_bench.py /sources
+
+.PHONY: benchmark-intake
+benchmark-intake: benchmark-sources ## Upload and GitHub import time and memory up to the 50 MiB archive limit
+	$(COMPOSE) exec -T queue vendor/bin/phpunit tests/Benchmark
+
+.PHONY: loadtest
+loadtest: ## HTTP load test of scenarios A-F through Nginx with the production backend image (needs benchmark-seed)
+	./scripts/benchmark/loadtest.sh $(LOADTEST_ARGS)
 
 .PHONY: scan-secrets
 scan-secrets: ## Scan git history and uncommitted changes for secrets (requires gitleaks)

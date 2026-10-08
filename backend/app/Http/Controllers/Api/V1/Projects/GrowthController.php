@@ -7,7 +7,9 @@ namespace App\Http\Controllers\Api\V1\Projects;
 use App\Enums\AnalysisRunStatus;
 use App\Enums\Growth\GrowthSnapshotStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Pagination\KeysetPaginator;
 use App\Http\Requests\Growth\ListGrowthRequest;
+use App\Http\Resources\CursorCollection;
 use App\Http\Resources\GrowthSnapshotResource;
 use App\Http\Resources\GrowthSnapshotSummaryResource;
 use App\Http\Resources\PaginatedCollection;
@@ -44,6 +46,9 @@ final class GrowthController extends Controller
             ->select('skill_gap_snapshots.id')
             ->join('analysis_runs', 'analysis_runs.id', '=', 'skill_gap_snapshots.analysis_run_id')
             ->where('skill_gap_snapshots.project_id', $project->id)
+            // Implied by the snapshot's lineage; stated so the project's
+            // history index serves the order (Phase 26), not a table scan.
+            ->where('analysis_runs.project_id', $project->id)
             ->where('analysis_runs.status', AnalysisRunStatus::Succeeded->value)
             ->orderByDesc('analysis_runs.completed_at')
             ->orderByDesc('analysis_runs.id')
@@ -75,9 +80,17 @@ final class GrowthController extends Controller
     /**
      * Every growth snapshot of the project, newest assessment first.
      */
-    public function timeline(ListGrowthRequest $request, Project $project, Gate $gate): PaginatedCollection
+    public function timeline(ListGrowthRequest $request, Project $project, Gate $gate, KeysetPaginator $keyset): PaginatedCollection|CursorCollection
     {
         $gate->authorize('view', $project);
+
+        if ($request->usesCursor()) {
+            return new CursorCollection($keyset->paginate(
+                $project->growthSnapshots()->getQuery()->with('observations'), ['growth_snapshots.assessed_at', 'growth_snapshots.id'],
+                fn (GrowthSnapshot $snapshot): array => [(string) $snapshot->getRawOriginal('assessed_at'), $snapshot->id],
+                'growth:'.$project->id, $request->cursor(), $request->perPage(), indexPrefix: 1,
+            ), GrowthSnapshotSummaryResource::class);
+        }
 
         $snapshots = $project->growthSnapshots()
             ->with('observations')
