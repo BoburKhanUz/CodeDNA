@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Ai;
 
 use App\Enums\Assessment\AssessmentFailure;
+use App\Models\AiInsight;
 use App\Models\User;
 use App\Services\Ai\AiGateway;
 use App\Services\Ai\AiMetrics;
@@ -15,6 +16,7 @@ use App\Services\Ai\OllamaClient;
 use App\Services\Assessment\Provider\AiProvider;
 use App\Services\Assessment\Provider\AiProviderException;
 use App\Services\Assessment\Provider\FakeAiProvider;
+use App\Services\Insights\InsightEvalSet;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
 use Tests\Support\ScriptedModelClient;
@@ -138,6 +140,29 @@ final class AiGatewayTest extends TestCase
         $this->artisan('ai:status')->assertSuccessful()->expectsOutputToContain('not checked (AI disabled)');
         $this->artisan('ai:status', ['--json' => true])->assertSuccessful()->expectsOutputToContain('"enabled": false');
         $this->assertSame($checks, $model->healthChecks, 'a disabled AI is never probed');
+    }
+
+    /**
+     * Phase 30: ai:eval sends every evaluation case through the gateway,
+     * validates each answer and reports it; nothing is stored.
+     */
+    public function test_the_evaluation_command_reports_every_case_and_stores_nothing(): void
+    {
+        $model = new ScriptedModelClient('valid', fn (): string => 'not json', 'unavailable', 'valid');
+        $this->app->instance(ModelClient::class, $model);
+        $cases = count(InsightEvalSet::cases());
+
+        $this->artisan('ai:eval', ['--case' => ['strong-evidence', 'locked-step', 'passed-challenge']])
+            ->expectsOutputToContain('1 of 3 accepted, 1 rejected, 1 errors')
+            ->assertFailed();
+        $this->assertCount(3, $model->requests);
+        $this->assertSame(0, AiInsight::query()->count());
+
+        $model->requests = [];
+        $this->app->instance(ModelClient::class, new ScriptedModelClient('valid'));
+        $this->artisan('ai:eval', ['--json' => true])->expectsOutputToContain('"cases": '.$cases)->assertSuccessful();
+        config(['codedna.ai.enabled' => false]);
+        $this->artisan('ai:eval')->assertFailed();
     }
 
     public function test_the_status_endpoint_reports_a_remote_endpoint_as_remote(): void

@@ -17,6 +17,7 @@ deterministic pipeline waits for or depends on a model.
 - [GPU](#gpu)
 - [Production](#production)
 - [Health](#health)
+- [Evaluation](#evaluation)
 - [Trust boundary](#trust-boundary)
 - [Tuning](#tuning)
 - [Troubleshooting](#troubleshooting)
@@ -163,6 +164,41 @@ otherwise it exits 1 when level 1 or 2 fails.
 `GET /api/v1/ai/status` returns only `enabled`, `available`, provider name,
 endpoint kind (`local`, `remote`, `fake`), model tag and the two health
 flags: never a URL, key or error body.
+
+## Evaluation
+
+`backend/resources/ai-eval/insight-eval-v1.json` is a small, versioned
+evaluation set (Phase 30). Each case is fixed evidence for one scenario
+(strong, insufficient, conflicting evidence; no growth and genuine growth;
+failed and passed challenges; locked and available roadmap steps; prompt
+injection; malformed answers, markup and score fields), a fixed model answer and the
+validator decision that answer must get. Two separate questions are
+measured:
+
+- **Is the validator correct?** `tests/Unit/Insights/InsightEvalSetTest.php`
+  runs every fixed answer through the validator and requires exactly the
+  expected decision. It runs in every test suite and needs no model.
+- **Is the model useful?** `php artisan ai:eval` sends each case's evidence
+  to the configured model through the gateway, exactly as an insight would
+  be, validates the answer and prints the outcome, the rejection rule, the
+  duration and the token counts (`--json` for a machine-readable report,
+  `--case=<id>` to run a subset). Nothing is stored and no quota is used.
+
+```bash
+docker compose exec backend php artisan ai:eval
+docker compose exec backend php artisan ai:eval --json > ai-eval-$(date +%F).json
+```
+
+A rejection is the validator doing its job: the answer could not be checked
+against the evidence and would not have been shown. Many rejections mean the
+model is not useful enough for user-facing explanations, not that anything
+is unsafe. Compare models by acceptance rate and by reading the accepted
+answers against the evidence; record the hardware, model tag and
+quantization with each run.
+
+Known limitation: a single sentence that names an improved and an unchanged
+metric together is rejected, because a direction word must match every
+observation the sentence cites (case `mixed-sentence-known-strictness`).
 
 ## Trust boundary
 
