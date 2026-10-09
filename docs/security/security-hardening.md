@@ -132,7 +132,7 @@ integration tests.
 | Risk | Why it is acceptable now | Plan |
 |---|---|---|
 | In development the evaluator shares the host kernel (`runc`) | Development only. Production requires gVisor, attested at start, with no fallback (Phase 25, [production sandbox](../architecture/challenge-evaluator.md#production-sandbox)) | — |
-| The sandbox shares an interpreter with the runner, so submitted code can forge stdout records about its own cases | Grading is in Laravel against expected values the evaluator never sees. A forged record can only change the submission's own outcome, never produce a pass for wrong values. | Separate processes per case if verdict integrity needs more |
+| The sandbox shares an interpreter with the runner, so submitted code can write a record for the case it is running | Since Phase 30 every case runs in its own process that receives only that case's arguments, and only that case's records are accepted from it. Forging its own value is equivalent to returning it; grading is in Laravel against expected values the evaluator never sees | — |
 | The evaluator uses `preexec_fn` in a threaded supervisor (a theoretical fork-time deadlock) | It would only stall the evaluator; the heartbeat makes it visible | Move to `Popen(user=, group=, process_group=)` and an exec wrapper |
 | The development CSP has no `script-src` | The Next.js development server needs inline and eval'd scripts. Production pages get a per-response nonce CSP without `unsafe-eval` (Phase 25, [CSP](../operations/security-baseline.md#content-security-policy)) | — |
 | No HSTS in development | There is no TLS in the development stack. The production Nginx sends HSTS on HTTPS only (Phase 25) | — |
@@ -147,6 +147,11 @@ integration tests.
 | gVisor attestation relies on gVisor's fixed synthetic kernel identity | A change in a gVisor release fails closed (the evaluator refuses to start), never open | Update the fingerprint with the gVisor upgrade |
 | PHP-FPM is reachable from the queue and scheduler on the data network | They are trusted Laravel processes with the same code and configuration | Bind PHP-FPM to the app network only, if the topology changes |
 | Postgres keeps `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETUID` and `SETGID` | The official entrypoint initialises the data volume as root, then drops to the `postgres` user | A pre-initialised volume and `user: postgres` |
+| Email addresses are never verified, and accepting an organization invitation matches the invitee's email (Phase 30 review) | The invitation token, shown once to an admin, is still required; nothing else trusts the email | Require email verification before accepting invitations, and before any feature that trusts an address |
+| Refunds are triggered by model `updated` events (Phase 30 review) | Every failure path today saves through the model (sweepers included); a bulk query update would skip the refund | Keep failure transitions on the model; a test per resource checks the refund |
+| A GitLab or Bitbucket archive is accepted when its ZIP comment carries no commit SHA (Phase 30 review) | The archive URL is pinned to the commit over TLS to the configured provider origin | Verify the commit from the archive's top-level directory name where the provider sets it |
+| Base images are pinned by tag, not digest (Phase 30 review) | Tags are release lines of official images; images are rebuilt and tested in CI | Pin digests and update them with a dependency bot |
+| `RLIMIT_NPROC` under gVisor is not verified in CI (Phase 30 review) | Neither CI nor development has gVisor; the container `pids_limit` and the slot process kill loop are the backstop | Verify with `make prod-evaluator-attest` and a fork test on the production host |
 
 ## Secrets policy
 
