@@ -400,6 +400,9 @@ return [
     'rate_limits' => [
         // Every /api/v1 route, per authenticated user or per IP.
         'api_per_minute' => 120,
+        // GET /api/v1/me, the session check of every page render (Phase 30),
+        // per user or IP; outside the api budget above.
+        'session_per_minute' => 300,
         // POST /api/v1/auth/login, per email+IP pair and per IP, and per
         // email across all IPs (Phase 21: a distributed guesser is still
         // bounded per account).

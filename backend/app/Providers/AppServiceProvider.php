@@ -217,6 +217,9 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('api', static fn (Request $request): Limit => Limit::perMinute($limits['api_per_minute'])
             ->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
 
+        RateLimiter::for('session', static fn (Request $request): Limit => Limit::perMinute($limits['session_per_minute'])
+            ->by('session:'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
         RateLimiter::for('login', static function (Request $request) use ($limits): array {
             // Runs before validation: a non-string email (e.g. a JSON array)
             // must not throw, it is simply keyed as empty.

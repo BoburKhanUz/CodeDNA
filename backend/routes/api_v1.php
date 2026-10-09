@@ -44,7 +44,10 @@ use Illuminate\Support\Facades\Route;
 // Routes under /api/v1. Every route here is in the `api` middleware group
 // (Sanctum stateful sessions for first-party requests, `throttle:api`).
 
-Route::get('health', HealthController::class)->name('health');
+// Readiness must report its own 503 when Redis is down (Phase 30): the
+// throttle keeps its counters in Redis, so it would fail first with a 500.
+// The TLS edge rate-limits every path per IP (Nginx limit_req).
+Route::get('health', HealthController::class)->withoutMiddleware('throttle:api')->name('health');
 
 Route::prefix('auth')->name('auth.')->group(function (): void {
     Route::post('register', RegisterController::class)
@@ -65,8 +68,11 @@ Route::prefix('auth')->name('auth.')->group(function (): void {
         ->name('password');
 });
 
+// The session check every page render makes (Phase 30): its own limiter, so
+// polling that spends the per-user API budget never breaks page navigation.
 Route::get('me', MeController::class)
-    ->middleware('auth:sanctum')
+    ->withoutMiddleware('throttle:api')
+    ->middleware(['auth:sanctum', 'throttle:session'])
     ->name('me');
 
 // The installation's edition, license status and registration mode (Phase 27,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Insights;
 
 use App\Enums\Insights\InsightKind;
+use App\Http\Requests\Concerns\AuthorizesProjectView;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -14,6 +15,9 @@ use Illuminate\Validation\Rule;
  */
 final class ListInsightsRequest extends FormRequest
 {
+    // Another user's project answers 404 before the query is validated.
+    use AuthorizesProjectView;
+
     /**
      * @return array<string, list<mixed>>
      */

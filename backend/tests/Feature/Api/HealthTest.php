@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Api;
 
+use Illuminate\Cache\RateLimiter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Tests\TestCase;
@@ -47,6 +48,29 @@ final class HealthTest extends TestCase
         $this->getJson('/api/v1/health')
             ->assertStatus(503)
             ->assertJsonPath('data.status', 'fail')
+            ->assertJsonPath('data.checks', ['database' => 'ok', 'redis' => 'fail']);
+    }
+
+    /**
+     * Phase 30: in production the rate limiter's counters live in Redis too
+     * (CACHE_STORE=redis). With Redis down the health check must still
+     * answer its own 503, not an INTERNAL_ERROR from the throttle.
+     */
+    public function test_returns_503_not_500_when_redis_is_down_and_the_cache_lives_in_redis(): void
+    {
+        config([
+            'cache.default' => 'redis',
+            'database.redis.default.port' => 1, 'database.redis.default.max_retries' => 0,
+            'database.redis.cache.port' => 1, 'database.redis.cache.max_retries' => 0,
+        ]);
+        Redis::purge('default');
+        Redis::purge('cache');
+        $this->app->forgetInstance('cache');
+        $this->app->forgetInstance('cache.store');
+        $this->app->forgetInstance(RateLimiter::class);
+
+        $this->getJson('/api/v1/health')
+            ->assertStatus(503)
             ->assertJsonPath('data.checks', ['database' => 'ok', 'redis' => 'fail']);
     }
 

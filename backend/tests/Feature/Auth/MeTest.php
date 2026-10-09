@@ -60,4 +60,28 @@ final class MeTest extends TestCase
             ->assertUnauthorized()
             ->assertJsonPath('error.code', 'AUTHENTICATION_REQUIRED');
     }
+
+    /**
+     * Phase 30: the session check of every page render has its own limiter,
+     * so polling that spends the per-user API budget never breaks navigation;
+     * it is still limited itself.
+     */
+    public function test_the_session_check_survives_an_exhausted_api_budget_and_has_its_own_limit(): void
+    {
+        // The limiters read their limits at boot: the configured defaults are used.
+        $api = (int) config('codedna.rate_limits.api_per_minute');
+        $session = (int) config('codedna.rate_limits.session_per_minute');
+        $user = User::factory()->create();
+        for ($i = 0; $i < $api; $i++) {
+            $this->actingAs($user, 'web')->fromBrowser()->getJson('/api/v1/projects')->assertOk();
+        }
+        $this->actingAs($user, 'web')->fromBrowser()->getJson('/api/v1/projects')->assertTooManyRequests();
+
+        for ($i = 0; $i < $session; $i++) {
+            $this->actingAs($user, 'web')->fromBrowser()->getJson('/api/v1/me')->assertOk();
+        }
+        $this->actingAs($user, 'web')->fromBrowser()->getJson('/api/v1/me')
+            ->assertTooManyRequests()
+            ->assertJsonPath('error.code', 'RATE_LIMITED');
+    }
 }

@@ -2126,7 +2126,8 @@ queued jobs (Laravel Context).
 
 | Limiter | Applies to | Limit | Key |
 |---|---|---|---|
-| `api` | every `/api/v1` route | 120 / minute | user ID, or IP when anonymous |
+| `api` | every `/api/v1` route except `GET /me` | 120 / minute | user ID, or IP when anonymous |
+| `session` | `GET /me`, the session check of every page render (Phase 30): outside the `api` budget, so polling never breaks navigation | 300 / minute | user ID, or IP when anonymous |
 | `login` | `POST /auth/login` | 5 / minute **and** 20 / minute | email + IP, **and** IP |
 | `register` | `POST /auth/register` | 10 / minute | IP |
 | `profile-update` | `PATCH /profile` | 30 / minute | user ID |

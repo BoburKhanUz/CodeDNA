@@ -171,6 +171,11 @@ final class InsightApiTest extends TestCase
         $this->request(InsightKind::GrowthInterpretation, $growth->id, $stranger)->assertNotFound();
         $this->asUser($stranger)->getJson("/api/v1/projects/{$this->project->id}/insights/{$id}")->assertNotFound();
         $this->asUser($stranger)->getJson("/api/v1/projects/{$this->project->id}/insights?kind=GROWTH_INTERPRETATION&subject_id={$growth->id}")->assertNotFound();
+        // Phase 30: before validation too, so invalid input never confirms that the project exists.
+        foreach (['', '?kind=NOPE', '?kind=GROWTH_INTERPRETATION&subject_id=x'] as $query) {
+            $this->asUser($stranger)->getJson("/api/v1/projects/{$this->project->id}/insights{$query}")
+                ->assertNotFound()->assertJsonPath('error.code', 'RESOURCE_NOT_FOUND');
+        }
 
         // A stranger's own project cannot reach this project's subject or insight.
         $theirs = Project::factory()->for($stranger)->create();
