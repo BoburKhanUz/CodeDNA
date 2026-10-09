@@ -171,6 +171,44 @@ else
     fail "error bodies carry no internals" "$body"
 fi
 
+echo "== uploads (Phase 30)"
+# A signed-in user uploads archives near the 50 MiB limit through the TLS
+# edge: one alone, then two at the same time. Every request body is buffered
+# by Nginx and by PHP before Laravel sees it, so this proves the temporary
+# space of both containers, not only the configured size limits.
+ujar="$WORK/upload-cookies"
+https -c "$ujar" -o /dev/null "$(url /sanctum/csrf-cookie)"
+uxsrf() { awk '$6 == "XSRF-TOKEN" {print $7}' "$ujar" | python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.stdin.read().strip()))'; }
+uapi() { # method path [curl args...]
+    local method=$1 path=$2
+    shift 2
+    https -b "$ujar" -c "$ujar" -X "$method" "$(url "$path")" -H 'Accept: application/json' -H "Origin: https://$DOMAIN" \
+        -H "Referer: https://$DOMAIN/app" -H "X-XSRF-TOKEN: $(uxsrf)" "$@"
+}
+registered=$(uapi POST /api/v1/auth/register -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+    --data '{"name":"Smoke Uploader","email":"smoke-upload@example.invalid","password":"Smoke-upload-pass-1","password_confirmation":"Smoke-upload-pass-1"}')
+expect "registration through the edge" "$registered" 201
+project=$(uapi POST /api/v1/projects -H 'Content-Type: application/json' \
+    --data '{"name":"Smoke upload","slug":"smoke-upload","source_type":"UPLOAD"}' | python3 -c 'import json, sys; print(json.load(sys.stdin)["data"]["id"])' 2>/dev/null || true)
+python3 - "$WORK/large.zip" <<'PY'
+import os, sys, zipfile
+# 45 MiB of incompressible content: the body Nginx and PHP must buffer.
+with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_STORED) as archive:
+    archive.writestr("src/main.py", "def main():\n    return 1\n")
+    for i in range(45):
+        archive.writestr(f"assets/blob-{i:02d}.bin", os.urandom(1024 * 1024))
+PY
+upload() { uapi POST "/api/v1/projects/$project/source-snapshots" -o /dev/null -w '%{http_code}' -F "archive=@$WORK/large.zip;type=application/zip"; }
+if [ -n "$project" ]; then
+    expect "a 45 MiB upload is accepted" "$(upload)" 201
+    upload > "$WORK/upload-a" & first=$!
+    upload > "$WORK/upload-b" & second=$!
+    wait "$first" "$second" || true
+    expect "two concurrent 45 MiB uploads are accepted" "$(cat "$WORK/upload-a") $(cat "$WORK/upload-b")" "201 201"
+else
+    fail "project created for the upload checks"
+fi
+
 echo "== forwarded headers"
 jar="$WORK/cookies"
 cookies=$(https -c "$jar" -o /dev/null -D - -H 'X-Forwarded-Proto: http' -H 'X-Forwarded-Host: evil.example' -H 'X-Forwarded-Port: 80' "$(url /sanctum/csrf-cookie)" | grep -i '^set-cookie')

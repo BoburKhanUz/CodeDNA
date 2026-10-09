@@ -83,7 +83,8 @@ COPY --from=php --chmod=0755 healthcheck.sh /usr/local/bin/codedna-healthcheck
 # workers both run as this user; the pool's user/group lines are removed.
 RUN groupadd --gid 10010 codedna \
     && useradd --uid 10010 --gid 10010 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin codedna \
-    && sed -i -e '/^user = /d' -e '/^group = /d' /usr/local/etc/php-fpm.d/www.conf
+    && sed -i -e '/^user = /d' -e '/^group = /d' /usr/local/etc/php-fpm.d/www.conf \
+    && install -d -o codedna -g codedna -m 0700 /var/cache/codedna/uploads
 
 # Application code and the analyzer contracts: owned by root, read-only to
 # the application user. Writable state lives only in tmpfs mounts

@@ -175,6 +175,13 @@ def check_compose(model: dict[str, Any], external: bool = False) -> list[str]:
     if ollama.get("ports") or ollama.get("expose"):
         errors.append("service ollama: must not publish or expose ports")
 
+    # Phase 30: request bodies and upload temporaries (up to 55 MiB, several
+    # at once) are buffered on disk volumes, never in a memory-backed tmpfs.
+    for name, target in (("nginx", "/var/cache/codedna/client_body"), ("backend", "/var/cache/codedna/uploads")):
+        mounts = (services.get(name) or {}).get("volumes") or []
+        if not any(m.get("type") == "volume" and m.get("target") == target for m in mounts if isinstance(m, dict)):
+            errors.append(f"service {name}: {target} must be a disk volume (upload bodies never fit a tmpfs)")
+
     for name in ("backend", "queue", "ai-worker", "scheduler", "migrate"):
         environment = (services.get(name) or {}).get("environment") or {}
         for key, value in FIXED_BACKEND_ENV.items():
@@ -226,6 +233,10 @@ def check_nginx() -> list[str]:
             errors.append(f"nginx: {header} is required")
     if not re.search(r"location \^~ /internal/ \{\s*return 404;", template):
         errors.append("nginx: /internal/ must return 404")
+    if "client_body_temp_path /var/cache/codedna/client_body;" not in (base / "nginx.conf").read_text(encoding="utf-8"):
+        errors.append("nginx: request bodies must be buffered on the disk volume, not /tmp")
+    if "upload_tmp_dir = /var/cache/codedna/uploads" not in (ROOT / "docker/php/conf.d/production.ini").read_text(encoding="utf-8"):
+        errors.append("php: upload_tmp_dir must be the disk volume /var/cache/codedna/uploads")
     if "server_tokens off" not in (base / "nginx.conf").read_text(encoding="utf-8"):
         errors.append("nginx: server_tokens off is required")
     for param in ("HTTP_X_FORWARDED_FOR $remote_addr", "HTTP_X_FORWARDED_PROTO https", 'HTTP_X_FORWARDED_HOST ""', 'HTTP_FORWARDED ""', 'HTTP_PROXY ""'):

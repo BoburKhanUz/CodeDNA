@@ -24,5 +24,10 @@ ENV NGINX_ENVSUBST_OUTPUT_DIR=/tmp/conf.d \
     NGINX_ENVSUBST_FILTER=CODEDNA_ \
     NGINX_ENTRYPOINT_QUIET_LOGS=1
 
+# Request bodies (uploads up to 55 MiB) are buffered here, on a disk volume
+# (docker-compose.prod.yml), never in the /tmp tmpfs: memory-backed buffering
+# failed every upload above ~32 MiB (Phase 30).
+RUN install -d -o nginx -g nginx -m 0700 /var/cache/codedna/client_body
+
 USER nginx
 EXPOSE 8080 8443 8081

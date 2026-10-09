@@ -216,6 +216,10 @@ services:
       - tls_private_key
     tmpfs:
       - /tmp:size=32m,mode=1777
+    # Request bodies (uploads up to 55 MiB) are buffered on disk, not in the
+    # /tmp tmpfs (Phase 30); Nginx deletes each file when its request ends.
+    volumes:
+      - nginx_request_bodies:/var/cache/codedna/client_body
     depends_on:
       backend:
         condition: service_healthy
@@ -278,6 +282,10 @@ services:
         contracts: ./packages/api-contracts
     volumes:
       - challenge-spool:/var/spool/codedna-challenges
+      # Upload temporaries on disk, not in the memory-backed storage tmpfs:
+      # concurrent uploads near the 50 MiB limit would exhaust it (Phase 30).
+      # PHP deletes each file when its request ends.
+      - backend_uploads:/var/cache/codedna/uploads
     # SIGQUIT lets PHP-FPM finish in-flight requests (process_control_timeout).
     stop_signal: SIGQUIT
     stop_grace_period: 35s
@@ -718,6 +726,9 @@ networks:
 
 volumes:
   challenge-spool:
+  # Request-body and upload temporaries (Phase 30): disk, emptied as requests end.
+  nginx_request_bodies:
+  backend_uploads:
   postgres_data:
   redis_data:
   minio_data:
