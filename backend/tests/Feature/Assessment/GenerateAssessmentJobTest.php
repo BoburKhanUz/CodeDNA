@@ -87,6 +87,29 @@ final class GenerateAssessmentJobTest extends TestCase
         return AiAssessment::query()->findOrFail($assessment->id);
     }
 
+    /**
+     * Phase 30: a failed assessment gives its AI unit back, once; a
+     * succeeded one keeps it.
+     */
+    public function test_a_failed_assessment_is_refunded_once_and_a_succeeded_one_is_not(): void
+    {
+        $used = fn (): int => (int) DB::table('billing_usage_counters')->where('quota_key', 'AI_ASSESSMENTS')->sum('used');
+        $failed = $this->queued('malformed');
+        $this->assertSame(1, $used());
+        $this->runJob($this->newJob($failed));
+        $this->assertSame(AssessmentStatus::Failed, $this->fresh($failed)->status);
+        $this->assertSame(0, $used());
+        $this->assertSame(1, DB::table('billing_usage_events')->where('resource_type', 'ai_assessment')->where('resource_id', $failed->id)->where('outcome', 'REFUNDED')->count());
+        $this->runJob($this->newJob($failed));
+        $this->assertSame(0, $used(), 'a redelivered job never refunds twice');
+
+        $this->travel(1)->hours();
+        $succeeded = $this->queued('valid');
+        $this->runJob($this->newJob($succeeded));
+        $this->assertSame(AssessmentStatus::Succeeded, $this->fresh($succeeded)->status);
+        $this->assertSame(1, $used());
+    }
+
     public function test_a_valid_response_is_stored_as_succeeded(): void
     {
         $assessment = $this->queued('valid');

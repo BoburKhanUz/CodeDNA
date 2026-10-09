@@ -81,7 +81,10 @@ final class TeamProjectAccessTest extends TestCase
      */
     public static function routes(): array
     {
-        return CrossUserAccessTest::routes();
+        // Team plans do not include AI (FEATURE_NOT_INCLUDED), so a team project
+        // never has AI assessments or insights to read: those routes are covered
+        // by CrossUserAccessTest for personal projects.
+        return array_filter(CrossUserAccessTest::routes(), fn (string $route): bool => ! str_contains($route, '{ai') && ! str_contains($route, '/insights'), ARRAY_FILTER_USE_KEY);
     }
 
     private function url(string $route, ?Project $project = null): string
