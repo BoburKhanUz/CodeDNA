@@ -25,7 +25,8 @@ an overall score and a data-quality value) into an immutable DNA snapshot
 ([dna-scoring-v1.md](dna-scoring-v1.md)). A read-only DNA API and the
 CodeDNA dashboard present those snapshots per project
 ([frontend.md](frontend.md#codedna-dashboard-appprojectsprojectdna)); there is
-no analysis screen yet (analyses are started through the API). Each DNA
+an Analyses card on the project page that starts the static analysis of the
+newest snapshot (Phase 30). Each DNA
 snapshot is then turned into a deterministic, versioned competency matrix
 (complexity management, function design, type structure, code hygiene;
 [competency-matrix-v1.md](competency-matrix-v1.md)), readable through the

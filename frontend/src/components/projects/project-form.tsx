@@ -177,7 +177,7 @@ export function ProjectForm() {
               <span>
                 <span className="font-medium">Repository</span>
                 <span className="text-muted-foreground block">
-                  Record the repository URL. Importing from repositories is not available yet.
+                  Record the repository URL, then import from GitHub, GitLab or Bitbucket Cloud on the project page.
                 </span>
               </span>
             </label>

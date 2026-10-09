@@ -187,7 +187,7 @@ LoginForm ──► lib/auth/client.login() ──► api.post("/api/v1/auth/log
   error-with-retry and empty states.
 - **Create:** name, slug (derived from the name until edited), description,
   source type (Upload, or Repository with an `https://` URL; repositories
-  are recorded only), language, default branch. Client checks mirror the
+  are recorded, then imported from the project page), language, default branch. Client checks mirror the
   backend rules; server field errors appear under each input. Success opens
   the project.
 - **Detail:** project facts, then the source card and the snapshot table
@@ -195,6 +195,15 @@ LoginForm ──► lib/auth/client.login() ──► api.post("/api/v1/auth/log
   SHA-256 with the full hash as a tooltip). Archive is a two-step,
   irreversible action; afterwards the upload form disappears and history
   stays.
+- **Analyses (`ProjectAnalyses`, Phase 30):** "Analyze snapshot vN" starts
+  the static analysis of the newest snapshot (`result_type:
+  static_analysis`, the only scored type); it is disabled while a request is
+  in flight and once that snapshot has a queued, running or completed run
+  (the server returns the existing run anyway). The five newest runs show
+  their real status, failure message, and "View CodeDNA" when completed;
+  queued and running runs are polled every 3 s, paused in hidden tabs. A
+  completed run refreshes the CodeDNA summary card. Archived projects are
+  read-only; plan and quota refusals appear through `ApiErrorAlert`.
 - **Upload (`UploadSource`):** a `.zip` file input with early checks
   (extension, non-empty, at most 50 MiB; the server is authoritative). It
   uses `upload()` from the shared API client, which posts multipart form data
@@ -247,8 +256,8 @@ Presentation only (Phase 12). Data comes from the read-only
 - **States.** Skeleton while loading; "No CodeDNA assessment is available
   yet." when the project has none, with the newest static analysis's real
   status (queued/running, completed but not yet scored, failed) from the
-  analyses API and no simulated progress (analyses are started through the
-  API; there is no analysis screen); API errors through `ApiErrorAlert`
+  analyses API and no simulated progress (analyses are started from the
+  project page's Analyses card); API errors through `ApiErrorAlert`
   with the request reference and a retry; 401 → `/login`; 404 → "Project
   not found" / "Assessment not found".
 - **Project page.** A CodeDNA card shows the newest assessment's score (or

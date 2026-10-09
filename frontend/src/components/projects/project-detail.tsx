@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApiErrorAlert } from "@/components/auth/api-error-alert";
 import { DnaSummaryCard } from "@/components/dna/dna-summary-card";
+import { ProjectAnalyses } from "@/components/projects/project-analyses";
 import { StatusBadge } from "@/components/projects/status-badge";
 import { UploadSource } from "@/components/projects/upload-source";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,11 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const router = useRouter();
   const [state, setState] = useState<State>(() => (isProjectId(projectId) ? { status: "loading" } : { status: "not-found" }));
   const [snapshotPage, setSnapshotPage] = useState(1);
+  // The newest snapshot (from the first page), which the Analyses card analyzes.
+  const [newest, setNewest] = useState<SourceSnapshot | null>(null);
+  // Bumped when an analysis completes, so the CodeDNA summary is read again.
+  const [dnaKey, setDnaKey] = useState(0);
+  const analysisCompleted = useCallback(() => setDnaKey((key) => key + 1), []);
 
   const handleError = useCallback(
     (error: unknown) => {
@@ -47,7 +53,10 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     (page: number) => {
       if (!isProjectId(projectId)) return;
       Promise.all([getProject(projectId), listSourceSnapshots(projectId, page)])
-        .then(([project, snapshots]) => setState({ status: "ready", project, snapshots }))
+        .then(([project, snapshots]) => {
+          if (page === 1) setNewest(snapshots.data[0] ?? null);
+          setState({ status: "ready", project, snapshots });
+        })
         .catch(handleError);
     },
     [projectId, handleError],
@@ -137,7 +146,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         </CardContent>
       </Card>
 
-      <DnaSummaryCard projectId={project.id} />
+      <DnaSummaryCard key={dnaKey} projectId={project.id} />
 
       <Card>
         <CardHeader>
@@ -177,6 +186,15 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           <SnapshotTable snapshots={snapshots} onPage={(page) => setSnapshotPage(page)} />
         </CardContent>
       </Card>
+
+      <ProjectAnalyses
+        key={newest?.id ?? "none"}
+        projectId={project.id}
+        newest={newest}
+        versions={new Map(snapshots.data.map((snapshot) => [snapshot.id, snapshot.version]))}
+        canAnalyze={project.status === "ACTIVE"}
+        onCompleted={analysisCompleted}
+      />
 
       {project.status === "ACTIVE" ? (
         <ArchiveProject project={project} onArchived={(archived) => setState({ ...state, project: archived })} />

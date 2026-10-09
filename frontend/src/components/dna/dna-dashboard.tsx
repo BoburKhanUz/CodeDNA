@@ -206,7 +206,7 @@ function Header({ project, snapshot }: { project: Project; snapshot: DnaSnapshot
 function EmptyState({ run, projectId }: { run: AnalysisRun | null; projectId: string }) {
   let title = "No CodeDNA assessment is available yet.";
   let detail =
-    "The project needs a completed static analysis of a source snapshot; the assessment is created from it. Static analyses are started through the API; there is no analysis screen yet.";
+    "The project needs a completed static analysis of a source snapshot; the assessment is created from it. Start one from the project page (Analyses).";
   if (run?.status === "QUEUED" || run?.status === "RUNNING") {
     title = "A static analysis is in progress.";
     detail = `The newest static analysis is ${run.status.toLowerCase()} (started ${formatDateTime(run.created_at)}). The assessment appears here once it has completed and been scored.`;

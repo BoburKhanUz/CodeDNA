@@ -93,7 +93,7 @@ export function UploadSource({ projectId, onUploaded }: { projectId: string; onU
           disabled={uploading}
           aria-invalid={fileError ? true : undefined}
           aria-describedby={fileError ? "archive-hint archive-error" : "archive-hint"}
-          className="file:bg-secondary file:text-secondary-foreground text-sm file:mr-3 file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium"
+          className="w-full min-w-0 file:bg-secondary file:text-secondary-foreground text-sm file:mr-3 file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium"
         />
         <p id="archive-hint" className="text-muted-foreground text-xs">
           Up to {formatBytes(MAX_ARCHIVE_BYTES)}. The archive is stored as-is; nothing in it is run.

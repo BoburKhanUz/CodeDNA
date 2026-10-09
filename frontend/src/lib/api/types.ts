@@ -303,7 +303,7 @@ export type AnalysisResultType = "foundation" | "static_analysis";
 export const ANALYSIS_RUN_STATUSES = ["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"] as const;
 export type AnalysisRunStatus = (typeof ANALYSIS_RUN_STATUSES)[number];
 
-/** `AnalysisRunResource` — GET /api/v1/projects/{project}/analyses (read here; started through the API). */
+/** `AnalysisRunResource` — GET/POST /api/v1/projects/{project}/analyses. */
 export interface AnalysisRun {
   id: string;
   type: "analysis_run";

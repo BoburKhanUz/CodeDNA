@@ -2,6 +2,7 @@ import { api, upload } from "@/lib/api/client";
 import type {
   AnalysisRun,
   CreateProjectRequest,
+  DataEnvelope,
   Paginated,
   Project,
   ProjectResponse,
@@ -65,7 +66,24 @@ export async function uploadSource(
   return response.data;
 }
 
-/** Analysis runs, newest first (read-only here: runs are started through the API). */
+/** Analysis runs, newest first. */
 export function listAnalyses(projectId: string, page = 1, perPage = 25): Promise<Paginated<AnalysisRun>> {
   return api.get<Paginated<AnalysisRun>>(projectPath(projectId, `/analyses?page=${page}&per_page=${perPage}`));
+}
+
+/**
+ * Starts the static analysis of one source snapshot (Phase 30: the only
+ * result type that is scored into CodeDNA). The server returns the existing
+ * run for the same snapshot instead of starting a second one.
+ */
+export async function startAnalysis(projectId: string, sourceSnapshotId: string): Promise<AnalysisRun> {
+  if (!isProjectId(sourceSnapshotId)) {
+    throw new Error("Invalid source snapshot ID.");
+  }
+  return (
+    await api.post<DataEnvelope<AnalysisRun>>(projectPath(projectId, "/analyses"), {
+      source_snapshot_id: sourceSnapshotId.toLowerCase(),
+      result_type: "static_analysis",
+    })
+  ).data;
 }

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectDetail } from "@/components/projects/project-detail";
-import type { DnaSnapshotSummary } from "@/lib/api/types";
+import type { AnalysisRun, DnaSnapshotSummary } from "@/lib/api/types";
 import { insufficientSnapshot, readySnapshot, summary } from "@/test/dna";
 import { apiErrorResponse, jsonResponse, page, project, snapshot } from "@/test/responses";
 import { resetRouter } from "@/test/router";
@@ -26,10 +26,12 @@ function respondWith(
   projectData = project,
   snapshots = page([snapshot(2), snapshot(1, { primary_language: null })]),
   dna: DnaSnapshotSummary[] = [],
+  runs: AnalysisRun[] = [],
 ) {
   fetchMock.mockImplementation(async (input) => {
     const url = String(input);
     if (url.includes("/dna")) return jsonResponse(page(dna));
+    if (url.includes("/analyses")) return jsonResponse(page(runs));
     return url.includes("/source-snapshots") ? jsonResponse(snapshots) : jsonResponse({ data: projectData });
   });
 }
@@ -66,6 +68,18 @@ describe("ProjectDetail", () => {
     expect(screen.queryByRole("button", { name: "Archive project" })).not.toBeInTheDocument();
     const archiveCall = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     expect(String(archiveCall?.[0])).toBe(`/api/v1/projects/${project.id}/archive`);
+  });
+
+  it("offers to analyze the newest snapshot, but not on an archived project", async () => {
+    respondWith();
+    const first = render(<ProjectDetail projectId={project.id} />);
+    expect(await screen.findByTestId("analyze-newest")).toHaveTextContent("Analyze snapshot v2");
+    first.unmount();
+
+    respondWith({ ...project, status: "ARCHIVED" });
+    render(<ProjectDetail projectId={project.id} />);
+    expect(await screen.findByText(/its analyses stay readable, and no new analysis can be started/)).toBeInTheDocument();
+    expect(screen.queryByTestId("analyze-newest")).not.toBeInTheDocument();
   });
 
   it("does not offer uploads for repository projects, which import from GitHub", async () => {
