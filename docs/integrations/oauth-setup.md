@@ -98,6 +98,15 @@ both callback URLs from `CODEDNA_DOMAIN`.
   queue payload (jobs carry the import ID only), a cache, a log line or an
   exception message. `ProviderTokens` redacts itself in `var_dump` and
   `print_r`, and token parameters are `#[SensitiveParameter]`.
+- **Callback codes in logs:** the callback pages receive the code and
+  state in their query string.
+  - Nginx logs them as `?[redacted]` (development) or not at all
+    (production, which logs paths only).
+  - The Next.js development server cannot redact its request log, so
+    `next.config.ts` leaves the three callback routes out of it
+    (`logging.incomingRequests.ignore`). Every other request is still
+    logged.
+  - `make verify` checks both logs.
 - **Whose token is used:** every repository call uses the **calling
   user's** token. An import uses the token of the user who requested it
   (`requested_by`), never the token of whoever first connected the

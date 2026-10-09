@@ -395,19 +395,26 @@ invitation_token_redacted() {
     ! grep -q "$token" <<<"$log" && grep -q 'organizations/invitations/\[redacted\]/accept' <<<"$log"
 }
 check "invitation tokens are redacted from the Nginx access log" invitation_token_redacted
-# OAuth callback codes and states (Phase 19/28) never reach the access log,
-# neither in the request line nor in a later request's Referer.
+# OAuth callback codes and states (Phase 19/28) never reach the Nginx access
+# log (request line or a later request's Referer) or the Next.js development
+# server's request log, for every provider and on the error path too.
 oauth_callback_redacted() {
-    local code since log
+    local code since log path
     code="Oc$(python3 -I -c 'import secrets; print(secrets.token_hex(16))')x"
     since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    curl -s -o /dev/null "$base/app/integrations/gitlab/callback?code=$code&state=$code" || return 1
+    for path in github/callback integrations/gitlab/callback integrations/bitbucket/callback; do
+        curl -s -o /dev/null "$base/app/$path?code=$code&state=$code" || return 1
+    done
+    curl -s -o /dev/null "$base/app/integrations/bitbucket/callback?error=access_denied&state=$code" || return 1
     curl -s -o /dev/null -H "Referer: $base/app/github/callback?code=$code&state=$code" "$base/up" || return 1
-    sleep 1
-    log=$("${compose[@]}" logs --since "$since" nginx 2>&1)
-    ! grep -q "$code" <<<"$log" && grep -q 'integrations/gitlab/callback?\[redacted\]' <<<"$log"
+    # Ordinary requests are still logged by both (diagnostics are kept).
+    curl -s -o /dev/null "$base/login?oauth_probe=1" || return 1
+    sleep 2
+    log=$("${compose[@]}" logs --since "$since" nginx frontend 2>&1)
+    ! grep -q "$code" <<<"$log" && grep -q 'integrations/gitlab/callback?\[redacted\]' <<<"$log" \
+        && grep -q 'frontend.*/login?oauth_probe=1' <<<"$log"
 }
-check "OAuth callback codes are redacted from the Nginx access log" oauth_callback_redacted
+check "OAuth callback codes are kept out of the Nginx and Next.js logs" oauth_callback_redacted
 
 echo
 if [[ $failures -eq 0 ]]; then

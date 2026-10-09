@@ -640,7 +640,7 @@ bookkeeping. Imported source lives only in object storage and
   provider, repository ID and name, ref, commit and import ID, so the
   snapshot is self-describing even without these tables.
 
-### repository_provider_accounts, _oauth_states, _connections, _imports
+### repository_provider_accounts, repository_provider_oauth_states, repository_provider_connections, repository_provider_imports
 
 Phase 28 ([provider architecture](../integrations/provider-architecture.md#data-model)).
 These tables are the GitLab and Bitbucket Cloud counterpart of the GitHub
