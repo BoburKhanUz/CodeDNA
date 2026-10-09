@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions\GitHub;
 
+use App\Actions\Repositories\ProjectSource;
 use App\Enums\Billing\Feature;
 use App\Enums\GitHub\GitHubConnectionStatus;
 use App\Exceptions\ApiException;
@@ -80,6 +81,10 @@ final readonly class ConnectGitHubRepository
                 }
                 if ($locked->githubConnections()->where('status', GitHubConnectionStatus::Active->value)->exists()) {
                     throw new ApiException(ErrorCode::GitHubAlreadyConnected);
+                }
+                // One repository source per project (Phase 28): not while GitLab or Bitbucket is connected.
+                if (ProjectSource::activeProviderConnection($locked) !== null) {
+                    throw new ApiException(ErrorCode::SourceAlreadyConnected);
                 }
                 $now = Carbon::now();
                 $connection = new GitHubConnection;

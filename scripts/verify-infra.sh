@@ -395,6 +395,19 @@ invitation_token_redacted() {
     ! grep -q "$token" <<<"$log" && grep -q 'organizations/invitations/\[redacted\]/accept' <<<"$log"
 }
 check "invitation tokens are redacted from the Nginx access log" invitation_token_redacted
+# OAuth callback codes and states (Phase 19/28) never reach the access log,
+# neither in the request line nor in a later request's Referer.
+oauth_callback_redacted() {
+    local code since log
+    code="Oc$(python3 -I -c 'import secrets; print(secrets.token_hex(16))')x"
+    since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    curl -s -o /dev/null "$base/app/integrations/gitlab/callback?code=$code&state=$code" || return 1
+    curl -s -o /dev/null -H "Referer: $base/app/github/callback?code=$code&state=$code" "$base/up" || return 1
+    sleep 1
+    log=$("${compose[@]}" logs --since "$since" nginx 2>&1)
+    ! grep -q "$code" <<<"$log" && grep -q 'integrations/gitlab/callback?\[redacted\]' <<<"$log"
+}
+check "OAuth callback codes are redacted from the Nginx access log" oauth_callback_redacted
 
 echo
 if [[ $failures -eq 0 ]]; then

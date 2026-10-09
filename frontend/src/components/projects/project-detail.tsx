@@ -160,12 +160,16 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           ) : project.status === "ARCHIVED" ? (
             <p className="text-muted-foreground text-sm">This project is archived. It keeps its history but accepts no new source.</p>
           ) : (
-            <p className="text-muted-foreground text-sm">This is a repository project: it receives source by importing from GitHub.</p>
+            <p className="text-muted-foreground text-sm">This is a repository project: it receives source by importing from GitHub, GitLab or Bitbucket Cloud.</p>
           )}
           {project.status === "ACTIVE" || project.source_type === "REPOSITORY" ? (
             <p className="text-sm" data-testid="github-link">
               <Link href={`/app/projects/${project.id}/github`} className="font-medium underline underline-offset-4">
                 {project.status === "ACTIVE" ? "Import from GitHub →" : "GitHub connection →"}
+              </Link>
+              {" · "}
+              <Link href={`/app/projects/${project.id}/repositories`} className="font-medium underline underline-offset-4" data-testid="provider-link">
+                {project.status === "ACTIVE" ? "Import from GitLab or Bitbucket →" : "GitLab or Bitbucket connection →"}
               </Link>
             </p>
           ) : null}

@@ -38,6 +38,14 @@ REQUIRED_DOCS = [
     "docs/decisions/ADR-004-dna-scoring.md",
     "docs/decisions/ADR-005-service-communication.md",
     "docs/decisions/ADR-006-authentication.md",
+    # Phase 28 — repository provider integrations
+    "docs/integrations/provider-architecture.md",
+    "docs/integrations/github.md",
+    "docs/integrations/gitlab.md",
+    "docs/integrations/bitbucket-cloud.md",
+    "docs/integrations/oauth-setup.md",
+    "docs/integrations/import-security.md",
+    "docs/integrations/troubleshooting.md",
 ]
 
 REQUIRED_FOUNDATION = [

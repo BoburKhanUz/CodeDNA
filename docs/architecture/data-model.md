@@ -47,6 +47,10 @@ users ──1:n──► projects ──1:n──► source_snapshots ──1:n�
 | `github_oauth_states` | Single-use, user-bound GitHub authorization states, hashed (Phase 19) | `consumed_at`, once |
 | `github_connections` | A project's verified GitHub repository and branch (Phase 19) | branch and metadata while ACTIVE; status once, ACTIVE → DISCONNECTED; identity never |
 | `github_imports` | One import of the connected branch into a source snapshot (Phase 19) | lifecycle forward only; **never** once finished |
+| `repository_provider_accounts` | A user's GitLab or Bitbucket Cloud identity and encrypted OAuth tokens, one per provider (Phase 28) | tokens on refresh or re-authorization |
+| `repository_provider_oauth_states` | Single-use, user- and provider-bound authorization states, hashed (Phase 28) | `consumed_at`, once |
+| `repository_provider_connections` | A project's verified GitLab or Bitbucket repository and branch (Phase 28) | branch and metadata while ACTIVE; status once; identity never |
+| `repository_provider_imports` | One GitLab or Bitbucket import into a source snapshot (Phase 28) | lifecycle forward only; **never** once finished |
 
 There is deliberately no separate `repositories` or `analyses` table. A
 project carries its source origin (`source_type`, `repository_url`). A
@@ -635,6 +639,29 @@ bookkeeping. Imported source lives only in object storage and
 - **Provenance:** a GitHub snapshot's own `metadata.provenance` records the
   provider, repository ID and name, ref, commit and import ID, so the
   snapshot is self-describing even without these tables.
+
+### repository_provider_accounts, _oauth_states, _connections, _imports
+
+Phase 28 ([provider architecture](../integrations/provider-architecture.md#data-model)).
+These tables are the GitLab and Bitbucket Cloud counterpart of the GitHub
+tables above, with a `provider` column (`gitlab` or `bitbucket`):
+
+- **Accounts:** unique `(user_id, provider)` and `(provider,
+  provider_user_id)`. `access_token` and `refresh_token` are encrypted
+  (APP_KEY) and never serialized.
+- **States:** only the SHA-256 hash is stored, bound to user, provider and
+  an optional project. They expire within an hour and are consumed once.
+- **Connections:** `repository_id` is a string (a GitLab numeric ID or
+  `{workspace-uuid}/{repository-uuid}`) and `connected_by` records the user.
+  There is one `ACTIVE` connection per project (partial unique index), and
+  a guard trigger freezes a disconnected row. A project never has both a
+  GitHub and a GitLab or Bitbucket connection, which is enforced under the
+  project lock.
+- **Imports:** `requested_by` records whose token the import used. There is
+  one in-progress import per project and one created snapshot per
+  `(project_id, provider, repository_id, commit_sha)`. A guard trigger makes
+  finished imports immutable. Snapshot provenance records the provider,
+  repository, ref, commit and import ID.
 
 ## States
 

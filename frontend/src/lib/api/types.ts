@@ -89,6 +89,16 @@ export const API_ERROR_CODES = [
   "GITHUB_NOT_CONNECTED",
   "GITHUB_RATE_LIMITED",
   "GITHUB_UNAVAILABLE",
+  "PROVIDER_NOT_CONFIGURED",
+  "PROVIDER_AUTH_REQUIRED",
+  "PROVIDER_STATE_INVALID",
+  "PROVIDER_ACCOUNT_IN_USE",
+  "PROVIDER_REPOSITORY_NOT_FOUND",
+  "PROVIDER_BRANCH_NOT_FOUND",
+  "PROVIDER_NOT_CONNECTED",
+  "PROVIDER_RATE_LIMITED",
+  "PROVIDER_UNAVAILABLE",
+  "SOURCE_ALREADY_CONNECTED",
   "FEATURE_NOT_INCLUDED",
   "SUBSCRIPTION_INACTIVE",
   "QUOTA_EXCEEDED",
@@ -1347,6 +1357,73 @@ export interface ProjectGitHub {
   account_connected: boolean;
   connection: GitHubConnection | null;
   latest_import: GitHubImport | null;
+}
+
+/* ------------------------------------------- GitLab and Bitbucket Cloud (Phase 28) */
+// backend/app/Http/Controllers/Api/V1/{Repositories/RepositoryProviderAccountController,Projects/ProjectRepositoryProviderController}.php
+
+export const REPOSITORY_PROVIDERS = ["gitlab", "bitbucket"] as const;
+export type RepositoryProviderKey = (typeof REPOSITORY_PROVIDERS)[number];
+
+/** GET /api/v1/repository-providers — one entry per provider. Never a token. */
+export interface RepositoryProviderAccountStatus {
+  provider: RepositoryProviderKey;
+  name: string;
+  configured: boolean;
+  /** The configured installation's host (GitLab.com or a self-managed instance). */
+  host: string | null;
+  account: { username: string; connected_at: string | null } | null;
+}
+
+/** POST /api/v1/repository-providers/{provider}/authorizations */
+export interface RepositoryProviderAuthorizationStart {
+  authorize_url: string;
+  expires_at: string;
+}
+
+/** DELETE /api/v1/repository-providers/{provider}: tokens are always deleted; revocation is best effort. */
+export interface RepositoryProviderUnlink {
+  provider: RepositoryProviderKey;
+  revocation: "REVOKED" | "NOT_SUPPORTED" | "FAILED" | "NOT_LINKED";
+}
+
+/** Repository metadata as verified with the provider. */
+export interface ProviderRepository {
+  id: string;
+  full_name: string;
+  private: boolean;
+  archived: boolean;
+  default_branch: string;
+}
+
+/** `RepositoryProviderConnectionResource` */
+export interface RepositoryProviderConnection {
+  id: string;
+  type: "repository_provider_connection";
+  project_id: string;
+  provider: RepositoryProviderKey;
+  status: GitHubConnectionStatus;
+  repository: ProviderRepository;
+  branch: string;
+  last_imported_commit_sha: string | null;
+  last_imported_at: string | null;
+  connected_at: string;
+  disconnected_at: string | null;
+}
+
+/** `RepositoryProviderImportResource`: the same shape as a GitHub import. */
+export interface RepositoryProviderImport extends Omit<GitHubImport, "type"> {
+  type: "repository_provider_import";
+  provider: RepositoryProviderKey;
+}
+
+/** GET /api/v1/projects/{project}/repository-provider */
+export interface ProjectRepositoryProvider {
+  providers: { provider: RepositoryProviderKey; name: string; configured: boolean; account_connected: boolean }[];
+  /** A project has one repository source: GitHub or one of these. */
+  github_connected: boolean;
+  connection: RepositoryProviderConnection | null;
+  latest_import: RepositoryProviderImport | null;
 }
 
 // Billing (Phase 23): BillingController, Billing*Resource. Read-only: the

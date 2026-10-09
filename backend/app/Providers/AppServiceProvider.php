@@ -14,6 +14,7 @@ use App\Models\AiAssessment;
 use App\Models\AnalysisRun;
 use App\Models\ChallengeSubmission;
 use App\Models\GitHubImport;
+use App\Models\RepositoryProviderImport;
 use App\Policies\ViewDecisions;
 use App\Services\Assessment\Provider\AiProvider;
 use App\Services\Assessment\Provider\FakeAiProvider;
@@ -169,6 +170,9 @@ class AppServiceProvider extends ServiceProvider
         ChallengeSubmission::updated(static fn (ChallengeSubmission $submission) => $refund(QuotaKey::ChallengeSubmissions, 'challenge_submission', $submission,
             $submission->status === SubmissionStatus::Error));
         GitHubImport::updated(static fn (GitHubImport $import) => $refund(QuotaKey::GitHubImports, 'github_import', $import,
+            $import->status === GitHubImportStatus::Failed));
+        // Phase 28: GitLab and Bitbucket imports share the repository import quota.
+        RepositoryProviderImport::updated(static fn (RepositoryProviderImport $import) => $refund(QuotaKey::GitHubImports, 'repository_import', $import,
             $import->status === GitHubImportStatus::Failed));
     }
 

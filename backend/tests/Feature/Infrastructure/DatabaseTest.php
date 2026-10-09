@@ -38,7 +38,7 @@ final class DatabaseTest extends TestCase
             'billing_subscription_events', 'billing_subscriptions', 'billing_usage_counters', 'billing_usage_events', 'billing_webhook_events',
             'challenge_definitions', 'challenge_instances', 'challenge_submissions', 'competency_snapshots', 'developer_profiles', 'dna_snapshots', 'failed_jobs', 'github_accounts', 'github_connections', 'github_imports', 'github_oauth_states', 'growth_observations', 'growth_snapshots', 'migrations',
             'organization_audit_events', 'organization_billing_accounts', 'organization_invitations', 'organization_memberships', 'organizations',
-            'personal_access_tokens', 'projects', 'roadmap_snapshots', 'roadmap_step_completions', 'roadmap_steps', 'skill_gap_results', 'skill_gap_snapshots', 'source_snapshots', 'users',
+            'personal_access_tokens', 'projects', 'repository_provider_accounts', 'repository_provider_connections', 'repository_provider_imports', 'repository_provider_oauth_states', 'roadmap_snapshots', 'roadmap_step_completions', 'roadmap_steps', 'skill_gap_results', 'skill_gap_snapshots', 'source_snapshots', 'users',
         ], $tables);
     }
 

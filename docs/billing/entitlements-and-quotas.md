@@ -24,7 +24,7 @@ units in USD.
 | Analyses / month | 60 | 1000 | 1000 |
 | AI assessments / month | 0 | 100 | 100 |
 | Challenge submissions / month | 60 | 1000 | 1000 |
-| GitHub imports / month | 20 | 300 | 300 |
+| Repository imports / month (GitHub, GitLab, Bitbucket Cloud together) | 20 | 300 | 300 |
 
 `TEAM_READY` only reserves the key for future team billing. It has no team
 functionality and cannot be activated: an event naming it is `UNKNOWN_PLAN`.
@@ -65,7 +65,7 @@ would include the feature, so the message can say why.
 | `ANALYSES` | `SOURCE_ANALYSIS` | count | monthly | Each new analysis run |
 | `AI_ASSESSMENTS` | `AI_ASSESSMENT` | count | monthly | Each new AI assessment |
 | `CHALLENGE_SUBMISSIONS` | `CODING_CHALLENGES` | count | monthly | Each new submission |
-| `GITHUB_IMPORTS` | `GITHUB_INTEGRATION` | count | monthly | Each new GitHub import |
+| `GITHUB_IMPORTS` | `GITHUB_INTEGRATION` | count | monthly | Each new repository import from any provider (Phase 28: GitHub, GitLab and Bitbucket Cloud share this counter; the keys keep their Phase 19 names, the labels read "Repository imports" and "Repository integrations"). A failed import is refunded |
 
 A limit of `null` means unlimited (none in v1); `0` means not included.
 Idempotent replays (the same `Idempotency-Key`, an analysis that already

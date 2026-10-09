@@ -9,7 +9,7 @@ const LABELS: Record<string, string> = {
   LEARNING_ROADMAP: "Learning roadmap",
   GROWTH_ANALYTICS: "Growth analytics",
   HISTORICAL_DNA: "Historical DNA",
-  GITHUB_INTEGRATION: "GitHub integration",
+  GITHUB_INTEGRATION: "Repository integrations",
 };
 
 export function quota(key: string, overrides: Partial<BillingQuota> = {}): BillingQuota {

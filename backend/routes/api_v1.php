@@ -30,10 +30,12 @@ use App\Http\Controllers\Api\V1\Projects\GrowthController;
 use App\Http\Controllers\Api\V1\Projects\HistoryController;
 use App\Http\Controllers\Api\V1\Projects\ProjectController;
 use App\Http\Controllers\Api\V1\Projects\ProjectGitHubController;
+use App\Http\Controllers\Api\V1\Projects\ProjectRepositoryProviderController;
 use App\Http\Controllers\Api\V1\Projects\RoadmapController;
 use App\Http\Controllers\Api\V1\Projects\RoadmapStepController;
 use App\Http\Controllers\Api\V1\Projects\SkillGapSnapshotController;
 use App\Http\Controllers\Api\V1\Projects\SourceSnapshotController;
+use App\Http\Controllers\Api\V1\Repositories\RepositoryProviderAccountController;
 use App\Http\Middleware\RequireSession;
 use Illuminate\Support\Facades\Route;
 
@@ -339,6 +341,40 @@ Route::middleware('auth:sanctum')->prefix('projects')->name('projects.')->group(
         ->scopeBindings()
         ->name('github.imports.show');
 
+    // GitLab and Bitbucket Cloud (Phase 28): the same connection and import
+    // model as GitHub, one source per project. Provider, repository and
+    // commit are verified with the provider as the user; the client never
+    // supplies a URL. Rate limits are shared with the GitHub routes.
+    Route::get('{project}/repository-provider', [ProjectRepositoryProviderController::class, 'show'])
+        ->whereUlid('project')
+        ->name('repository-provider.show');
+    Route::post('{project}/repository-provider', [ProjectRepositoryProviderController::class, 'store'])
+        ->whereUlid('project')
+        ->middleware('throttle:github-write')
+        ->name('repository-provider.store');
+    Route::patch('{project}/repository-provider', [ProjectRepositoryProviderController::class, 'update'])
+        ->whereUlid('project')
+        ->middleware('throttle:github-write')
+        ->name('repository-provider.update');
+    Route::delete('{project}/repository-provider', [ProjectRepositoryProviderController::class, 'destroy'])
+        ->whereUlid('project')
+        ->middleware('throttle:github-write')
+        ->name('repository-provider.destroy');
+    Route::get('{project}/repository-provider/branches', [ProjectRepositoryProviderController::class, 'branches'])
+        ->whereUlid('project')
+        ->middleware('throttle:github-read')
+        ->name('repository-provider.branches');
+    Route::get('{project}/repository-provider/imports', [ProjectRepositoryProviderController::class, 'imports'])
+        ->whereUlid('project')
+        ->name('repository-provider.imports.index');
+    Route::post('{project}/repository-provider/imports', [ProjectRepositoryProviderController::class, 'storeImport'])
+        ->whereUlid('project')
+        ->middleware('throttle:github-import')
+        ->name('repository-provider.imports.store');
+    Route::get('{project}/repository-provider/imports/{import}', [ProjectRepositoryProviderController::class, 'showImport'])
+        ->whereUlid(['project', 'import'])
+        ->name('repository-provider.imports.show');
+
     // Learning roadmaps (Phase 17): a planning layer generated from the newest
     // skill gap analysis. Generating and completing steps change only roadmap
     // records, never CodeDNA, competencies or gaps. No update or delete routes.
@@ -381,4 +417,22 @@ Route::middleware('auth:sanctum')->prefix('github')->name('github.')->group(func
         ->where('installation', '[1-9][0-9]{0,17}')
         ->middleware('throttle:github-read')
         ->name('installations.repositories');
+});
+
+// The signed-in user's GitLab and Bitbucket Cloud authorizations (Phase 28).
+// Authorization is a browser flow: starting and completing it need the session.
+Route::middleware('auth:sanctum')->prefix('repository-providers')->name('repository-providers.')->group(function (): void {
+    Route::get('/', [RepositoryProviderAccountController::class, 'index'])->name('index');
+    Route::post('{provider}/authorizations', [RepositoryProviderAccountController::class, 'startAuthorization'])
+        ->middleware([RequireSession::class, 'throttle:github-authorize'])
+        ->name('authorizations.store');
+    Route::post('{provider}/callback', [RepositoryProviderAccountController::class, 'callback'])
+        ->middleware([RequireSession::class, 'throttle:github-authorize'])
+        ->name('callback');
+    Route::delete('{provider}', [RepositoryProviderAccountController::class, 'destroy'])
+        ->middleware('throttle:github-write')
+        ->name('destroy');
+    Route::get('{provider}/repositories', [RepositoryProviderAccountController::class, 'repositories'])
+        ->middleware('throttle:github-read')
+        ->name('repositories');
 });

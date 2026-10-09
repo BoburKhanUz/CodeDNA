@@ -97,7 +97,10 @@ branch's current commit becomes an ordinary immutable source snapshot, analyzed 
 same pipeline. **GitHub is a source provider:** repository code is never executed,
 tokens never leave the server, and disconnecting never deletes imported history
 ([github-integration-v1.md](docs/architecture/github-integration-v1.md); configure the App
-with the `GITHUB_*` variables in `.env.example`). Since Phase 20 each project has a
+with the `GITHUB_*` variables in `.env.example`). Since Phase 28 the same import pipeline
+also accepts **GitLab** (GitLab.com or one self-managed instance) and **Bitbucket Cloud**
+through per-user OAuth ([docs/integrations](docs/integrations/provider-architecture.md);
+`GITLAB_*` and `BITBUCKET_*` variables). Since Phase 20 each project has a
 **Historical DNA** page: every completed code assessment as it was recorded, with DNA,
 competency and skill-gap evolution, version segments, source provenance and a comparison
 of any two assessments. It is a read model over the existing immutable snapshots: nothing
@@ -177,7 +180,7 @@ code runs only in the network-less evaluator and never changes CodeDNA.
 ## Documentation
 
 - Product: [vision](docs/product/vision.md) · [MVP](docs/product/mvp.md)
-- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md) · [coding challenges](docs/architecture/coding-challenges-v1.md) · [challenge evaluator](docs/architecture/challenge-evaluator.md) · [learning roadmap](docs/architecture/learning-roadmap-v1.md) · [growth tracking](docs/architecture/growth-tracking-v1.md) · [GitHub integration](docs/architecture/github-integration-v1.md) · [historical DNA](docs/architecture/historical-dna-v1.md)
+- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md) · [coding challenges](docs/architecture/coding-challenges-v1.md) · [challenge evaluator](docs/architecture/challenge-evaluator.md) · [learning roadmap](docs/architecture/learning-roadmap-v1.md) · [growth tracking](docs/architecture/growth-tracking-v1.md) · [GitHub integration](docs/architecture/github-integration-v1.md) · [repository providers](docs/integrations/provider-architecture.md) ([GitLab](docs/integrations/gitlab.md), [Bitbucket Cloud](docs/integrations/bitbucket-cloud.md), [OAuth setup](docs/integrations/oauth-setup.md), [import security](docs/integrations/import-security.md), [troubleshooting](docs/integrations/troubleshooting.md)) · [historical DNA](docs/architecture/historical-dna-v1.md)
 - Testing: [test strategy](docs/testing/test-strategy.md) · [QA matrix](docs/testing/qa-matrix.md)
 - Security: [threat model](docs/security/threat-model.md) · [security hardening](docs/security/security-hardening.md) (after pulling Phase 21, run `make setup` once to add `REDIS_PASSWORD` to `.env`) · [production security baseline](docs/operations/security-baseline.md)
 - Operations: [production deployment](docs/operations/production-deployment.md) · [production configuration](docs/operations/production-configuration.md) · [backup and restore](docs/operations/backup-and-restore.md) · [rollback](docs/operations/rollback.md)

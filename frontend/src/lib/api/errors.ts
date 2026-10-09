@@ -170,6 +170,28 @@ export function describeApiError(error: unknown): string {
         : "GitHub is rate limiting requests. Try again later.";
     case "GITHUB_UNAVAILABLE":
       return "GitHub is not reachable right now. Try again later.";
+    case "PROVIDER_NOT_CONFIGURED":
+      return "This repository provider is not configured on this server.";
+    case "PROVIDER_AUTH_REQUIRED":
+      return "Connect your account with this repository provider to continue.";
+    case "PROVIDER_STATE_INVALID":
+      return "This sign-in link is invalid, expired or already used. Start again.";
+    case "PROVIDER_ACCOUNT_IN_USE":
+      return "This provider account is already linked to another CodeDNA user.";
+    case "PROVIDER_REPOSITORY_NOT_FOUND":
+      return "This repository is not available to your account.";
+    case "PROVIDER_BRANCH_NOT_FOUND":
+      return "This branch does not exist in the repository.";
+    case "PROVIDER_NOT_CONNECTED":
+      return "This project is not connected to a GitLab or Bitbucket repository.";
+    case "PROVIDER_RATE_LIMITED":
+      return error.retryAfterSeconds !== null
+        ? `The repository provider is rate limiting requests. Try again in ${formatSeconds(error.retryAfterSeconds)}.`
+        : "The repository provider is rate limiting requests. Try again later.";
+    case "PROVIDER_UNAVAILABLE":
+      return "The repository provider is not reachable right now. Try again later.";
+    case "SOURCE_ALREADY_CONNECTED":
+      return "This project already has a repository source. Disconnect it first.";
   }
 
   if (error.status !== null && error.status >= 500) {

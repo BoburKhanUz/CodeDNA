@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use App\Enums\Repositories\RepositoryProviderKey;
 use App\Services\Assessment\AssessmentSpecification;
 use App\Services\Assessment\Provider\FakeAiProvider;
 use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
@@ -14,6 +15,7 @@ use App\Services\Competency\CompetencySpecification;
 use App\Services\Dna\ScoringSpecification;
 use App\Services\GitHub\GitHubSettings;
 use App\Services\Growth\GrowthRules;
+use App\Services\Repositories\ProviderSettings;
 use App\Services\Roadmap\RoadmapCatalog;
 use App\Services\Roadmap\RoadmapRules;
 use App\Services\SkillGap\SkillGapSpecification;
@@ -77,7 +79,7 @@ final class ConfigurationValidator
             $problems[] = 'CODEDNA_ROADMAP_RULES_VERSION must be one of: '.implode(', ', RoadmapRules::VERSIONS).'.';
         }
         $problems = [...$problems, ...$this->aiProblems($config, $environment), ...$this->challengeProblems($config), ...$this->billingProblems($config, $environment)];
-        $problems = [...$problems, ...$this->selfHostedProblems($config)];
+        $problems = [...$problems, ...$this->selfHostedProblems($config), ...$this->repositoryProviderProblems($config, $environment)];
 
         // The test suite swaps in in-memory drivers; every other environment
         // must use the Redis-backed infrastructure (docs/architecture/backend.md).
@@ -289,6 +291,63 @@ final class ConfigurationValidator
             if (! is_string($id) || preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', $id) !== 1 || ! is_string($bytes) || strlen($bytes) !== SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES) {
                 $problems[] = 'config/license.php must map key ids to base64 Ed25519 public keys (32 bytes).';
                 break;
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * GitLab and Bitbucket Cloud (Phase 28, docs/integrations/oauth-setup.md):
+     * off when no credential is set; otherwise both credentials, absolute
+     * URLs (https in production), a callback on this installation's own
+     * origin (no open redirect to another site), and archive origins without
+     * paths. A self-managed GitLab is exactly one administrator-set origin;
+     * no hostname ever comes from a user.
+     *
+     * @return list<string>
+     */
+    private function repositoryProviderProblems(Repository $config, string $environment): array
+    {
+        $problems = [];
+        $https = self::isDeployed($environment);
+        $appOrigin = ProviderSettings::origin((string) $config->get('app.url'));
+        foreach (RepositoryProviderKey::cases() as $key) {
+            $settings = ProviderSettings::fromConfig($config, $key);
+            $prefix = strtoupper($key->value);
+            if ($settings->clientId === '' && $settings->clientSecret === '') {
+                continue;
+            }
+            if ($settings->clientId === '' || $settings->clientSecret === '') {
+                $problems[] = "{$key->label()} configuration is incomplete: set {$prefix}_CLIENT_ID and {$prefix}_CLIENT_SECRET.";
+
+                continue;
+            }
+            $urls = $key === RepositoryProviderKey::GitLab
+                ? ['GITLAB_BASE_URL' => $settings->apiUrl]
+                : ['BITBUCKET_API_URL' => $settings->apiUrl, 'BITBUCKET_WEB_URL' => $settings->webUrl];
+            foreach ($urls + ["{$prefix}_CALLBACK_URL" => $settings->callbackUrl] as $name => $url) {
+                if (! self::absoluteUrl($url, $https) || parse_url($url, PHP_URL_QUERY) !== null || parse_url($url, PHP_URL_FRAGMENT) !== null) {
+                    $problems[] = "{$name} must be an absolute ".($https ? 'https' : 'http(s)').' URL without a query.';
+                }
+            }
+            if ($https && ProviderSettings::origin($settings->callbackUrl) !== $appOrigin) {
+                $problems[] = "{$prefix}_CALLBACK_URL must be on this installation's own origin (APP_URL).";
+            }
+            if (parse_url($settings->callbackUrl, PHP_URL_PATH) !== '/app/integrations/'.$key->value.'/callback') {
+                $problems[] = "{$prefix}_CALLBACK_URL must end in /app/integrations/{$key->value}/callback.";
+            }
+            if ($key === RepositoryProviderKey::Bitbucket) {
+                if ($settings->archiveOrigins === []) {
+                    $problems[] = 'BITBUCKET_ARCHIVE_ORIGINS must list at least one origin.';
+                }
+                foreach ($settings->archiveOrigins as $origin) {
+                    $path = parse_url($origin, PHP_URL_PATH);
+                    if (! self::absoluteUrl($origin, $https) || ($path !== null && $path !== '') || parse_url($origin, PHP_URL_QUERY) !== null) {
+                        $problems[] = 'BITBUCKET_ARCHIVE_ORIGINS entries must be origins (scheme://host[:port]) without a path'.($https ? ', using https' : '').'.';
+                        break;
+                    }
+                }
             }
         }
 

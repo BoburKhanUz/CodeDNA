@@ -272,6 +272,42 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | GitLab and Bitbucket Cloud (Phase 28)
+    |--------------------------------------------------------------------------
+    |
+    | docs/integrations/provider-architecture.md. OAuth 2.0 repository
+    | providers: each is off until its client ID and secret are set. Imports
+    | share the GitHub import queue, timeouts and the GitHub import quota.
+    | URLs are fixed per provider (or, for GitLab, one administrator-set base
+    | URL); nothing a client sends ever becomes a request destination.
+    |
+    */
+    'repository_providers' => [
+        'gitlab' => [
+            'client_id' => (string) env('GITLAB_CLIENT_ID', ''),
+            'client_secret' => (string) env('GITLAB_CLIENT_SECRET', ''),
+            // GitLab.com by default; a self-managed GitLab by its exact origin
+            // (https in production). OAuth, API and archives all use it.
+            'base_url' => rtrim((string) env('GITLAB_BASE_URL', 'https://gitlab.com'), '/'),
+            'callback_url' => (string) env('GITLAB_CALLBACK_URL', rtrim((string) env('APP_URL', 'http://localhost'), '/').'/app/integrations/gitlab/callback'),
+            // read_api: read-only API access (projects, branches, archives); nothing is written.
+            'scopes' => 'read_api',
+        ],
+        'bitbucket' => [
+            'client_id' => (string) env('BITBUCKET_CLIENT_ID', ''),
+            'client_secret' => (string) env('BITBUCKET_CLIENT_SECRET', ''),
+            // Bitbucket Cloud only (Data Center is not supported). Official
+            // endpoints; overridable only for a local test double.
+            'api_url' => rtrim((string) env('BITBUCKET_API_URL', 'https://api.bitbucket.org'), '/'),
+            'web_url' => rtrim((string) env('BITBUCKET_WEB_URL', 'https://bitbucket.org'), '/'),
+            // Origins an archive download may be redirected to (exact origins).
+            'archive_origins' => array_values(array_filter(array_map('trim', explode(',', (string) env('BITBUCKET_ARCHIVE_ORIGINS', 'https://bitbucket.org'))))),
+            'callback_url' => (string) env('BITBUCKET_CALLBACK_URL', rtrim((string) env('APP_URL', 'http://localhost'), '/').'/app/integrations/bitbucket/callback'),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Billing (Phase 23)
     |--------------------------------------------------------------------------
     |

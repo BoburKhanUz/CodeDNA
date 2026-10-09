@@ -52,7 +52,7 @@ enum QuotaKey: string
             self::Analyses => 'Analyses',
             self::AiAssessments => 'AI assessments',
             self::ChallengeSubmissions => 'Challenge submissions',
-            self::GitHubImports => 'GitHub imports',
+            self::GitHubImports => 'Repository imports',
         };
     }
 }

@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace App\Actions\GitHub;
 
-use App\Actions\Snapshots\RecordSourceSnapshot;
-use App\Actions\Snapshots\StoreUploadedSource;
+use App\Actions\Sources\RepositoryArchives;
 use App\Enums\GitHub\GitHubFailure;
 use App\Enums\GitHub\GitHubImportStatus;
-use App\Enums\SourceType;
 use App\Exceptions\SourceArchiveRejected;
 use App\Models\GitHubConnection;
 use App\Models\GitHubImport;
@@ -19,18 +17,10 @@ use App\Services\GitHub\GitHubErrors;
 use App\Services\GitHub\GitHubException;
 use App\Services\GitHub\GitHubRepository;
 use App\Support\Sources\ArchiveSummary;
-use App\Support\Sources\LanguageGuesser;
-use App\Support\Sources\SourceArchiveLimits;
-use App\Support\Sources\ZipArchiveInspector;
-use App\Support\Sources\ZipComment;
-use Illuminate\Contracts\Config\Repository;
-use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
-use RuntimeException;
 use Throwable;
 
 /**
@@ -55,12 +45,8 @@ final readonly class RunGitHubImport
 {
     public function __construct(
         private GitHubApi $api,
-        private RecordSourceSnapshot $recordSourceSnapshot,
-        private StoreUploadedSource $uploads,
-        private LanguageGuesser $languageGuesser,
-        private FilesystemFactory $filesystems,
+        private RepositoryArchives $archives,
         private ConnectionInterface $db,
-        private Repository $config,
     ) {}
 
     public function handle(string $importId): ?GitHubImport
@@ -102,20 +88,14 @@ final readonly class RunGitHubImport
             }
 
             $archive = (string) tempnam(sys_get_temp_dir(), 'codedna-github-');
-            $limits = SourceArchiveLimits::fromConfig((array) $this->config->get('codedna.sources.limits'));
             try {
-                $this->api->downloadArchive($token, $repository, $sha, $archive, $limits->archiveBytes);
+                $this->api->downloadArchive($token, $repository, $sha, $archive, $this->archives->limits()->archiveBytes);
             } catch (GitHubException $e) {
                 return $this->fail($import, GitHubErrors::failure($e, GitHubFailure::RepositoryNotFound, 'archive'));
             }
             unset($token);
 
-            $summary = (new ZipArchiveInspector($limits))->inspect($archive);
-            $comment = ZipComment::read($archive);
-            // git archive records the commit as the ZIP comment: it must be the commit asked for.
-            if ($comment !== null && preg_match('/^[0-9a-f]{40}$/', $comment) === 1 && $comment !== $sha) {
-                throw SourceArchiveRejected::invalid('commit_mismatch');
-            }
+            $summary = $this->archives->inspect($archive, $sha);
 
             return $this->complete($import, $repository, $sha, ['path' => $archive, 'summary' => $summary]);
         } catch (SourceArchiveRejected $rejection) {
@@ -165,7 +145,7 @@ final readonly class RunGitHubImport
      */
     private function complete(GitHubImport $import, GitHubRepository $repository, string $sha, ?array $archive): GitHubImport
     {
-        $stored = $archive === null ? null : $this->store($import, $archive['path']);
+        $stored = $archive === null ? null : $this->archives->store(Project::query()->findOrFail($import->project_id), $archive['path']);
 
         try {
             $finished = $this->db->transaction(function () use ($import, $repository, $sha, $archive, $stored): GitHubImport {
@@ -185,7 +165,15 @@ final readonly class RunGitHubImport
                 $now = Carbon::now();
                 $existing = $this->snapshotOfCommit($current, $sha);
                 $created = $existing === null && $archive !== null && $stored !== null;
-                $snapshot = $existing ?? ($created ? $this->record($project, $current, $repository, $sha, $archive['path'], $archive['summary'], $stored) : null);
+                $snapshot = $existing ?? ($created ? $this->archives->record($project, $archive['path'], $archive['summary'], $stored, [
+                    'provider' => 'github',
+                    'repository_id' => $repository->id,
+                    'repository' => $repository->fullName,
+                    'ref' => $current->ref,
+                    'commit_sha' => $sha,
+                    'import_id' => $current->id,
+                    'imported_at' => $now->toIso8601ZuluString(),
+                ]) : null);
                 if ($snapshot === null) {
                     // The snapshot this import expected to reuse no longer qualifies: try again from the start.
                     return $this->terminal($current, GitHubImportStatus::Failed, GitHubFailure::ImportFailed);
@@ -209,18 +197,18 @@ final readonly class RunGitHubImport
             });
         } catch (UniqueConstraintViolationException) {
             // A concurrent import of the same commit recorded its snapshot first: reuse it.
-            $this->discard($stored);
+            $this->archives->discard($stored, 'github');
 
             return $this->complete($import, $repository, $sha, null);
         } catch (Throwable $e) {
             // Nothing was recorded: the object just written belongs to no snapshot.
-            $this->discard($stored);
+            $this->archives->discard($stored, 'github');
 
             throw $e;
         }
 
         if ($stored !== null && ! $finished->created_snapshot) {
-            $this->discard($stored);
+            $this->archives->discard($stored, 'github');
         }
         Log::info('github.import_finished', [
             'import_id' => $finished->id,
@@ -246,82 +234,6 @@ final readonly class RunGitHubImport
             ->value('source_snapshot_id');
 
         return $id === null ? null : SourceSnapshot::query()->find($id);
-    }
-
-    /**
-     * Stores the archive privately under a key derived from a new snapshot ID.
-     *
-     * @return array{disk: string, key: string, id: string}
-     */
-    private function store(GitHubImport $import, string $path): array
-    {
-        $project = Project::query()->findOrFail($import->project_id);
-        $snapshotId = strtolower((string) Str::ulid());
-        $disk = (string) $this->config->get('codedna.sources.disk');
-        $key = $this->uploads->storageKey($project, $snapshotId);
-        $stream = fopen($path, 'rb');
-        if ($stream === false) {
-            throw new RuntimeException('The downloaded archive could not be read.');
-        }
-        try {
-            $this->filesystems->disk($disk)->writeStream($key, $stream, ['ContentType' => 'application/zip']);
-        } finally {
-            if (is_resource($stream)) {
-                fclose($stream);
-            }
-        }
-
-        return ['disk' => $disk, 'key' => $key, 'id' => $snapshotId];
-    }
-
-    /**
-     * @param  array{disk: string, key: string, id: string}  $stored
-     */
-    private function record(Project $project, GitHubImport $import, GitHubRepository $repository, string $sha, string $path, ArchiveSummary $summary, array $stored): SourceSnapshot
-    {
-        return $this->recordSourceSnapshot->handle(
-            project: $project,
-            sourceType: SourceType::Repository,
-            storageDisk: $stored['disk'],
-            storageKey: $stored['key'],
-            sourceHash: (string) hash_file('sha256', $path),
-            sizeBytes: (int) filesize($path),
-            fileCount: $summary->fileCount,
-            primaryLanguage: $this->languageGuesser->guess($summary->filePaths),
-            metadata: [
-                'archive' => [
-                    'format' => 'zip',
-                    'entries' => $summary->entryCount,
-                    'directories' => $summary->directoryCount,
-                    'uncompressed_bytes' => $summary->uncompressedBytes,
-                ],
-                'provenance' => [
-                    'provider' => 'github',
-                    'repository_id' => $repository->id,
-                    'repository' => $repository->fullName,
-                    'ref' => $import->ref,
-                    'commit_sha' => $sha,
-                    'import_id' => $import->id,
-                    'imported_at' => Carbon::now()->toIso8601ZuluString(),
-                ],
-            ],
-            id: $stored['id'],
-        );
-    }
-
-    /**
-     * @param  array{disk: string, key: string, id: string}|null  $stored
-     */
-    private function discard(?array $stored): void
-    {
-        if ($stored === null) {
-            return;
-        }
-        try {
-            $this->filesystems->disk($stored['disk'])->delete($stored['key']);
-        } catch (Throwable $e) {
-            Log::warning('github.orphaned_object', ['storage_disk' => $stored['disk'], 'storage_key' => $stored['key'], 'exception' => $e::class]);
-        }
     }
 
     private function fail(GitHubImport $import, GitHubFailure $failure): GitHubImport

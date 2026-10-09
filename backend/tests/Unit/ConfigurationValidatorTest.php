@@ -352,6 +352,51 @@ final class ConfigurationValidatorTest extends TestCase
             $validator->problems($this->config(self::github(['job_timeout_seconds' => 400])), 'production'));
     }
 
+    /**
+     * @param  array<string, mixed>  $gitlab
+     * @param  array<string, mixed>  $bitbucket
+     * @return list<string>
+     */
+    private function providerProblems(array $gitlab = [], array $bitbucket = [], string $environment = 'production'): array
+    {
+        return (new ConfigurationValidator)->problems($this->config([
+            'codedna.repository_providers.gitlab' => $gitlab + [
+                'client_id' => 'gl-id', 'client_secret' => 'gl-secret', 'base_url' => 'https://gitlab.com',
+                'callback_url' => 'https://app.codedna.example/app/integrations/gitlab/callback', 'scopes' => 'read_api',
+            ],
+            'codedna.repository_providers.bitbucket' => $bitbucket + [
+                'client_id' => 'bb-key', 'client_secret' => 'bb-secret', 'api_url' => 'https://api.bitbucket.org', 'web_url' => 'https://bitbucket.org',
+                'archive_origins' => ['https://bitbucket.org'], 'callback_url' => 'https://app.codedna.example/app/integrations/bitbucket/callback', 'scopes' => '',
+            ],
+        ]), $environment);
+    }
+
+    public function test_gitlab_and_bitbucket_are_optional_and_fully_configured_or_not_at_all(): void
+    {
+        $this->assertSame([], $this->providerProblems());
+        $this->assertSame([], $this->providerProblems(['client_id' => '', 'client_secret' => '', 'base_url' => '', 'callback_url' => ''], ['client_id' => '', 'client_secret' => '']));
+        $this->assertSame(['GitLab configuration is incomplete: set GITLAB_CLIENT_ID and GITLAB_CLIENT_SECRET.'], $this->providerProblems(['client_secret' => '']));
+        $this->assertSame(['Bitbucket Cloud configuration is incomplete: set BITBUCKET_CLIENT_ID and BITBUCKET_CLIENT_SECRET.'], $this->providerProblems([], ['client_id' => '']));
+    }
+
+    public function test_provider_urls_are_https_fixed_and_the_callback_is_this_installations_own(): void
+    {
+        $this->assertSame([], $this->providerProblems(['base_url' => 'https://git.example.com/gitlab']), 'a self-managed instance under a path');
+        $this->assertSame(['GITLAB_BASE_URL must be an absolute https URL without a query.'], $this->providerProblems(['base_url' => 'http://gitlab.com']));
+        $this->assertSame(['GITLAB_BASE_URL must be an absolute https URL without a query.'], $this->providerProblems(['base_url' => 'https://gitlab.com?x=1']));
+        $this->assertSame([], $this->providerProblems(['base_url' => 'http://gitlab:8080', 'callback_url' => 'http://localhost:3000/app/integrations/gitlab/callback'], [], 'local'));
+        $this->assertSame(['BITBUCKET_API_URL must be an absolute https URL without a query.'], $this->providerProblems([], ['api_url' => 'api.bitbucket.org']));
+        $this->assertSame(['GITLAB_CALLBACK_URL must be on this installation\'s own origin (APP_URL).'],
+            $this->providerProblems(['callback_url' => 'https://evil.example/app/integrations/gitlab/callback']));
+        $this->assertSame(['BITBUCKET_CALLBACK_URL must end in /app/integrations/bitbucket/callback.'],
+            $this->providerProblems([], ['callback_url' => 'https://app.codedna.example/app/integrations/gitlab/callback']));
+        foreach (['https://bitbucket.org/path', 'http://bitbucket.org', 'https://bitbucket.org?x=1'] as $origin) {
+            $this->assertSame(['BITBUCKET_ARCHIVE_ORIGINS entries must be origins (scheme://host[:port]) without a path, using https.'],
+                $this->providerProblems([], ['archive_origins' => [$origin]]), $origin);
+        }
+        $this->assertSame(['BITBUCKET_ARCHIVE_ORIGINS must list at least one origin.'], $this->providerProblems([], ['archive_origins' => []]));
+    }
+
     public function test_ai_is_disabled_by_default_and_needs_nothing_then(): void
     {
         $this->assertSame([], $this->aiProblems([]));

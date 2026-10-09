@@ -107,7 +107,8 @@ write method on `/dna`, `/competencies` or `/skill-gaps`). See
 [Analyses](#analyses), [DNA](#dna), [Competencies](#competencies),
 [Skill gaps](#skill-gaps), [AI assessments](#ai-assessments) and
 [Growth tracking](#growth-tracking), [Historical DNA](#historical-dna) and
-[GitHub integration](#github-integration), [Billing](#billing) and
+[GitHub integration](#github-integration),
+[GitLab and Bitbucket Cloud](#gitlab-and-bitbucket-cloud), [Billing](#billing) and
 [Organizations](#organizations). Growth
 and history are read-only (no write method on `/growth` or `/history`), and
 so is billing for users (no write method on `/billing…`).
@@ -357,9 +358,9 @@ max 100), optional `status=ACTIVE|ARCHIVED`.
 | `language` | optional, one of the [programming languages](#patch-apiv1profile) |
 
 New projects are `ACTIVE`. Fields not listed (`id`, `user_id`, `status`,
-`metadata`, ...) are ignored. `REPOSITORY` projects only record the URL:
-cloning and provider integrations come in a later phase, and they cannot
-receive uploads.
+`metadata`, ...) are ignored. `REPOSITORY` projects only record the URL,
+which is never fetched. They receive source only through a provider
+integration (GitHub, GitLab or Bitbucket Cloud) and cannot receive uploads.
 
 ### `PATCH /api/v1/projects/{project}`
 
@@ -1470,6 +1471,123 @@ An import is an object with these fields:
 - `created_at`, `started_at` and `completed_at`.
 
 The same commit of the same repository is never stored twice in a project.
+
+## GitLab and Bitbucket Cloud
+
+Import source from GitLab (GitLab.com or the configured self-managed
+instance) and Bitbucket Cloud (Phase 28, see
+[provider architecture](../integrations/provider-architecture.md)). As with
+GitHub, an import becomes an immutable `REPOSITORY` source snapshot that is
+analyzed only through `POST /analyses`. `{provider}` is `gitlab` or
+`bitbucket`; anything else answers `404`.
+
+- **Never sent to the browser:** tokens, provider API URLs and storage URLs.
+- **Verified by the server:** a client sends a provider, a repository ID
+  from the listing and optionally a branch. Everything else is read from
+  the provider **as the caller**. Unknown fields answer `422
+  VALIDATION_FAILED`.
+- **Access:** reads need view access to the project. Connecting, changing
+  the branch, disconnecting and importing need `connectSource` (the owner,
+  or an owner or admin of a team project). A project the caller cannot see
+  answers `404`.
+- **One source per project:** GitHub or one of these, never both. Otherwise
+  the request answers `409 SOURCE_ALREADY_CONNECTED`.
+- **Archived projects:** they are readable and can be disconnected.
+  Connecting, changing the branch and importing answer `409
+  PROJECT_ARCHIVED`.
+- **Disconnect:** never deletes snapshots, analyses or any CodeDNA result.
+
+| Error | When |
+|---|---|
+| `503 PROVIDER_NOT_CONFIGURED` | The provider's OAuth client is not configured |
+| `409 PROVIDER_AUTH_REQUIRED` | The caller has no linked account, or the provider refused the token, refresh or code |
+| `422 PROVIDER_STATE_INVALID` | The state is unknown, expired, already used, another user's or another provider's |
+| `409 PROVIDER_ACCOUNT_IN_USE` | That provider account is linked to another CodeDNA user |
+| `422 PROVIDER_REPOSITORY_NOT_FOUND` | The repository ID is invalid or not readable by the caller |
+| `422 PROVIDER_BRANCH_NOT_FOUND` | The branch does not exist (or the repository is empty) |
+| `409 PROVIDER_NOT_CONNECTED` | The project has no active GitLab or Bitbucket connection |
+| `409 SOURCE_ALREADY_CONNECTED` | The project already has a repository source |
+| `429 PROVIDER_RATE_LIMITED` | The provider is rate limiting; `Retry-After` gives the delay |
+| `503 PROVIDER_UNAVAILABLE` | The provider is unreachable or answered unexpectedly |
+
+### `GET /api/v1/repository-providers`
+
+```json
+{ "data": [
+  { "provider": "gitlab", "name": "GitLab", "configured": true, "host": "gitlab.com",
+    "account": { "username": "octo", "connected_at": "2026-10-09T09:00:00Z" } },
+  { "provider": "bitbucket", "name": "Bitbucket Cloud", "configured": false, "host": "bitbucket.org", "account": null } ] }
+```
+
+### `POST /api/v1/repository-providers/{provider}/authorizations`
+
+The body is `{"project_id": "…"}`, and `project_id` is optional; the
+caller must be allowed to connect that project. The response is `201`
+with `{"data": {"authorize_url": "…", "expires_at": "…"}}`. The state is
+single-use, expires after 10 minutes and is bound to the caller and the
+provider. Only its hash is stored.
+
+### `POST /api/v1/repository-providers/{provider}/callback`
+
+The body is `{"state": "<43 characters>", "code": "<provider's code>"}`.
+The response is `200` with `{"data": {"provider": "gitlab", "connected":
+true, "project_id": "…" | null}}`. See
+[the flow](../integrations/oauth-setup.md#the-flow).
+
+### `DELETE /api/v1/repository-providers/{provider}`
+
+This unlinks the caller's account. The token is revoked where the provider
+supports it, and the stored tokens are always deleted. The response is
+`200` with `{"data": {"provider": "…", "revocation": "REVOKED" |
+"NOT_SUPPORTED" | "FAILED" | "NOT_LINKED"}}`.
+
+### `GET /api/v1/repository-providers/{provider}/repositories`
+
+Returns one page (`?page` ≤ 50, `?per_page` ≤ 100, default 50) of
+`{id, full_name, private, archived, default_branch}`, with `meta: {page,
+per_page, has_more}`. IDs are a GitLab numeric project ID, or
+`{workspace-uuid}/{repository-uuid}` for Bitbucket.
+
+### `GET /api/v1/projects/{project}/repository-provider`
+
+```json
+{ "data": {
+  "providers": [ { "provider": "gitlab", "name": "GitLab", "configured": true, "account_connected": true }, { "…": "…" } ],
+  "github_connected": false,
+  "connection": { "id": "…", "type": "repository_provider_connection", "project_id": "…", "provider": "gitlab", "status": "ACTIVE",
+    "repository": { "id": "4242", "full_name": "acme/app", "private": true, "archived": false, "default_branch": "main" },
+    "branch": "main", "last_imported_commit_sha": null, "last_imported_at": null, "connected_at": "…", "disconnected_at": null },
+  "latest_import": null } }
+```
+
+### `POST`, `PATCH` and `DELETE /api/v1/projects/{project}/repository-provider`
+
+- **`POST`:** the body is `{"provider": "gitlab", "repository_id": "4242",
+  "branch": "main"}`, and `branch` is optional. The response is `201` with
+  the connection.
+- **`PATCH`:** the body is `{"branch": "develop"}` only.
+- **`DELETE`:** the response is `200` with the now `DISCONNECTED`
+  connection. Queued imports are `CANCELLED`.
+
+### `GET /api/v1/projects/{project}/repository-provider/branches`
+
+Returns one page of branch names (`["main", "develop"]`), with `meta:
+{page, per_page, has_more, default_branch}`.
+
+### `/api/v1/projects/{project}/repository-provider/imports`
+
+- **`POST`:** the body must be `{}`. The response is `202` with a new
+  `QUEUED` import, or `200` with `Idempotent-Replayed: true` for the import
+  already in progress. Each new import consumes one `GITHUB_IMPORTS` unit
+  (shared by every provider), and a failed one is refunded.
+- **`GET`:** lists imports, newest first. It supports `?page`/`?per_page`
+  or `?cursor`.
+- **`GET …/imports/{import}`:** returns one import of this project.
+
+An import has the same fields as a GitHub import, plus `provider`, with
+`type: "repository_provider_import"`. `failure_code` is one of `PROVIDER_*`
+(including `PROVIDER_IMPORT_FAILED`), `SOURCE_ARCHIVE_*`,
+`SOURCE_*_EXCEEDED`, `SOURCE_FILE_TOO_LARGE` or `PROJECT_ARCHIVED`.
 
 ## Billing
 

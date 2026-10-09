@@ -62,6 +62,18 @@ enum ErrorCode: string
     case GitHubNotConnected = 'GITHUB_NOT_CONNECTED';
     case GitHubRateLimited = 'GITHUB_RATE_LIMITED';
     case GitHubUnavailable = 'GITHUB_UNAVAILABLE';
+    // GitLab and Bitbucket Cloud (Phase 28); `details.provider` names the provider.
+    case ProviderNotConfigured = 'PROVIDER_NOT_CONFIGURED';
+    case ProviderAuthRequired = 'PROVIDER_AUTH_REQUIRED';
+    case ProviderStateInvalid = 'PROVIDER_STATE_INVALID';
+    case ProviderAccountInUse = 'PROVIDER_ACCOUNT_IN_USE';
+    case ProviderRepositoryNotFound = 'PROVIDER_REPOSITORY_NOT_FOUND';
+    case ProviderBranchNotFound = 'PROVIDER_BRANCH_NOT_FOUND';
+    case ProviderNotConnected = 'PROVIDER_NOT_CONNECTED';
+    case ProviderRateLimited = 'PROVIDER_RATE_LIMITED';
+    case ProviderUnavailable = 'PROVIDER_UNAVAILABLE';
+    // One repository source per project, whatever its provider (Phase 28).
+    case SourceAlreadyConnected = 'SOURCE_ALREADY_CONNECTED';
     // Billing (Phase 23): commercial denials, never server failures.
     case FeatureNotIncluded = 'FEATURE_NOT_INCLUDED';
     case SubscriptionInactive = 'SUBSCRIPTION_INACTIVE';
@@ -103,16 +115,19 @@ enum ErrorCode: string
             self::RoadmapNoSkillGaps, self::RoadmapNoActionableGaps, self::RoadmapEvidenceInvalid,
             self::RoadmapNotActive, self::RoadmapStepPrerequisitesIncomplete,
             self::GitHubAuthRequired, self::GitHubInstallationRequired, self::GitHubAlreadyConnected, self::GitHubNotConnected,
+            self::ProviderAuthRequired, self::ProviderAccountInUse, self::ProviderNotConnected, self::SourceAlreadyConnected,
             self::OrganizationSuspended, self::OrganizationArchived, self::AlreadyAMember, self::InvitationExpired,
             self::InvitationRevoked, self::InvitationAlreadyAccepted, self::CannotRemoveOwner, self::CannotChangeOwnerRole => 409,
             self::ValidationFailed, self::InvalidCredentials, self::IdempotencyKeyReused,
             self::SourceArchiveInvalid, self::SourceArchiveUnsafe, self::SourceUncompressedSizeExceeded,
             self::SourceFileCountExceeded, self::SourceFileTooLarge,
-            self::GitHubStateInvalid, self::GitHubRepositoryNotFound, self::GitHubBranchNotFound => 422,
+            self::GitHubStateInvalid, self::GitHubRepositoryNotFound, self::GitHubBranchNotFound,
+            self::ProviderStateInvalid, self::ProviderRepositoryNotFound, self::ProviderBranchNotFound => 422,
             self::FeatureNotIncluded, self::SubscriptionInactive, self::QuotaExceeded, self::SeatLimitReached => 402,
-            self::RateLimited, self::GitHubRateLimited => 429,
+            self::RateLimited, self::GitHubRateLimited, self::ProviderRateLimited => 429,
             self::InternalError => 500,
-            self::ServiceUnavailable, self::GitHubNotConfigured, self::GitHubUnavailable, self::BillingUnavailable => 503,
+            self::ServiceUnavailable, self::GitHubNotConfigured, self::GitHubUnavailable, self::BillingUnavailable,
+            self::ProviderNotConfigured, self::ProviderUnavailable => 503,
         };
     }
 
@@ -162,6 +177,16 @@ enum ErrorCode: string
             self::GitHubAlreadyConnected => 'This project is already connected to a GitHub repository. Disconnect it first.',
             self::GitHubNotConnected => 'This project is not connected to a GitHub repository.',
             self::GitHubRateLimited => 'GitHub is rate limiting requests. Retry later.',
+            self::ProviderNotConfigured => 'This repository provider is not configured on this server.',
+            self::ProviderAuthRequired => 'Connect your account with this repository provider first, or connect it again.',
+            self::ProviderStateInvalid => 'This authorization link is invalid, expired or already used. Start again.',
+            self::ProviderAccountInUse => 'This provider account is already linked to another CodeDNA account.',
+            self::ProviderRepositoryNotFound => 'This repository is not available to your connected account.',
+            self::ProviderBranchNotFound => 'This branch does not exist in the repository.',
+            self::ProviderNotConnected => 'This project is not connected to a repository on this provider.',
+            self::ProviderRateLimited => 'The repository provider is rate limiting requests. Retry later.',
+            self::ProviderUnavailable => 'The repository provider is not reachable right now. Retry later.',
+            self::SourceAlreadyConnected => 'This project is already connected to a repository. Disconnect it first.',
             self::FeatureNotIncluded => 'Your plan does not include this feature.',
             self::SubscriptionInactive => 'Your subscription is not active, so its features are paused.',
             self::QuotaExceeded => 'This would exceed what your plan includes for the current period.',

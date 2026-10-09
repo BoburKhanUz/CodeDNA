@@ -31,7 +31,7 @@ enum Feature: string
             self::LearningRoadmap => 'Learning roadmap',
             self::GrowthAnalytics => 'Growth analytics',
             self::HistoricalDna => 'Historical DNA',
-            self::GitHubIntegration => 'GitHub integration',
+            self::GitHubIntegration => 'Repository integrations',
         };
     }
 }
