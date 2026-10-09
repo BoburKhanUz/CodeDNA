@@ -17,6 +17,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Services\Billing\BillingContextResolver;
 use App\Services\Billing\QuotaService;
+use App\Services\Enterprise\EnterpriseEdition;
 use Illuminate\Contracts\Auth\Access\Gate;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -81,7 +82,7 @@ final class OrganizationController extends Controller
      * GET .../billing: the organization as a billing subject (ADMIN or
      * OWNER). Read-only: there are no team payments yet.
      */
-    public function billing(Organization $organization, Gate $gate, BillingContextResolver $contexts, QuotaService $quotas): JsonResponse
+    public function billing(Organization $organization, Gate $gate, BillingContextResolver $contexts, QuotaService $quotas, EnterpriseEdition $edition): JsonResponse
     {
         $gate->authorize('administer', $organization);
         $context = $contexts->resolveOrganization((string) $organization->getKey());
@@ -91,6 +92,10 @@ final class OrganizationController extends Controller
             'type' => 'organization_billing',
             'plan' => ['key' => $context->plan->key, 'version' => $context->plan->version, 'name' => $context->plan->name],
             'entitlement_version' => $account->entitlement_version,
+            // Phase 27: where the plan and seat limit come from. A valid
+            // enterprise license applies to every organization of the installation.
+            'edition' => $edition->isEnterprise() ? 'ENTERPRISE' : 'COMMUNITY',
+            'plan_source' => $edition->organizationPlan() !== null ? 'ENTERPRISE_LICENSE' : 'BILLING_ACCOUNT',
             'seats' => $quotas->seats($organization, $account),
             'period' => ['start' => $context->periodStart->toIso8601ZuluString(), 'end' => $context->periodEnd->toIso8601ZuluString()],
             'quotas' => array_map(fn (array $q): array => [

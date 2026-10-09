@@ -23,8 +23,12 @@ and fails on anything that would weaken the production baseline
   client forwarded headers never passed through;
 - production images: non-root users, no dev targets.
 
-Usage: scripts/check_production.py <rendered-compose.json>
-(render with ``--profile migrate`` so the one-shot migration is included)
+Usage: scripts/check_production.py [--external] <rendered-compose.json>
+(render with ``--profile migrate`` so the one-shot migration is included).
+``--external`` checks the production file combined with every
+docker/enterprise/compose.external-*.yml overlay (Phase 27): the bundled data
+services are off, and only the scheduler, the migration job and the analyzer
+gain the routes those overlays document; every other rule is unchanged.
 """
 
 from __future__ import annotations
@@ -52,6 +56,14 @@ NETWORKS = {
     "minio-init": {"storage"},
 }
 EXTERNAL_NETWORKS = {"public", "egress"}
+# Customer-run PostgreSQL, Redis and object storage (Phase 27 overlays).
+BUNDLED_DATA = {"postgres", "redis", "minio", "minio-init"}
+EXTERNAL_DATA_NETWORKS = {
+    "scheduler": {"data", "egress"},
+    "migrate": {"data", "egress"},
+    "analyzer": {"analysis", "analyzer-egress"},
+}
+LICENSE_PATH = "/run/secrets/codedna_license"
 ALLOWED_CAPS = {
     "evaluator": {"SETUID", "SETGID", "KILL"},
     "postgres": {"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"},
@@ -72,11 +84,16 @@ FIXED_BACKEND_ENV = {
 DEV_COMMANDS = re.compile(r"(artisan serve|queue:listen|schedule:test|next dev|npm run dev|--reload|tinker|xdebug)")
 
 
-def check_compose(model: dict[str, Any]) -> list[str]:
+def check_compose(model: dict[str, Any], external: bool = False) -> list[str]:
     errors: list[str] = []
     services: dict[str, Any] = model.get("services", {})
-    if set(services) != SERVICES:
-        errors.append(f"services must be exactly {sorted(SERVICES)}, got {sorted(services)}")
+    expected_services = SERVICES - BUNDLED_DATA if external else SERVICES
+    expected_networks = {name: nets for name, nets in NETWORKS.items() if name in expected_services}
+    if external:
+        expected_networks.update(EXTERNAL_DATA_NETWORKS)
+    external_networks = EXTERNAL_NETWORKS | ({"analyzer-egress"} if external else set())
+    if set(services) != expected_services:
+        errors.append(f"services must be exactly {sorted(expected_services)}, got {sorted(services)}")
 
     for name, service in services.items():
         where = f"service {name}"
@@ -130,7 +147,7 @@ def check_compose(model: dict[str, Any]) -> list[str]:
         if name != "evaluator" and "runtime" in service:
             errors.append(f"{where}: only the evaluator selects a runtime")
 
-        expected = NETWORKS.get(name)
+        expected = expected_networks.get(name)
         if expected is not None and set(service.get("networks") or {}) != expected:
             errors.append(f"{where}: networks must be {sorted(expected)}, got {sorted(service.get('networks') or {})}")
 
@@ -150,19 +167,28 @@ def check_compose(model: dict[str, Any]) -> list[str]:
                 errors.append(f"service {name}: {key} must be {value!r}")
         if not str(environment.get("APP_URL", "")).startswith("https://"):
             errors.append(f"service {name}: APP_URL must be https")
+        # Enterprise license (Phase 27): read from the read-only secret only;
+        # verification keys are code, never configuration.
+        if environment.get("CODEDNA_LICENSE_PATH") != LICENSE_PATH or "codedna_license" not in [
+            secret.get("source") for secret in (services.get(name) or {}).get("secrets") or []
+        ]:
+            errors.append(f"service {name}: the license must come from the codedna_license secret at {LICENSE_PATH}")
+        if [key for key in environment if "LICENSE" in key and key != "CODEDNA_LICENSE_PATH"]:
+            errors.append(f"service {name}: no license key or document may be set through the environment")
     if (services.get("frontend") or {}).get("environment", {}).get("NODE_ENV") != "production":
         errors.append("service frontend: NODE_ENV must be production")
     if [s for s in ("migrate",) if "migrate" not in ((services.get(s) or {}).get("profiles") or [])]:
         errors.append("service migrate: must only run explicitly (profile migrate)")
 
     networks: dict[str, Any] = model.get("networks", {})
-    if set(networks) != set().union(*NETWORKS.values()):
-        errors.append(f"networks must be exactly {sorted(set().union(*NETWORKS.values()))}, got {sorted(networks)}")
+    all_networks = set().union(*expected_networks.values()) | ({"public", "web", "app", "data", "storage", "analysis", "egress"} if external else set())
+    if set(networks) != all_networks:
+        errors.append(f"networks must be exactly {sorted(all_networks)}, got {sorted(networks)}")
     for name, network in networks.items():
         internal = bool(network.get("internal"))
-        if name in EXTERNAL_NETWORKS and internal:
+        if name in external_networks and internal:
             errors.append(f"network {name}: must not be internal")
-        if name not in EXTERNAL_NETWORKS and not internal:
+        if name not in external_networks and not internal:
             errors.append(f"network {name}: must be internal (no route to the internet)")
     return errors
 
@@ -230,11 +256,15 @@ def check_images() -> list[str]:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: scripts/check_production.py <rendered-compose.json>", file=sys.stderr)
+    args = sys.argv[1:]
+    external = args[:1] == ["--external"]
+    if external:
+        args = args[1:]
+    if len(args) != 1:
+        print("usage: scripts/check_production.py [--external] <rendered-compose.json>", file=sys.stderr)
         return 2
-    model = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-    errors = check_compose(model) + check_nginx() + check_images()
+    model = json.loads(Path(args[0]).read_text(encoding="utf-8"))
+    errors = check_compose(model, external) + check_nginx() + check_images()
     for error in errors:
         print(f"ERROR: {error}")
     if errors:

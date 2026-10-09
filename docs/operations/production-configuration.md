@@ -54,7 +54,10 @@ Set in `docker-compose.prod.yml` and checked by `make prod-config`:
 | `HTTP_PORT`, `HTTPS_PORT`, `PUBLIC_BIND_ADDRESS` | `80`, `443`, `0.0.0.0` | Published Nginx ports |
 | `CODEDNA_IMAGE_PREFIX` | `codedna` | Image name prefix (e.g. a private registry path) |
 | `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` | bundled `postgres` | A managed database: set `DB_HOST` and `DB_SSLMODE` |
-| `DB_SSLMODE` | `prefer` | `require` or `verify-full` for a database outside the private network |
+| `DB_SSLMODE` | `prefer` | `require`, `verify-ca` or `verify-full`: **required** for a `DB_HOST` that is not an internal service name (Phase 27) |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_SCHEME` | bundled `redis`, `6379`, plain TCP | A customer-run Redis: `REDIS_SCHEME=tls` is **required** for a host that is not an internal service name ([enterprise configuration](../enterprise/configuration-reference.md#customer-run-data-services)) |
+| `REGISTRATION_MODE`, `REGISTRATION_ALLOWED_EMAIL_DOMAINS` | `open`, empty | `restricted` (only the listed email domains) or `closed` ([registration](../enterprise/configuration-reference.md#registration)) |
+| `CODEDNA_LICENSE_FILE` | empty (Community edition) | Host path of a signed enterprise license, mounted as the `codedna_license` secret ([licensing](../enterprise/licensing.md)) |
 | `DB_PERSISTENT` | `true` | One PostgreSQL connection kept per PHP-FPM worker (Phase 26: ×2 throughput). `false` connects per request, e.g. behind PgBouncer in transaction mode; see [database performance](../performance/database-performance.md#connections) |
 | `ANALYZER_MAX_CONCURRENCY` | `2` | Analyses the analyzer runs at once. The **backend** reads the same variable to size its shared slot pool, so set it once in `.env`; 1–64. See [queue performance](../performance/queue-performance.md#analyzer-slots) |
 | `ANALYZER_SLOT_WAIT_SECONDS` | `20` | How long a worker waits for an analyzer slot before handing the run to a delayed job (no attempt used); `ANALYZER_TIMEOUT_SECONDS` + this must stay below `ANALYSIS_JOB_TIMEOUT_SECONDS` |
@@ -102,7 +105,11 @@ naming the variable, never its value:
 - a missing or short analyzer HMAC secret; the fake AI or billing provider;
   insecure GitHub or AI URLs; the earlier timeout-chain and version checks;
 - `ANALYZER_MAX_CONCURRENCY` outside 1–64, or an analyzer timeout plus slot
-  wait that does not fit inside the analysis job timeout (everywhere).
+  wait that does not fit inside the analysis job timeout (everywhere);
+- a `DB_HOST` or `REDIS_HOST` outside the private network without TLS;
+- an invalid `REGISTRATION_MODE` or domain list, or a configured license file
+  that cannot be read (everywhere; a license that does not verify is not an
+  error, it grants nothing).
 
 `ConfigurationValidatorTest` covers each rule.
 
@@ -130,7 +137,8 @@ Details: [challenge evaluator](../architecture/challenge-evaluator.md#production
 ## Redis
 
 One authenticated, persistent instance (AOF, `everysec`) on the internal
-data network. Sessions and queues use database 0; the cache uses database 1
+data network, or a customer-run Redis over TLS
+(`docker/enterprise/compose.external-redis.yml`, Phase 27). Sessions and queues use database 0; the cache uses database 1
 (`REDIS_CACHE_DB`). The memory ceiling is `REDIS_MAXMEMORY` with
 `noeviction`: queued jobs, sessions and rate-limit counters are never
 silently evicted. At the limit, writes fail and the failure is visible in
@@ -148,10 +156,11 @@ S3-compatible provider:
   bucket-scoped credentials;
 - set `ANALYZER_ALLOWED_SOURCE_HOSTS` to the provider's exact hostname and
   `ANALYZER_LOCAL_SOURCE_HOSTS` to empty (https and public addresses only);
-- attach the analyzer to an egress path restricted to that hostname (the
-  analyzer has no internet route by default). Its host allow-list and
-  SSRF checks still apply;
-- remove `minio` and `minio-init` from the deployment.
+- add `docker/enterprise/compose.external-storage.yml` to every compose
+  command (Phase 27). It switches `minio` and `minio-init` off and gives the
+  analyzer an egress network of its own (it has no internet route by
+  default). Restrict that route at the firewall to the storage host; the
+  analyzer's host allow-list and SSRF checks still apply.
 
 The analyzer receives only pre-signed GET URLs valid for
 `SOURCE_URL_TTL_SECONDS` (900 s by default) and never holds storage

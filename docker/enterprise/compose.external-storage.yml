@@ -1,0 +1,27 @@
+# Customer-run S3-compatible object storage (Phase 27,
+# docs/enterprise/self-hosted-installation.md). Use with the production file:
+#
+#   docker compose -f docker-compose.prod.yml -f docker/enterprise/compose.external-storage.yml ...
+#
+# and set SOURCE_STORAGE_ENDPOINT (https), SOURCE_STORAGE_REGION,
+# SOURCE_STORAGE_BUCKET, SOURCE_STORAGE_USE_PATH_STYLE, bucket-scoped
+# credentials, ANALYZER_ALLOWED_SOURCE_HOSTS=<the endpoint's exact hostname>
+# and ANALYZER_LOCAL_SOURCE_HOSTS= (empty).
+#
+# - The bundled minio and minio-init services are switched off.
+# - The analyzer reads source through pre-signed URLs, so it needs a route to
+#   the storage host: it joins a dedicated egress network of its own. Its
+#   hostname allow-list and SSRF checks still apply; restrict the route at the
+#   host or network firewall to the storage endpoint.
+services:
+  minio:
+    profiles: ["bundled-storage-disabled"]
+  minio-init:
+    profiles: ["bundled-storage-disabled"]
+  analyzer:
+    networks:
+      - analysis
+      - analyzer-egress
+
+networks:
+  analyzer-egress: {}

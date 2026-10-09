@@ -46,6 +46,17 @@ final class PlanCatalog
             ?? throw new ApiException(ErrorCode::BillingUnavailable);
     }
 
+    /**
+     * The newest version of the plan a valid enterprise license puts
+     * organizations on (Phase 27: the reserved team plan). Never offered to
+     * users and never a provider's target: only BillingContextResolver asks.
+     */
+    public function licensed(string $key): BillingPlan
+    {
+        return $this->newest($key, PlanStatus::Reserved, PlanStatus::Active)
+            ?? throw new ApiException(ErrorCode::BillingUnavailable);
+    }
+
     /** A stored plan version by ID (an organization's billing account names one). */
     public function byId(string $id): BillingPlan
     {

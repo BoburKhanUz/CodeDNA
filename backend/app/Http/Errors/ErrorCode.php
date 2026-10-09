@@ -81,6 +81,8 @@ enum ErrorCode: string
     case SeatLimitReached = 'SEAT_LIMIT_REACHED';
     case CannotRemoveOwner = 'CANNOT_REMOVE_OWNER';
     case CannotChangeOwnerRole = 'CANNOT_CHANGE_OWNER_ROLE';
+    // Self-hosted installations (Phase 27).
+    case RegistrationClosed = 'REGISTRATION_CLOSED';
     case InternalError = 'INTERNAL_ERROR';
     case ServiceUnavailable = 'SERVICE_UNAVAILABLE';
 
@@ -89,7 +91,7 @@ enum ErrorCode: string
         return match ($this) {
             self::BadRequest => 400,
             self::AuthenticationRequired => 401,
-            self::Forbidden, self::MembershipSuspended, self::InsufficientOrganizationRole, self::InvitationEmailMismatch => 403,
+            self::Forbidden, self::MembershipSuspended, self::InsufficientOrganizationRole, self::InvitationEmailMismatch, self::RegistrationClosed => 403,
             self::ResourceNotFound => 404,
             self::MethodNotAllowed => 405,
             self::PayloadTooLarge, self::SourceArchiveTooLarge => 413,
@@ -176,6 +178,7 @@ enum ErrorCode: string
             self::SeatLimitReached => 'The organization has no free seat.',
             self::CannotRemoveOwner => 'The owner cannot be removed from the organization.',
             self::CannotChangeOwnerRole => "The owner's role and status cannot be changed.",
+            self::RegistrationClosed => 'New accounts cannot be created on this installation. Ask its administrator for access.',
             self::GitHubUnavailable => 'GitHub is not reachable right now. Retry later.',
             self::InternalError => 'An unexpected error occurred.',
             self::ServiceUnavailable => 'The service is temporarily unavailable.',

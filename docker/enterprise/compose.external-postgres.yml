@@ -1,0 +1,25 @@
+# Customer-run PostgreSQL (Phase 27, docs/enterprise/self-hosted-installation.md).
+# Use with the production file:
+#
+#   docker compose -f docker-compose.prod.yml -f docker/enterprise/compose.external-postgres.yml ...
+#
+# and set DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD and
+# DB_SSLMODE=verify-full (or require) in the environment file. Laravel
+# refuses a non-internal DB_HOST without TLS.
+#
+# - The bundled postgres service is switched off (a profile that is never
+#   enabled). Its volume is left untouched.
+# - The scheduler and the migration job join the egress network to reach
+#   the database (backend and queue already have it). Restrict that route at
+#   the host or network firewall to the database address.
+services:
+  postgres:
+    profiles: ["bundled-postgres-disabled"]
+  scheduler:
+    networks:
+      - data
+      - egress
+  migrate:
+    networks:
+      - data
+      - egress

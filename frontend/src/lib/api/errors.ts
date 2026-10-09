@@ -102,6 +102,8 @@ export function describeApiError(error: unknown): string {
       return "The team owner cannot be removed.";
     case "CANNOT_CHANGE_OWNER_ROLE":
       return "The team owner's role and status cannot be changed.";
+    case "REGISTRATION_CLOSED":
+      return "New accounts cannot be created on this installation. Ask its administrator for access.";
     case "ANALYSIS_NOT_COMPLETED":
       return "This analysis has no result yet: it has not succeeded.";
     case "IDEMPOTENCY_KEY_REUSED":

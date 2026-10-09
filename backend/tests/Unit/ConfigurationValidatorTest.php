@@ -55,6 +55,9 @@ final class ConfigurationValidatorTest extends TestCase
             'app.debug' => false,
             'app.url' => 'https://app.codedna.example',
             'app.timezone' => 'UTC',
+            'codedna.registration' => ['mode' => 'open', 'allowed_email_domains' => []],
+            'codedna.enterprise' => ['license_path' => '', 'license_max_bytes' => 16384],
+            'license.trusted_keys' => [],
             'database.default' => 'pgsql',
             'database.connections.pgsql' => ['host' => 'postgres', 'database' => 'codedna', 'username' => 'codedna', 'password' => 'p', 'sslmode' => 'prefer'],
             'database.redis.default' => ['url' => null, 'host' => 'redis', 'password' => 'r'],
@@ -545,5 +548,43 @@ final class ConfigurationValidatorTest extends TestCase
         }
         $this->assertSame(['TRUSTED_PROXIES must list the reverse proxy addresses.'], $validator->problems($this->config(['codedna.trusted_proxies' => []]), 'production'));
         $this->assertSame([], $validator->problems($this->config(['codedna.trusted_proxies' => ['10.0.0.0/8', '192.168.1.10', 'fd00::/8']]), 'production'));
+    }
+
+    public function test_a_database_or_redis_outside_the_private_network_needs_tls(): void
+    {
+        $validator = new ConfigurationValidator;
+        $database = ['database' => 'codedna', 'username' => 'codedna', 'password' => 'p'];
+        $dbTls = 'DB_SSLMODE must be "require", "verify-ca" or "verify-full" for a database outside the private network (DB_HOST is not an internal service name).';
+        foreach (['db.customer.example', '10.0.0.5', 'fd00::5'] as $host) {
+            $this->assertSame([$dbTls], $validator->problems($this->config(['database.connections.pgsql' => $database + ['host' => $host, 'sslmode' => 'prefer']]), 'production'), $host);
+            $this->assertSame([], $validator->problems($this->config(['database.connections.pgsql' => $database + ['host' => $host, 'sslmode' => 'verify-full']]), 'production'), $host);
+        }
+        // The bundled service name keeps its private-network default.
+        $this->assertSame([], $validator->problems($this->config(['database.connections.pgsql' => $database + ['host' => 'postgres', 'sslmode' => 'prefer']]), 'production'));
+
+        $redisTls = 'REDIS_SCHEME must be "tls" for a Redis outside the private network (REDIS_HOST is not an internal service name).';
+        $this->assertSame([$redisTls], $validator->problems($this->config(['database.redis.default' => ['url' => null, 'host' => 'redis.customer.example', 'password' => 'r']]), 'production'));
+        $this->assertSame([], $validator->problems($this->config(['database.redis.default' => ['url' => null, 'host' => 'redis.customer.example', 'password' => 'r', 'scheme' => 'tls']]), 'production'));
+        $this->assertSame(['REDIS_SCHEME must be empty, "tcp" or "tls".'], $validator->problems($this->config(['database.redis.default' => ['url' => null, 'host' => 'redis', 'password' => 'r', 'scheme' => '']]), 'production'));
+        // Development is not affected.
+        $this->assertSame([], $validator->problems($this->config(['database.redis.default' => ['url' => null, 'host' => 'redis.customer.example', 'password' => 'r']]), 'local'));
+    }
+
+    public function test_the_license_path_and_keys_are_validated(): void
+    {
+        $validator = new ConfigurationValidator;
+        $license = fn (string $path): array => $validator->problems($this->config(['codedna.enterprise' => ['license_path' => $path, 'license_max_bytes' => 16384]]), 'production');
+
+        $this->assertSame(['CODEDNA_LICENSE_PATH must be an absolute path.'], $license('license.json'));
+        $this->assertSame(['CODEDNA_LICENSE_PATH does not name a readable file.'], $license('/nonexistent/license'));
+        $this->assertSame(['CODEDNA_LICENSE_PATH does not name a readable file.'], $license(sys_get_temp_dir()));
+        // /dev/null is the production default: no license, not an error.
+        $this->assertSame([], $license('/dev/null'));
+        $this->assertSame([], $license(''));
+
+        $keys = 'config/license.php must map key ids to base64 Ed25519 public keys (32 bytes).';
+        $this->assertSame([$keys], $validator->problems($this->config(['license.trusted_keys' => ['k1' => base64_encode('short')]]), 'production'));
+        $this->assertSame([$keys], $validator->problems($this->config(['license.trusted_keys' => ['../k' => base64_encode(str_repeat('k', 32))]]), 'production'));
+        $this->assertSame([], $validator->problems($this->config(['license.trusted_keys' => ['k-2026' => base64_encode(str_repeat('k', 32))]]), 'production'));
     }
 }

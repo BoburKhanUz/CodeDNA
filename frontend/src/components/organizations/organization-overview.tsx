@@ -70,6 +70,11 @@ function BillingCard({ organizationId }: { organizationId: string }) {
             <p>
               {billing.plan.name} plan · {billing.seats.used} of {billing.seats.limit} seats used
             </p>
+            {billing.plan_source === "ENTERPRISE_LICENSE" ? (
+              <p className="text-muted-foreground" data-testid="organization-billing-license">
+                Plan and seats come from this installation&apos;s enterprise license.
+              </p>
+            ) : null}
             <ul className="text-muted-foreground grid gap-1">
               {billing.quotas
                 .filter((q) => q.limit !== 0)
@@ -80,7 +85,7 @@ function BillingCard({ organizationId }: { organizationId: string }) {
                   </li>
                 ))}
             </ul>
-            <p className="text-muted-foreground">Team plans cannot be purchased yet.</p>
+            {billing.plan_source === "BILLING_ACCOUNT" ? <p className="text-muted-foreground">Team plans cannot be purchased yet.</p> : null}
           </>
         ) : null}
       </CardContent>

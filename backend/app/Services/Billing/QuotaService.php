@@ -16,6 +16,7 @@ use App\Models\OrganizationBillingAccount;
 use App\Models\OrganizationMembership;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Enterprise\EnterpriseEdition;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use LogicException;
@@ -31,7 +32,7 @@ use LogicException;
  */
 final readonly class QuotaService
 {
-    public function __construct(private Entitlements $entitlements, private UsageService $usage) {}
+    public function __construct(private Entitlements $entitlements, private UsageService $usage, private EnterpriseEdition $edition) {}
 
     public function limit(BillingContext $context, QuotaKey $key): ?int
     {
@@ -106,8 +107,8 @@ final readonly class QuotaService
     }
 
     /**
-     * The organization's seat entitlement and the seats in use (ACTIVE
-     * memberships). A caller that already read the billing account passes it.
+     * The organization's seat entitlement (its account's, or a valid
+     * license's when higher) and the seats in use (ACTIVE memberships). A caller that already read the billing account passes it.
      */
     public function seats(Organization $organization, ?OrganizationBillingAccount $account = null): array
     {
@@ -116,7 +117,11 @@ final readonly class QuotaService
         $used = OrganizationMembership::query()->where('organization_id', $organization->getKey())
             ->where('status', MembershipStatus::Active->value)->count();
 
-        return ['limit' => $account->seat_limit, 'used' => $used, 'remaining' => max(0, $account->seat_limit - $used)];
+        // A valid enterprise license (Phase 27) raises every organization's
+        // seat limit to its own; it never lowers one.
+        $limit = max($account->seat_limit, $this->edition->organizationSeats() ?? 0);
+
+        return ['limit' => $limit, 'used' => $used, 'remaining' => max(0, $limit - $used)];
     }
 
     /**

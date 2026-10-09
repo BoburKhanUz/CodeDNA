@@ -120,7 +120,7 @@ function CreateOrganizationForm({ onCreated }: { onCreated: (organization: Organ
         <CardTitle>
           <h2>Create a team</h2>
         </CardTitle>
-        <CardDescription>You become its owner. The team starts on the free plan with 5 seats.</CardDescription>
+        <CardDescription>You become its owner. The team uses this installation&apos;s team plan and seat limit, shown on its page.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={submit} className="grid max-w-md gap-3" noValidate>

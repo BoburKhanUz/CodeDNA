@@ -105,6 +105,7 @@ export const API_ERROR_CODES = [
   "SEAT_LIMIT_REACHED",
   "CANNOT_REMOVE_OWNER",
   "CANNOT_CHANGE_OWNER_ROLE",
+  "REGISTRATION_CLOSED",
   "INTERNAL_ERROR",
   "SERVICE_UNAVAILABLE",
 ] as const;
@@ -1515,6 +1516,9 @@ export interface OrganizationBilling {
   type: "organization_billing";
   plan: BillingPlanRef;
   entitlement_version: string;
+  /** Phase 27: a valid enterprise license sets every organization's plan and seat limit. */
+  edition: Edition;
+  plan_source: "BILLING_ACCOUNT" | "ENTERPRISE_LICENSE";
   seats: { limit: number; used: number; remaining: number };
   period: { start: string; end: string };
   quotas: BillingQuota[];
@@ -1560,4 +1564,33 @@ export interface OrganizationAnalytics {
     snapshot_status: Record<string, number>;
     competencies: CompetencyAggregate[];
   }[];
+}
+
+/** Phase 27 (docs/enterprise/enterprise-architecture.md). Informational: entitlements are decided by the server. */
+export type Edition = "COMMUNITY" | "ENTERPRISE";
+
+export type LicenseStatus =
+  | "ABSENT"
+  | "VALID"
+  | "UNREADABLE"
+  | "MALFORMED"
+  | "UNSUPPORTED_VERSION"
+  | "UNKNOWN_KEY"
+  | "INVALID_SIGNATURE"
+  | "WRONG_INSTALLATION"
+  | "NOT_YET_VALID"
+  | "EXPIRED";
+
+/** GET /api/v1/installation. */
+export interface Installation {
+  type: "installation";
+  edition: Edition;
+  license: {
+    status: LicenseStatus;
+    licensee: string | null;
+    expires_at: string | null;
+    organization_plan: string | null;
+    organization_seats: number | null;
+  };
+  registration: { mode: "open" | "restricted" | "closed" };
 }

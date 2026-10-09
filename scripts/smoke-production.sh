@@ -232,8 +232,12 @@ for c in $(dc ps -q); do
     else
         fail "$name: hardening" "$hardening"
     fi
-    binds=$(docker inspect "$c" --format '{{range .Mounts}}{{if eq .Type "bind"}}{{.Destination}} {{end}}{{end}}' | sed -e 's#/run/secrets/tls_[a-z_]*##g' | tr -d ' ')
-    expect "$name: no bind mounts (TLS secrets aside)" "$binds" ""
+    # Compose secrets are read-only bind mounts: the TLS files (Nginx) and the
+    # enterprise license (Laravel containers, Phase 27). Nothing else.
+    binds=$(docker inspect "$c" --format '{{range .Mounts}}{{if eq .Type "bind"}}{{.Destination}} {{end}}{{end}}' | sed -e 's#/run/secrets/tls_[a-z_]*##g' -e 's#/run/secrets/codedna_license##g' | tr -d ' ')
+    expect "$name: no bind mounts (secrets aside)" "$binds" ""
+    writable=$(docker inspect "$c" --format '{{range .Mounts}}{{if and (eq .Type "bind") .RW}}{{.Destination}} {{end}}{{end}}' | tr -d ' ')
+    expect "$name: secrets are read-only" "$writable" ""
 done
 for svc in nginx frontend backend queue scheduler analyzer redis minio; do
     uid=$(dc exec -T "$svc" id -u)
@@ -276,13 +280,29 @@ if dc run --rm --no-deps backend php -r 'exit(0);' >/dev/null 2>&1; then
 else
     fail "backend starts with the valid configuration"
 fi
-for override in 'APP_DEBUG=true' 'LOG_LEVEL=debug' 'TRUSTED_PROXIES=*' 'CHALLENGE_EVALUATOR_ISOLATION=container' 'CORS_ALLOWED_ORIGINS=http://evil.example' 'BILLING_PROVIDER=fake' 'APP_KEY='; do
+# Phase 27: an external database or Redis without TLS, and invalid registration settings.
+for override in 'APP_DEBUG=true' 'LOG_LEVEL=debug' 'TRUSTED_PROXIES=*' 'CHALLENGE_EVALUATOR_ISOLATION=container' 'CORS_ALLOWED_ORIGINS=http://evil.example' 'BILLING_PROVIDER=fake' 'APP_KEY=' \
+    'DB_HOST=db.customer.example' 'REDIS_HOST=redis.customer.example' 'REGISTRATION_MODE=invite' 'REGISTRATION_MODE=restricted'; do
     if dc run --rm --no-deps -e "$override" backend php -r 'exit(0);' >/dev/null 2>&1; then
         fail "backend refuses to start with $override"
     else
         pass "backend refuses to start with $override"
     fi
 done
+
+echo "== self-hosted (Phase 27)"
+license=$(dc exec -T backend php artisan codedna:license 2>&1 || true)
+if grep -q 'Edition: Community' <<<"$license" && grep -q 'License: ABSENT' <<<"$license"; then
+    pass "no license configured: Community edition, status ABSENT"
+else
+    fail "no license configured: Community edition, status ABSENT" "$license"
+fi
+if dc exec -T backend php artisan codedna:preflight >/dev/null 2>&1; then
+    pass "codedna:preflight passes on the running stack"
+else
+    fail "codedna:preflight passes on the running stack"
+fi
+expect "the license secret is empty by default" "$(dc exec -T backend sh -c 'wc -c < /run/secrets/codedna_license' | tr -d ' ')" "0"
 
 echo "== secrets"
 leaks=0

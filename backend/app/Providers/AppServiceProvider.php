@@ -25,6 +25,7 @@ use App\Services\Challenge\ChallengeCatalog;
 use App\Services\Challenge\Evaluator\ChallengeEvaluator;
 use App\Services\Challenge\Evaluator\SpoolChallengeEvaluator;
 use App\Services\Challenge\Evaluator\UnavailableChallengeEvaluator;
+use App\Services\Enterprise\EnterpriseEdition;
 use App\Services\GitHub\GitHubSettings;
 use App\Services\Growth\GrowthRules;
 use App\Services\Roadmap\RoadmapCatalog;
@@ -82,6 +83,9 @@ class AppServiceProvider extends ServiceProvider
         // Billing (Phase 23): the plan catalog is read once per request or job;
         // the payment provider is the configured one only.
         $this->app->scoped(PlanCatalog::class);
+        // Enterprise edition (Phase 27): the license is read and verified once
+        // per request or job, so a renewal or expiry applies without a restart.
+        $this->app->scoped(EnterpriseEdition::class);
         $this->app->singleton(ViewDecisions::class);
         $this->app->scoped(PaymentProviders::class, static fn ($app): PaymentProviders => new PaymentProviders((array) $app['config']->get('codedna.billing', [])));
 

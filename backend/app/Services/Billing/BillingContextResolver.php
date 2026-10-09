@@ -12,6 +12,7 @@ use App\Models\Organization;
 use App\Models\OrganizationBillingAccount;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Enterprise\EnterpriseEdition;
 use Illuminate\Support\Carbon;
 
 /**
@@ -28,11 +29,15 @@ use Illuminate\Support\Carbon;
  * subject is its organization when it has one, otherwise its owner; the
  * two never share counters.
  *
+ * Since Phase 27 a valid enterprise license may name the plan every
+ * organization is on (docs/enterprise/licensing.md#entitlements). It never
+ * applies to a user's personal context.
+ *
  * Nothing a client sends takes part in this decision.
  */
 final readonly class BillingContextResolver
 {
-    public function __construct(private PlanCatalog $catalog) {}
+    public function __construct(private PlanCatalog $catalog, private EnterpriseEdition $edition) {}
 
     /**
      * The context of whoever pays for this: a user, an organization, or a
@@ -54,8 +59,13 @@ final readonly class BillingContextResolver
         $now = ($now ?? Carbon::now())->copy()->utc();
         $account = OrganizationBillingAccount::query()->find($organizationId)
             ?? throw new ApiException(ErrorCode::BillingUnavailable);
+        // A valid enterprise license (Phase 27) puts every organization on its
+        // plan; otherwise, and whenever the license stops verifying, the
+        // account's own plan applies. Personal billing never consults it.
+        $licensed = $this->edition->organizationPlan();
+        $plan = $licensed !== null ? $this->catalog->licensed($licensed) : $this->catalog->byId($account->billing_plan_id);
 
-        return new BillingContext(null, $this->catalog->byId($account->billing_plan_id), null, null,
+        return new BillingContext(null, $plan, null, null,
             $now->copy()->startOfMonth(), $now->copy()->startOfMonth()->addMonthNoOverflow(), $now, $organizationId);
     }
 

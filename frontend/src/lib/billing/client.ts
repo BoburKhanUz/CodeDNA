@@ -1,5 +1,5 @@
 import { api } from "@/lib/api/client";
-import type { BillingOverview, BillingPlan, DataEnvelope } from "@/lib/api/types";
+import type { BillingOverview, BillingPlan, DataEnvelope, Installation } from "@/lib/api/types";
 
 /**
  * Billing (Phase 23): read-only. There is deliberately no function that
@@ -12,6 +12,11 @@ export async function getBillingOverview(): Promise<BillingOverview> {
 
 export async function getBillingPlans(): Promise<BillingPlan[]> {
   return (await api.get<DataEnvelope<BillingPlan[]>>("/api/v1/billing/plans")).data;
+}
+
+/** The installation's edition and license status (Phase 27). Informational only. */
+export async function getInstallation(): Promise<Installation> {
+  return (await api.get<DataEnvelope<Installation>>("/api/v1/installation")).data;
 }
 
 /** A price in minor units as text, e.g. 1500 USD → "$15.00". Integer arithmetic only. */

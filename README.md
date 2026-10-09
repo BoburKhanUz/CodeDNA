@@ -142,6 +142,18 @@ Since Phase 26 CodeDNA is **measured at scale**. A deterministic benchmark gener
 Every number, before and after, is in
 [performance architecture](docs/performance/performance-architecture.md).
 
+Since Phase 27 CodeDNA has an **enterprise / self-hosted foundation**:
+
+- an Enterprise edition unlocked by an offline-verified, Ed25519-signed
+  license, which sets team plans and seats through the existing billing
+  domain (personal billing is never touched);
+- registration control (open, restricted to email domains, or closed);
+- compose overlays for customer-run PostgreSQL, Redis and S3-compatible
+  storage, with TLS enforced outside the private network;
+- `codedna:preflight` and `codedna:license` for operators.
+
+See [enterprise architecture](docs/enterprise/enterprise-architecture.md).
+
 Nothing in the repository is a production value or credential. The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
@@ -170,10 +182,11 @@ code runs only in the network-less evaluator and never changes CodeDNA.
 - Security: [threat model](docs/security/threat-model.md) · [security hardening](docs/security/security-hardening.md) (after pulling Phase 21, run `make setup` once to add `REDIS_PASSWORD` to `.env`) · [production security baseline](docs/operations/security-baseline.md)
 - Operations: [production deployment](docs/operations/production-deployment.md) · [production configuration](docs/operations/production-configuration.md) · [backup and restore](docs/operations/backup-and-restore.md) · [rollback](docs/operations/rollback.md)
 - Performance: [architecture](docs/performance/performance-architecture.md) · [benchmarking](docs/performance/benchmarking.md) · [load testing](docs/performance/load-testing.md) · [database](docs/performance/database-performance.md) · [queues](docs/performance/queue-performance.md) · [scaling guide](docs/performance/scaling-guide.md)
+- Enterprise / self-hosted: [architecture](docs/enterprise/enterprise-architecture.md) · [installation](docs/enterprise/self-hosted-installation.md) · [configuration](docs/enterprise/configuration-reference.md) · [licensing](docs/enterprise/licensing.md) · [upgrade and rollback](docs/enterprise/upgrade-and-rollback.md) · [security and data ownership](docs/enterprise/security-and-data-ownership.md) · [troubleshooting](docs/enterprise/troubleshooting.md)
 - Billing: [architecture](docs/billing/billing-architecture.md) · [subscription state machine](docs/billing/subscription-state-machine.md) · [entitlements and quotas](docs/billing/entitlements-and-quotas.md)
 - Teams: [architecture](docs/teams/teams-architecture.md) · [authorization](docs/teams/authorization.md) · [invitations](docs/teams/invitations.md) · [billing boundary](docs/teams/billing-boundary.md) · [team analytics](docs/teams/team-analytics.md)
 - API: [public conventions](docs/api/README.md) · [internal analyzer contract](docs/api/internal-analyzer-contract.md)
-- Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md) · [ADR-007 AI interpretation](docs/decisions/ADR-007-ai-interpretation.md) · [ADR-008 coding challenges](docs/decisions/ADR-008-coding-challenges.md) · [ADR-009 learning roadmap](docs/decisions/ADR-009-learning-roadmap.md) · [ADR-010 growth tracking](docs/decisions/ADR-010-growth-tracking.md) · [ADR-011 GitHub integration](docs/decisions/ADR-011-github-integration.md) · [ADR-012 historical DNA](docs/decisions/ADR-012-historical-dna.md)
+- Decisions: [ADR-001 stack](docs/decisions/ADR-001-stack.md) · [ADR-002 analysis engine](docs/decisions/ADR-002-analysis-engine.md) · [ADR-003 storage](docs/decisions/ADR-003-storage.md) · [ADR-004 DNA scoring](docs/decisions/ADR-004-dna-scoring.md) · [ADR-005 service communication](docs/decisions/ADR-005-service-communication.md) · [ADR-006 authentication](docs/decisions/ADR-006-authentication.md) · [ADR-007 AI interpretation](docs/decisions/ADR-007-ai-interpretation.md) · [ADR-008 coding challenges](docs/decisions/ADR-008-coding-challenges.md) · [ADR-009 learning roadmap](docs/decisions/ADR-009-learning-roadmap.md) · [ADR-010 growth tracking](docs/decisions/ADR-010-growth-tracking.md) · [ADR-011 GitHub integration](docs/decisions/ADR-011-github-integration.md) · [ADR-012 historical DNA](docs/decisions/ADR-012-historical-dna.md) · [ADR-013 enterprise licensing](docs/decisions/ADR-013-enterprise-licensing.md)
 
 ## Repository layout
 

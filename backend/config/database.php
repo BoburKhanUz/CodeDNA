@@ -169,6 +169,10 @@ return [
             'username' => env('REDIS_USERNAME'),
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
+            // "tls" for a Redis outside the private network (Phase 27); unset or
+            // empty = plain TCP. An empty string must become null: Laravel would
+            // otherwise prefix the host with an empty scheme ("://redis").
+            'scheme' => env('REDIS_SCHEME') ?: null,
             'database' => env('REDIS_DB', '0'),
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
@@ -182,6 +186,10 @@ return [
             'username' => env('REDIS_USERNAME'),
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
+            // "tls" for a Redis outside the private network (Phase 27); unset or
+            // empty = plain TCP. An empty string must become null: Laravel would
+            // otherwise prefix the host with an empty scheme ("://redis").
+            'scheme' => env('REDIS_SCHEME') ?: null,
             'database' => env('REDIS_CACHE_DB', '1'),
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),

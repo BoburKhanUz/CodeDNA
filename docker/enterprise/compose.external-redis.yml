@@ -1,0 +1,23 @@
+# Customer-run Redis (Phase 27, docs/enterprise/self-hosted-installation.md).
+# Use with the production file:
+#
+#   docker compose -f docker-compose.prod.yml -f docker/enterprise/compose.external-redis.yml ...
+#
+# and set REDIS_HOST, REDIS_PORT, REDIS_PASSWORD and REDIS_SCHEME=tls in the
+# environment file. Laravel refuses a non-internal REDIS_HOST without TLS.
+# The Redis must keep data (AOF or RDB) and use maxmemory-policy noeviction:
+# it holds queues, sessions and locks.
+#
+# - The bundled redis service is switched off (a profile that is never enabled).
+# - The scheduler and the migration job join the egress network to reach it.
+services:
+  redis:
+    profiles: ["bundled-redis-disabled"]
+  scheduler:
+    networks:
+      - data
+      - egress
+  migrate:
+    networks:
+      - data
+      - egress

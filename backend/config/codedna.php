@@ -295,6 +295,47 @@ return [
         'webhook_max_bytes' => 65536,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Enterprise edition (Phase 27)
+    |--------------------------------------------------------------------------
+    |
+    | docs/enterprise/licensing.md. Without a license (the default) the
+    | installation is the Community edition and nothing changes. A license is
+    | a signed file mounted read-only (CODEDNA_LICENSE_PATH); it is verified
+    | offline against the public keys in config/license.php, never against a
+    | key from the environment. An absent or invalid license grants nothing.
+    |
+    */
+    'enterprise' => [
+        // Absolute path of the license file; empty = no license. An empty
+        // file at the path also means no license (the production default
+        // mounts /dev/null).
+        'license_path' => (string) env('CODEDNA_LICENSE_PATH', ''),
+        // Licenses are a few hundred bytes; anything larger is refused unread.
+        'license_max_bytes' => 16384,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Self-service registration (Phase 27)
+    |--------------------------------------------------------------------------
+    |
+    | docs/enterprise/configuration-reference.md#registration. "open" (the
+    | default: anyone may create an account), "restricted" (only email
+    | addresses in REGISTRATION_ALLOWED_EMAIL_DOMAINS) or "closed" (no new
+    | accounts; existing accounts keep working). A security setting, in every
+    | edition.
+    |
+    */
+    'registration' => [
+        'mode' => (string) env('REGISTRATION_MODE', 'open'),
+        'allowed_email_domains' => array_values(array_filter(array_map(
+            static fn (string $domain): string => strtolower(trim($domain)),
+            explode(',', (string) env('REGISTRATION_ALLOWED_EMAIL_DOMAINS', '')),
+        ), static fn (string $domain): bool => $domain !== '')),
+    ],
+
     'rate_limits' => [
         // Every /api/v1 route, per authenticated user or per IP.
         'api_per_minute' => 120,

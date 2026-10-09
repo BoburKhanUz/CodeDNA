@@ -32,6 +32,7 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `POST` | `/api/v1/auth/logout` | authenticated | 204 | Log out |
 | `PATCH` | `/api/v1/auth/password` | authenticated, browser session | 204 | Change the password (ends the session) |
 | `GET` | `/api/v1/me` | authenticated | 200 | Current user |
+| `GET` | `/api/v1/installation` | authenticated | 200 | The installation's edition, license status and registration mode (Phase 27, informational) |
 | `GET` | `/api/v1/profile` | authenticated | 200 | The caller's developer profile |
 | `PATCH` | `/api/v1/profile` | authenticated | 200 | Update the caller's developer profile |
 | `GET` | `/api/v1/projects` | authenticated | 200 | The caller's projects (paginated) |
@@ -85,7 +86,7 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `GET` | `/api/v1/organizations/{organization}` | member | 200 | One organization |
 | `PATCH` | `/api/v1/organizations/{organization}` | ADMIN+ | 200 | Rename |
 | `POST` | `/api/v1/organizations/{organization}/archive` | OWNER | 200 | Archive (irreversible; nothing is deleted) |
-| `GET` | `/api/v1/organizations/{organization}/billing` | ADMIN+ | 200 | The organization as a billing subject: plan, seats, quotas (read-only) |
+| `GET` | `/api/v1/organizations/{organization}/billing` | ADMIN+ | 200 | The organization as a billing subject: plan, seats, quotas, and since Phase 27 `edition` and `plan_source` (`BILLING_ACCOUNT` or `ENTERPRISE_LICENSE`) (read-only) |
 | `GET` | `/api/v1/organizations/{organization}/members` | member | 200 | Members (emails for ADMIN+) |
 | `PATCH` | `/api/v1/organizations/{organization}/members/{membership}` | ADMIN+ | 200 | Change a member's role and/or status |
 | `DELETE` | `/api/v1/organizations/{organization}/members/{membership}` | ADMIN+ | 200 | Remove a member (status REMOVED; the record stays) |
@@ -148,6 +149,13 @@ On success the response is `201` with the user resource, and the session is
 logged in (the session ID is regenerated). Duplicate email gives `422
 VALIDATION_FAILED` with `details.fields.email`.
 
+Since Phase 27 the installation's registration mode applies
+([configuration reference](../enterprise/configuration-reference.md#registration)):
+
+- `closed` → `403 REGISTRATION_CLOSED` before anything is validated;
+- `restricted` → an address outside the allowed email domains gives `422
+  VALIDATION_FAILED` on `email`.
+
 ### `POST /api/v1/auth/login`
 
 ```json
@@ -187,6 +195,35 @@ Users are serialized by `UserResource` with an explicit field list.
 `password`, `remember_token` and any future attribute are never exposed
 unless they are added to the resource. `/me` is the identity only; the
 developer profile has its own endpoint.
+
+### `GET /api/v1/installation`
+
+Phase 27 ([enterprise architecture](../enterprise/enterprise-architecture.md#status)).
+Any signed-in user. Informational: every entitlement is decided by the
+server where it is used, never from this response.
+
+```json
+{
+  "data": {
+    "type": "installation",
+    "edition": "ENTERPRISE",
+    "license": {
+      "status": "VALID",
+      "licensee": "Example Corp",
+      "expires_at": "2027-01-01T00:00:00Z",
+      "organization_plan": "TEAM_READY",
+      "organization_seats": 500
+    },
+    "registration": { "mode": "restricted" }
+  }
+}
+```
+
+`edition` is `COMMUNITY` unless the license `status` is `VALID`
+([statuses](../enterprise/licensing.md#statuses)). `organization_plan` and
+`organization_seats` are `null` unless the license grants them. The response
+never contains the license document, its signature, its key, the
+installation host, a file path or any configuration value.
 
 ### `GET /api/v1/profile`
 
@@ -1801,6 +1838,7 @@ Every error, on every API route, uses one envelope:
 | 403 | `MEMBERSHIP_SUSPENDED` | The caller's membership in the organization is suspended |
 | 403 | `INSUFFICIENT_ORGANIZATION_ROLE` | The caller's organization role does not allow the action |
 | 403 | `INVITATION_EMAIL_MISMATCH` | The invitation is for another email address |
+| 403 | `REGISTRATION_CLOSED` | The installation does not accept new accounts (Phase 27) |
 | 409 | `ORGANIZATION_SUSPENDED` | The organization is suspended (read-only) |
 | 409 | `ORGANIZATION_ARCHIVED` | The organization is archived (read-only) |
 | 409 | `ALREADY_A_MEMBER` | The person is already a member |

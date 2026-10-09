@@ -135,6 +135,10 @@ x-backend-environment: &backend-environment
   # test provider, local only). The webhook secret comes only from .env.
   BILLING_PROVIDER: ${BILLING_PROVIDER:-none}
   BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET:-}
+  # Self-hosted settings (Phase 27, docs/enterprise/configuration-reference.md).
+  REGISTRATION_MODE: ${REGISTRATION_MODE:-open}
+  REGISTRATION_ALLOWED_EMAIL_DOMAINS: ${REGISTRATION_ALLOWED_EMAIL_DOMAINS:-}
+  CODEDNA_LICENSE_PATH: ${CODEDNA_LICENSE_PATH:-}
 
 x-backend-volumes: &backend-volumes
   - ./backend:/var/www/backend

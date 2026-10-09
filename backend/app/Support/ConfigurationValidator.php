@@ -77,6 +77,7 @@ final class ConfigurationValidator
             $problems[] = 'CODEDNA_ROADMAP_RULES_VERSION must be one of: '.implode(', ', RoadmapRules::VERSIONS).'.';
         }
         $problems = [...$problems, ...$this->aiProblems($config, $environment), ...$this->challengeProblems($config), ...$this->billingProblems($config, $environment)];
+        $problems = [...$problems, ...$this->selfHostedProblems($config)];
 
         // The test suite swaps in in-memory drivers; every other environment
         // must use the Redis-backed infrastructure (docs/architecture/backend.md).
@@ -160,6 +161,12 @@ final class ConfigurationValidator
         if (! in_array($database['sslmode'] ?? null, ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'], true)) {
             $problems[] = 'DB_SSLMODE must be one of: disable, allow, prefer, require, verify-ca, verify-full.';
         }
+        // A database outside the private network (Phase 27: any host that is
+        // not an internal service name) is reached over TLS only.
+        if (is_string($database['host'] ?? null) && self::isExternalHost($database['host'])
+            && ! in_array($database['sslmode'] ?? null, ['require', 'verify-ca', 'verify-full'], true)) {
+            $problems[] = 'DB_SSLMODE must be "require", "verify-ca" or "verify-full" for a database outside the private network (DB_HOST is not an internal service name).';
+        }
 
         // Redis holds sessions, cache, locks and queues: never unauthenticated.
         foreach (['default', 'cache'] as $connection) {
@@ -169,6 +176,14 @@ final class ConfigurationValidator
                 $problems[] = 'REDIS_PASSWORD must be set in production.';
                 break;
             }
+        }
+        // And outside the private network, only over TLS (Phase 27).
+        if (! in_array($config->get('database.redis.default.scheme'), [null, 'tcp', 'tls'], true)) {
+            $problems[] = 'REDIS_SCHEME must be empty, "tcp" or "tls".';
+        }
+        $redisHost = $config->get('database.redis.default.host');
+        if (is_string($redisHost) && self::isExternalHost($redisHost) && $config->get('database.redis.default.scheme') !== 'tls') {
+            $problems[] = 'REDIS_SCHEME must be "tls" for a Redis outside the private network (REDIS_HOST is not an internal service name).';
         }
 
         // Session cookie: HttpOnly, a SameSite policy, and a bounded lifetime.
@@ -229,6 +244,65 @@ final class ConfigurationValidator
         }
 
         return $problems;
+    }
+
+    /**
+     * Self-hosted installations (Phase 27, docs/enterprise/configuration-reference.md),
+     * in every environment: the registration mode, the license file and the
+     * trusted license keys. A configured license that cannot be read is a
+     * configuration error; a license that does not verify is not (the
+     * installation simply stays on the Community edition, see EnterpriseEdition).
+     *
+     * @return list<string>
+     */
+    private function selfHostedProblems(Repository $config): array
+    {
+        $problems = [];
+        $mode = $config->get('codedna.registration.mode');
+        $domains = (array) $config->get('codedna.registration.allowed_email_domains');
+        if (! in_array($mode, ['open', 'restricted', 'closed'], true)) {
+            $problems[] = 'REGISTRATION_MODE must be one of: open, restricted, closed.';
+        } elseif ($mode === 'restricted' && $domains === []) {
+            $problems[] = 'REGISTRATION_ALLOWED_EMAIL_DOMAINS must list at least one domain when REGISTRATION_MODE is "restricted".';
+        }
+        foreach ($domains as $domain) {
+            if (! is_string($domain) || preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/', $domain) !== 1) {
+                $problems[] = 'REGISTRATION_ALLOWED_EMAIL_DOMAINS must list domain names (e.g. example.com), separated by commas.';
+                break;
+            }
+        }
+        if ($domains !== [] && $mode !== 'restricted') {
+            $problems[] = 'REGISTRATION_ALLOWED_EMAIL_DOMAINS is set but REGISTRATION_MODE is not "restricted"; it would have no effect.';
+        }
+
+        $path = $config->get('codedna.enterprise.license_path');
+        if (is_string($path) && $path !== '') {
+            if (! str_starts_with($path, '/')) {
+                $problems[] = 'CODEDNA_LICENSE_PATH must be an absolute path.';
+            } elseif (! file_exists($path) || is_dir($path) || ! is_readable($path)) {
+                $problems[] = 'CODEDNA_LICENSE_PATH does not name a readable file.';
+            }
+        }
+
+        foreach ((array) $config->get('license.trusted_keys') as $id => $key) {
+            $bytes = is_string($key) ? base64_decode($key, true) : false;
+            if (! is_string($id) || preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', $id) !== 1 || ! is_string($bytes) || strlen($bytes) !== SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES) {
+                $problems[] = 'config/license.php must map key ids to base64 Ed25519 public keys (32 bytes).';
+                break;
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * A host outside the private network: anything but an internal service
+     * name (a single label such as "postgres" or "redis"). Addresses and
+     * qualified names count as external.
+     */
+    private static function isExternalHost(string $host): bool
+    {
+        return $host !== '' && (str_contains($host, '.') || str_contains($host, ':'));
     }
 
     /**

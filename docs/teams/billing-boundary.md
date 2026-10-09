@@ -71,6 +71,23 @@ membership, while that transaction holds the organization row lock. Two
 concurrent acceptances or reactivations therefore cannot both take the last
 seat (`402 SEAT_LIMIT_REACHED`, with `limit` and `used`).
 
+## Enterprise license (Phase 27)
+
+On a self-hosted installation with a valid enterprise license, every
+organization's context uses the license's plan, `TEAM_READY` in v1. Its
+seat limit is the license's, or the account's when that is higher
+([licensing](../enterprise/licensing.md#entitlements)).
+
+- **Not persisted.** The billing account is not changed: when the license
+  stops granting, the account's plan and seats apply again on the next
+  request.
+- **Organizations only.** Personal billing never consults the license.
+- **Visible.** `GET .../billing` reports `edition` and `plan_source`
+  (`BILLING_ACCOUNT` or `ENTERPRISE_LICENSE`).
+
+The reserved `TEAM_READY` plan remains unavailable to payment providers
+(`UNKNOWN_PLAN`) and to new billing accounts.
+
 ## Phase 25 and later
 
 When team payments arrive, a provider event will change the organization's

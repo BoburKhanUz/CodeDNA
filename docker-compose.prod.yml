@@ -68,8 +68,11 @@ x-backend-environment: &backend-environment
   # measured). Plan max_connections for it (docs/performance/scaling-guide.md).
   DB_PERSISTENT: ${DB_PERSISTENT:-true}
   REDIS_CLIENT: phpredis
-  REDIS_HOST: redis
-  REDIS_PORT: "6379"
+  # The bundled Redis by default; a customer-run Redis by setting REDIS_HOST
+  # (then REDIS_SCHEME=tls is required, docs/enterprise/configuration-reference.md).
+  REDIS_HOST: ${REDIS_HOST:-redis}
+  REDIS_PORT: ${REDIS_PORT:-6379}
+  REDIS_SCHEME: ${REDIS_SCHEME:-}
   REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
   CACHE_STORE: redis
   QUEUE_CONNECTION: redis
@@ -148,6 +151,13 @@ x-backend-environment: &backend-environment
   # Billing: no real payment provider exists yet; "fake" is refused at boot.
   BILLING_PROVIDER: none
   BILLING_WEBHOOK_SECRET: ""
+  # Self-service registration (Phase 27): open, restricted (allowed email
+  # domains) or closed.
+  REGISTRATION_MODE: ${REGISTRATION_MODE:-open}
+  REGISTRATION_ALLOWED_EMAIL_DOMAINS: ${REGISTRATION_ALLOWED_EMAIL_DOMAINS:-}
+  # Enterprise license (Phase 27, docs/enterprise/licensing.md): the
+  # codedna_license secret; /dev/null (no license, Community edition) by default.
+  CODEDNA_LICENSE_PATH: /run/secrets/codedna_license
 
 x-backend: &backend
   <<: *hardening
@@ -161,6 +171,9 @@ x-backend: &backend
   group_add:
     # The challenge spool group (Phase 16).
     - "10500"
+  # The enterprise license (Phase 27), read-only; empty when none is installed.
+  secrets:
+    - codedna_license
 
 services:
   nginx:
@@ -249,13 +262,19 @@ services:
     # SIGQUIT lets PHP-FPM finish in-flight requests (process_control_timeout).
     stop_signal: SIGQUIT
     stop_grace_period: 35s
+    # required: false lets docker/enterprise/compose.external-*.yml switch a
+    # bundled data service off for a customer-run one (Phase 27); when the
+    # bundled service runs, it is still waited for.
     depends_on:
       postgres:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
       minio-init:
         condition: service_completed_successfully
+        required: false
     networks:
       - app
       - data
@@ -341,8 +360,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
+        required: false
     networks:
       - data
     healthcheck:
@@ -575,6 +596,11 @@ services:
 # TLS certificate and key for Nginx: files on the host, outside the
 # repository, readable only by the deploying user. Never in an image.
 secrets:
+  # Signed enterprise license (Phase 27, docs/enterprise/licensing.md). Not
+  # a secret in the cryptographic sense (it grants nothing elsewhere), but
+  # mounted the same read-only way. /dev/null = no license.
+  codedna_license:
+    file: ${CODEDNA_LICENSE_FILE:-/dev/null}
   tls_certificate:
     file: ${TLS_CERTIFICATE_FILE:?TLS_CERTIFICATE_FILE is required (path to the PEM certificate chain)}
   tls_private_key:

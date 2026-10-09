@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiErrorAlert } from "@/components/auth/api-error-alert";
+import { InstallationCard } from "@/components/billing/installation-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -164,6 +165,8 @@ export function BillingView() {
           </ul>
         </CardContent>
       </Card>
+
+      <InstallationCard />
 
       <section aria-labelledby="plans-heading" className="grid gap-3">
         <h2 id="plans-heading" className="text-lg font-semibold">

@@ -34,6 +34,7 @@ fixing a bug. What each area covers, and its known gaps, is in the
 | Runtime smoke test | `scripts/verify-infra.sh` | Routing, networks, isolation, storage | Host, against the running stack |
 | Browser end-to-end | Playwright (Chromium) | Run per phase against the dev stack | Host; not in CI yet (see [limitations](#limitations)) |
 | Performance regression | PHPUnit | `tests/Feature/Performance` (query counts independent of data size, response size per item, keyset pagination, index shape), `AnalyzerSlotsTest` | `queue` container, default suite |
+| Enterprise edition and self-hosted settings | PHPUnit, Vitest | `tests/Unit/Enterprise` (license verification with test-only keys from `tests/Support/LicenseFixtures`), `tests/Feature/Enterprise`, `RegistrationModeTest`, `ConfigurationValidatorTest`; `installation-card.test.tsx`; `make prod-config` (production file alone and with the external-service overlays) | `queue` and `frontend` containers, default suites; host |
 | Benchmarks and load tests | Artisan commands, Python | `make benchmark-*`, `make loadtest`; `tests/Benchmark` (opt-in, not in the default suites) | Dev stack on the isolated benchmark database ([benchmarking](../performance/benchmarking.md)) |
 | Mutation testing | Scripted source mutations | Per phase, for new and security-critical logic | Host, against the running stack |
 
@@ -148,7 +149,7 @@ Each step is one command; a failing test fails the step, and the job.
 (`make prod-smoke`, CI job `production`) starts `docker-compose.prod.yml` on
 loopback. It uses random throwaway secrets and a self-signed certificate for
 the reserved name `codedna.test`, then checks the running stack from outside
-and inside. About 80 checks cover:
+and inside. About 100 checks cover:
 
 - **TLS edge:** HSTS, the nonce CSP on every script, the strict API CSP,
   security headers, the redirect pinned to the configured domain, rejected
@@ -161,15 +162,22 @@ and inside. About 80 checks cover:
 - **Containers:**
   - only Nginx publishes ports;
   - read-only roots, `no-new-privileges`, dropped capabilities and limits;
-  - no bind mounts, no root users;
+  - no bind mounts except read-only compose secrets (TLS files, the
+    enterprise license), no root users;
   - network segmentation.
-- **Fail fast:** a positive control, then every unsafe override.
+- **Fail fast:** a positive control, then every unsafe override (since Phase
+  27 also a database or Redis outside the private network without TLS, and
+  invalid registration settings).
+- **Self-hosted (Phase 27):** no license means the Community edition, the
+  license secret is empty by default, and `codedna:preflight` passes.
 - **Secrets:** no generated secret in logs, image metadata or the frontend.
 
 [`scripts/check_production.py`](../../scripts/check_production.py)
 (`make prod-config`) is its static counterpart. It checks the rendered
 Compose model, the Nginx configuration and the production image stages
-against the [security baseline](../operations/security-baseline.md).
+against the [security baseline](../operations/security-baseline.md). Since
+Phase 27 it also checks the model combined with every
+`docker/enterprise/compose.external-*.yml` overlay (`--external`).
 
 At each phase end, a browser run against the production-like stack adds the
 following (scratch Playwright, as for the dev stack):

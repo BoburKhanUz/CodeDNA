@@ -87,6 +87,14 @@ REQUIRED_FOUNDATION = [
     "docs/performance/database-performance.md",
     "docs/performance/queue-performance.md",
     "docs/performance/scaling-guide.md",
+    "docs/enterprise/enterprise-architecture.md",
+    "docs/enterprise/self-hosted-installation.md",
+    "docs/enterprise/configuration-reference.md",
+    "docs/enterprise/licensing.md",
+    "docs/enterprise/upgrade-and-rollback.md",
+    "docs/enterprise/security-and-data-ownership.md",
+    "docs/enterprise/troubleshooting.md",
+    "docs/decisions/ADR-013-enterprise-licensing.md",
 ]
 
 # Variable names that must never carry a value in .env.example.

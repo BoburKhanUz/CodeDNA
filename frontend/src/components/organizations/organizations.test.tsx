@@ -96,13 +96,30 @@ describe("OrganizationOverview", () => {
     serve([
       orgRoute("OWNER"),
       ["GET", /\/billing$/, () => jsonResponse({ data: { type: "organization_billing", plan: { key: "FREE", version: "1.0.0", name: "Free" }, entitlement_version: "1.0.0",
+        edition: "COMMUNITY", plan_source: "BILLING_ACCOUNT",
         seats: { limit: 5, used: 3, remaining: 2 }, period: { start: "2026-10-01T00:00:00Z", end: "2026-11-01T00:00:00Z" }, quotas: [] } })],
     ]);
     render(<OrganizationOverview organizationId={ORG_ID} />);
 
     expect(await screen.findByText("Free plan · 3 of 5 seats used")).toBeInTheDocument();
+    expect(screen.getByText("Team plans cannot be purchased yet.")).toBeInTheDocument();
+    expect(screen.queryByTestId("organization-billing-license")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save name" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Archive team…" })).toBeInTheDocument();
+  });
+
+  it("says when the team's plan and seats come from the installation's enterprise license", async () => {
+    serve([
+      orgRoute("OWNER"),
+      ["GET", /\/billing$/, () => jsonResponse({ data: { type: "organization_billing", plan: { key: "TEAM_READY", version: "1.0.0", name: "Team" }, entitlement_version: "1.0.0",
+        edition: "ENTERPRISE", plan_source: "ENTERPRISE_LICENSE",
+        seats: { limit: 50, used: 3, remaining: 47 }, period: { start: "2026-10-01T00:00:00Z", end: "2026-11-01T00:00:00Z" }, quotas: [] } })],
+    ]);
+    render(<OrganizationOverview organizationId={ORG_ID} />);
+
+    expect(await screen.findByText("Team plan · 3 of 50 seats used")).toBeInTheDocument();
+    expect(screen.getByTestId("organization-billing-license")).toHaveTextContent("enterprise license");
+    expect(screen.queryByText("Team plans cannot be purchased yet.")).not.toBeInTheDocument();
   });
 
   it("shows members the team without any settings or billing", async () => {

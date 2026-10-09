@@ -243,8 +243,13 @@ before stopping (grace period 360 s). PHP-FPM finishes in-flight requests
   workers ([database performance](../performance/database-performance.md#connections)).
 - **External object storage:** see
   [production configuration](production-configuration.md#object-storage).
-- **Managed PostgreSQL:** set `DB_HOST` and `DB_SSLMODE=verify-full`, and
-  remove the bundled `postgres` service from the deployment.
+- **Customer-run PostgreSQL, Redis or object storage:** use the overlays in
+  `docker/enterprise/` (Phase 27) and set `DB_SSLMODE=verify-full` /
+  `REDIS_SCHEME=tls`; see
+  [self-hosted installation](../enterprise/self-hosted-installation.md#data-services).
+- **Preflight:** `docker compose -f docker-compose.prod.yml --env-file /etc/codedna/production.env run --rm --no-deps backend php artisan codedna:preflight`
+  checks the database, Redis, object storage, pending migrations and the
+  license before a start or upgrade, without writing anything.
 - **Behind a load balancer:** a TCP (layer-4) load balancer works unchanged.
   An HTTP load balancer that terminates TLS changes the client address
   Nginx sees. Then add a `real_ip` configuration listing only the load

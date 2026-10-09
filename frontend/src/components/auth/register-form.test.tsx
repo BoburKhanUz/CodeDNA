@@ -71,6 +71,15 @@ describe("RegisterForm", () => {
     expect(router.replace).not.toHaveBeenCalled();
   });
 
+  it("explains that the installation does not accept new accounts", async () => {
+    fetchMock.mockResolvedValueOnce(apiErrorResponse(403, "REGISTRATION_CLOSED"));
+    render(<RegisterForm />);
+    await fill({ name: "Ada", email: "ada@example.com", password: "secret-123", confirmation: "secret-123" });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("New accounts cannot be created on this installation");
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
   it("explains a server failure with its reference and a network failure, and stays on the form", async () => {
     fetchMock.mockResolvedValueOnce(apiErrorResponse(500, "INTERNAL_ERROR"));
     render(<RegisterForm />);

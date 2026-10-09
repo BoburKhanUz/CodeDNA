@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Billing\BillingController;
 use App\Http\Controllers\Api\V1\Billing\BillingWebhookController;
 use App\Http\Controllers\Api\V1\GitHub\GitHubAccountController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\InstallationController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\Organizations\InvitationAcceptanceController;
 use App\Http\Controllers\Api\V1\Organizations\OrganizationAnalyticsController;
@@ -63,6 +64,13 @@ Route::prefix('auth')->name('auth.')->group(function (): void {
 Route::get('me', MeController::class)
     ->middleware('auth:sanctum')
     ->name('me');
+
+// The installation's edition, license status and registration mode (Phase 27,
+// docs/enterprise/enterprise-architecture.md#status). Read-only, for any signed-in
+// user; never the license document, its signature or any configuration value.
+Route::get('installation', InstallationController::class)
+    ->middleware('auth:sanctum')
+    ->name('installation');
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
