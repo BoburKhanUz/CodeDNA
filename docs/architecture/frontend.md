@@ -490,7 +490,41 @@ snapshot opens with `?snapshot=<id>`.
 - **Learning activity.** A separate dashed box titled "Learning activity
   (context only)", with no causal wording.
 - **What it never does.** It sends no data, compares nothing in the
-  browser (`lib/growth/format.ts` only reformats digits), and uses no AI.
+  browser (`lib/growth/format.ts` only reformats digits), and computes
+  nothing with AI. The optional [AI insight panel](#ai-insight-panels) below
+  the summary is separate, labeled, and requested only by a click.
+
+## AI insight panels
+
+Phase 29 ([ai-intelligence-v1.md](ai-intelligence-v1.md),
+[API](../api/README.md#ai-insights)). `components/insights/insight-panel.tsx`
+and `lib/insights/client.ts` add one optional panel to three pages:
+
+| Page | Shown for | Kind |
+|---|---|---|
+| Growth | a `COMPARED` snapshot, below the summary | `GROWTH_INTERPRETATION` |
+| Learning roadmap | an `ACTIVE` roadmap, below the development focus | `ROADMAP_GUIDANCE` |
+| Challenge | a `PASSED` or `FAILED` attempt, below its deterministic feedback | `CHALLENGE_FEEDBACK` |
+
+- **Separation.** A violet "AI-generated · not authoritative" label and a
+  description saying the data wins over the explanation. The deterministic
+  content of the page is unchanged and never waits for the panel.
+- **States.** Loading skeleton; AI disabled ("complete without them", no
+  button); runtime unavailable (button disabled); none yet; queued and
+  running (`aria-live`, no fake progress); failed with its fixed message
+  and "Try again"; plan restriction with a billing link; request errors;
+  401 → `/login`. Archived projects and non-editable roadmaps are
+  read-only.
+- **Content.** Summary, points, next steps and limitations as plain text
+  (never HTML or Markdown). Each statement lists its evidence, resolved
+  to the stored facts. A provenance line gives the model, the insight
+  version and the duration.
+- **Requests.** Only `{kind, subject_id}` is sent, both validated in the
+  client. The button is disabled while a request is in flight or an
+  insight is pending.
+- **Polling.** Every 4 s while `QUEUED` or `RUNNING`, paused while the tab
+  is hidden (`usePageVisible`), stopped once terminal. A panel for a new
+  subject starts fresh (keyed remount).
 
 ## Historical DNA (`/app/projects/[project]/history`)
 

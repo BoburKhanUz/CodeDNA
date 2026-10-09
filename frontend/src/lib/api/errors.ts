@@ -126,6 +126,12 @@ export function describeApiError(error: unknown): string {
       return "There is no skill gap analysis that can be interpreted yet. Run a static analysis first.";
     case "ASSESSMENT_INPUT_TOO_LARGE":
       return "The evidence of this analysis is too large for an AI interpretation.";
+    case "AI_UNAVAILABLE":
+      return "The local AI service or its model is not available right now. Nothing was queued; try again later.";
+    case "INSIGHT_EVIDENCE_UNAVAILABLE":
+      return "There is no deterministic result here that AI can explain yet.";
+    case "INSIGHT_INPUT_TOO_LARGE":
+      return "This evidence does not fit the configured AI context, so it cannot be explained.";
     case "CHALLENGES_DISABLED":
       return "Coding challenges are not enabled on this server.";
     case "CHALLENGE_NO_ELIGIBLE_GAP":

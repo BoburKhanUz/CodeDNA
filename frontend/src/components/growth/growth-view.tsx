@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 import { ApiErrorAlert } from "@/components/auth/api-error-alert";
+import { InsightPanel } from "@/components/insights/insight-panel";
 import { ScoreBar } from "@/components/dna/score-bar";
 import { StatusBadge } from "@/components/projects/status-badge";
 import { Button } from "@/components/ui/button";
@@ -171,6 +172,9 @@ export function GrowthView({ projectId, snapshotId }: { projectId: string; snaps
       {snapshot !== null ? (
         <>
           {snapshot.status === "COMPARED" ? <Summary snapshot={snapshot} /> : null}
+          {snapshot.status === "COMPARED" ? (
+            <InsightPanel projectId={project.id} kind="GROWTH_INTERPRETATION" subjectId={snapshot.id} canRequest={project.status !== "ARCHIVED"} />
+          ) : null}
           <Assessments snapshot={snapshot} projectId={project.id} />
           {snapshot.status === "COMPARED" ? (
             <>

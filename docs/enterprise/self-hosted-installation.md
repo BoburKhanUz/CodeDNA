@@ -150,7 +150,8 @@ services and no optional integration:
 |---|---|---|
 | Your PostgreSQL, Redis, object storage | backend, queue, scheduler, migrate (analyzer: storage only) | only when customer-run |
 | `api.github.com`, `github.com`, `codeload.github.com` (443) | backend, queue | only with the GitHub App configured |
-| `AI_BASE_URL` (443) | queue | only with `AI_ENABLED=true` |
+| Nothing for AI with the bundled local runtime (`ollama`, private network); a remote `AI_BASE_URL` (443) | ai-worker, backend (health check) | only with `AI_ENABLED=true` and `AI_ALLOW_REMOTE_ENDPOINT=true` ([local AI](../operations/local-ai.md#trust-boundary)) |
+| `registry.ollama.ai` and its download hosts (443) | ollama | only while you pull a model |
 
 **Never contacted:**
 

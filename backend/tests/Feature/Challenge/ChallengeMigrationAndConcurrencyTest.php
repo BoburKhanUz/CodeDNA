@@ -308,6 +308,8 @@ final class ChallengeMigrationAndConcurrencyTest extends TestCase
         }
 
         $gaps = $this->gaps();
+        // Phase 29 AI insights reference these tables: they are reverted first.
+        $this->artisan('migrate:reset', ['--path' => 'database/migrations/2026_10_21_000001_create_ai_insights_table.php'])->assertSuccessful();
         $this->artisan('migrate:reset', ['--path' => self::MIGRATION])->assertSuccessful();
         foreach (['challenge_definitions', 'challenge_instances', 'challenge_submissions'] as $table) {
             $this->assertFalse(Schema::hasTable($table));

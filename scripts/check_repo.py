@@ -46,6 +46,9 @@ REQUIRED_DOCS = [
     "docs/integrations/oauth-setup.md",
     "docs/integrations/import-security.md",
     "docs/integrations/troubleshooting.md",
+    # Phase 29 — local AI intelligence
+    "docs/architecture/ai-intelligence-v1.md",
+    "docs/operations/local-ai.md",
 ]
 
 REQUIRED_FOUNDATION = [

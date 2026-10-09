@@ -16,6 +16,8 @@ final class ConfigurationValidatorTest extends TestCase
         'max_input_bytes' => 32768, 'max_output_bytes' => 16384, 'max_output_tokens' => 2000, 'max_attempts' => 3,
         'job_timeout_seconds' => 90, 'stale_after_seconds' => 900, 'queued_stale_after_seconds' => 3600,
         'queue_connection' => 'analysis', 'version' => '1.0.0',
+        'insights_version' => '1.0.0', 'allow_remote_endpoint' => false, 'keep_alive' => '5m', 'context_tokens' => 8192,
+        'max_concurrency' => 1, 'slot_wait_seconds' => 10, 'health_cache_seconds' => 60,
     ];
 
     private const BILLING = ['provider' => 'none', 'webhook_secret' => '', 'webhook_tolerance_seconds' => 300, 'webhook_max_bytes' => 65536];
@@ -404,9 +406,12 @@ final class ConfigurationValidatorTest extends TestCase
 
     public function test_an_enabled_provider_needs_a_model_and_an_https_url_in_production(): void
     {
-        $this->assertSame(['AI_MODEL must be set to a model identifier when AI is enabled.'], $this->aiProblems(['enabled' => true]));
-        $this->assertSame([], $this->aiProblems(['enabled' => true, 'model' => 'gpt-4o-mini']));
-        $this->assertSame([], $this->aiProblems(['enabled' => true, 'model' => 'org/model:7b', 'base_url' => 'https://llm.internal.example:8443/v1']));
+        $remote = 'AI_BASE_URL points outside the private network: set AI_ALLOW_REMOTE_ENDPOINT=true to accept this trust boundary.';
+        $this->assertSame(['AI_MODEL must be set to a model identifier when AI is enabled.', $remote], $this->aiProblems(['enabled' => true]));
+        // Phase 29: a hosted or otherwise external endpoint is an explicit, opted-in trust boundary.
+        $this->assertSame([$remote], $this->aiProblems(['enabled' => true, 'model' => 'gpt-4o-mini']));
+        $this->assertSame([], $this->aiProblems(['enabled' => true, 'model' => 'gpt-4o-mini', 'allow_remote_endpoint' => true]));
+        $this->assertSame([], $this->aiProblems(['enabled' => true, 'model' => 'org/model:7b', 'base_url' => 'https://llm.internal.example:8443/v1', 'allow_remote_endpoint' => true]));
 
         foreach (['http://llm.example/v1', 'https://user:pass@llm.example/v1', 'https://llm.example/v1?key=x', 'ftp://llm.example', ''] as $url) {
             $this->assertSame(
@@ -415,7 +420,7 @@ final class ConfigurationValidatorTest extends TestCase
                 $url,
             );
         }
-        $this->assertSame(['AI_MODEL must be set to a model identifier when AI is enabled.'], $this->aiProblems(['enabled' => true, 'model' => "m\nx"]));
+        $this->assertSame(['AI_MODEL must be set to a model identifier when AI is enabled.'], $this->aiProblems(['enabled' => true, 'model' => "m\nx", 'allow_remote_endpoint' => true]));
     }
 
     public function test_local_providers_may_use_http_outside_production(): void
@@ -428,7 +433,36 @@ final class ConfigurationValidatorTest extends TestCase
     {
         $this->assertSame(['AI_PROVIDER "fake" is not allowed in production.'], $this->aiProblems(['enabled' => true, 'provider' => 'fake']));
         $this->assertSame([], $this->aiProblems(['enabled' => true, 'provider' => 'fake'], 'local'));
-        $this->assertSame(['AI_PROVIDER must be "openai_compatible" or "fake".'], $this->aiProblems(['provider' => 'anthropic-sdk']));
+        $this->assertSame(['AI_PROVIDER must be "ollama", "openai_compatible" or "fake".'], $this->aiProblems(['provider' => 'anthropic-sdk']));
+    }
+
+    public function test_a_local_ollama_service_is_the_safe_default_and_remote_endpoints_need_an_opt_in(): void
+    {
+        $ollama = ['enabled' => true, 'provider' => 'ollama', 'model' => 'qwen2.5-coder:7b', 'base_url' => 'http://ollama:11434'];
+        $remote = 'AI_BASE_URL points outside the private network: set AI_ALLOW_REMOTE_ENDPOINT=true to accept this trust boundary.';
+        $this->assertSame([], $this->aiProblems($ollama), 'an internal service name over http is fine in production');
+        $this->assertSame([], $this->aiProblems(['enabled' => false, 'provider' => 'ollama', 'base_url' => 'http://ollama:11434']));
+        $this->assertSame(['AI_BASE_URL must be an https:// URL without query or credentials in production.'], $this->aiProblems(['base_url' => 'http://gpu.example.com:11434'] + $ollama));
+        $this->assertSame(['AI_BASE_URL must be an https:// URL without query or credentials in production.'], $this->aiProblems(['base_url' => 'http://10.0.0.7:11434'] + $ollama));
+        $this->assertSame([$remote], $this->aiProblems(['base_url' => 'https://gpu.example.com'] + $ollama));
+        $this->assertSame([], $this->aiProblems(['base_url' => 'https://gpu.example.com', 'allow_remote_endpoint' => true] + $ollama));
+        $this->assertSame([], $this->aiProblems(['base_url' => 'http://host.docker.internal:11434'] + $ollama, 'local'));
+        $this->assertSame(['AI_BASE_URL must be an http(s):// URL without query or credentials.'], $this->aiProblems(['base_url' => 'http://u:p@ollama:11434'] + $ollama, 'local'));
+        $this->assertSame(['AI_MODEL must be set to a model identifier when AI is enabled.'], $this->aiProblems(['model' => ''] + $ollama));
+    }
+
+    public function test_local_ai_limits_are_validated(): void
+    {
+        $this->assertSame(['AI_KEEP_ALIVE must be a duration such as 5m, 300s, 0 or -1.'], $this->aiProblems(['keep_alive' => 'forever']));
+        $this->assertSame([], $this->aiProblems(['keep_alive' => '-1']));
+        $this->assertSame(['AI_CONTEXT_TOKENS must be an integer between 2048 and 262144.'], $this->aiProblems(['context_tokens' => 512]));
+        $this->assertSame(['AI_MAX_CONCURRENCY must be an integer between 1 and 16.'], $this->aiProblems(['max_concurrency' => 0]));
+        $this->assertSame(['AI_SLOT_WAIT_SECONDS must be an integer between 1 and 120.'], $this->aiProblems(['slot_wait_seconds' => 0]));
+        $this->assertSame(['AI_ALLOW_REMOTE_ENDPOINT must be true or false.'], $this->aiProblems(['allow_remote_endpoint' => 'yes']));
+        $this->assertSame(['CODEDNA_INSIGHTS_VERSION must be one of: 1.0.0.'], $this->aiProblems(['insights_version' => '9.9.9']));
+        // The job must outlive waiting for a slot plus the provider timeout.
+        $this->assertSame(['AI_JOB_TIMEOUT_SECONDS must be greater than AI_TIMEOUT_SECONDS plus AI_SLOT_WAIT_SECONDS.'],
+            $this->aiProblems(['timeout_seconds' => 80, 'slot_wait_seconds' => 20, 'job_timeout_seconds' => 90]));
     }
 
     public function test_ai_settings_are_validated(): void

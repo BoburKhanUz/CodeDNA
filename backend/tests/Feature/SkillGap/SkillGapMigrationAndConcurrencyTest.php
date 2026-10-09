@@ -152,6 +152,8 @@ final class SkillGapMigrationAndConcurrencyTest extends TestCase
 
         $competency = $this->competency();
         // reset, not rollback: it reverts the growth and roadmap migrations whatever batch they are in.
+        // Phase 29 AI insights reference these tables: they are reverted first.
+        $this->artisan('migrate:reset', ['--path' => 'database/migrations/2026_10_21_000001_create_ai_insights_table.php'])->assertSuccessful();
         $this->artisan('migrate:reset', ['--path' => self::GROWTH_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:reset', ['--path' => self::ROADMAP_MIGRATION])->assertSuccessful();
         $this->artisan('migrate:reset', ['--path' => self::CHALLENGE_MIGRATION])->assertSuccessful();

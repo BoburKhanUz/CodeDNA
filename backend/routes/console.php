@@ -14,6 +14,7 @@ Schedule::command('analysis:fail-stale')->everyFiveMinutes()->withoutOverlapping
 
 // Phase 15: fail AI assessments stuck in QUEUED or RUNNING.
 Schedule::command('assessment:fail-stale')->everyFiveMinutes()->withoutOverlapping();
+Schedule::command('insight:fail-stale')->everyFiveMinutes()->withoutOverlapping();
 
 // Phase 16: end challenge evaluations stuck in QUEUED or RUNNING.
 Schedule::command('challenge:fail-stale')->everyFiveMinutes()->withoutOverlapping();

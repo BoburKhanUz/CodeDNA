@@ -11,6 +11,7 @@ import type { Challenge, ChallengeSubmission, Project } from "@/lib/api/types";
 import { getChallenge } from "@/lib/challenge/client";
 import { ruleLimit } from "@/lib/challenge/format";
 import { CHALLENGE_ID, challenge, challengeSummary, SUBMISSION_ID, submission, summaryOf } from "@/test/challenge";
+import { aiReady } from "@/test/insights";
 import { apiErrorResponse, jsonResponse, page, project } from "@/test/responses";
 import { resetRouter, router } from "@/test/router";
 import { gapsSnapshot, skillGapSummary } from "@/test/skill-gap";
@@ -46,6 +47,8 @@ function respondWith({ challenges = [], submissions = [], hasSkillGaps = true, p
   const details = [...challenges];
   fetchMock.mockImplementation(async (input, init) => {
     const url = String(input);
+    if (url.endsWith("/ai/status")) return jsonResponse({ data: aiReady });
+    if (url.includes("/insights")) return jsonResponse({ data: [] });
     if (init?.method === "POST") return post ? post(url, JSON.parse(String(init.body))) : jsonResponse({ data: challenge() }, 201);
     if (url.includes(`/submissions/${SUBMISSION_ID}`)) return jsonResponse({ data: queue.length > 1 ? queue.shift() : queue[0] });
     if (url.includes(`/challenges/${CHALLENGE_ID}`)) return jsonResponse({ data: details.length > 1 ? details.shift() : details[0] });
@@ -310,6 +313,17 @@ describe("ChallengeDetail", () => {
     expect(screen.getByTestId("case-h2")).not.toHaveTextContent("expected");
     expect(screen.getByTestId("case-v2")).not.toHaveTextContent("observed");
     expect(screen.getByTestId("attempts")).toHaveTextContent("Attempt 1: Not passed — 3 of 5 tests");
+  });
+
+  it("offers an AI explanation of an evaluated attempt next to the deterministic feedback", async () => {
+    const failed = submission();
+    respondWith({ challenges: [challenge({ attempts_used: 1, last_result: "FAILED", recent_attempts: [summaryOf(failed)] })], submissions: [failed] });
+    render(<ChallengeDetail projectId={project.id} challengeId={CHALLENGE_ID} />);
+
+    const panel = await screen.findByTestId("insight-panel");
+    expect(panel).toHaveAttribute("data-kind", "CHALLENGE_FEEDBACK");
+    expect(screen.getByTestId("feedback-verdict")).toBeInTheDocument();
+    expect(within(panel).getByTestId("insight-request")).toBeEnabled();
   });
 
   it("shows rule violations by function and line", async () => {

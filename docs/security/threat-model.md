@@ -50,7 +50,7 @@ in Phase 21 and the remaining risks are in
 | Analyzer → storage | Pre-signed URL | Exact host allow-list, HTTPS port only for public hosts, resolved-address checks, pinned address (no DNS rebinding), no redirects, size cap |
 | Laravel → evaluator | Spool files | No network; strict request schema; expected outputs never sent; per-slot unprivileged users with rlimits; results treated as untrusted and graded in Laravel |
 | Laravel → GitHub | GitHub App | Per-import installation tokens limited to one repository and read-only; repository, branch, installation and commit verified with GitHub; downloads only from allow-listed origins |
-| Laravel → AI provider | HTTPS | No source code or user-written text in prompts; response size-capped and validated against a closed schema; output stored as text, never rendered as HTML |
+| Laravel → AI provider | Private network (local Ollama, default) or HTTPS with `AI_ALLOW_REMOTE_ENDPOINT=true` | No source code, test values or user-written text in prompts; no fallback provider; response size-capped and validated against a closed schema and the cited evidence; output stored as text, never rendered as HTML |
 | Containers → each other | Docker networks | Three networks; the frontend and analyzer reach only what they need |
 
 ## How each attacker is stopped
@@ -113,6 +113,16 @@ or stack traces.
   text.
 - Provider errors are reduced to fixed codes.
 - The fake provider is refused in every non-local environment.
+- Since Phase 29 the default provider is a local runtime with no published
+  port. Production refuses a remote endpoint unless it uses https and is
+  explicitly allowed, and nothing ever falls back to another provider.
+- Insight claims must cite evidence IDs from the input, and their numbers,
+  directions and pass/fail wording must match that evidence. Output that
+  follows injected instructions (links, code, markup, prompt leaks, scores,
+  judgments of people) is rejected. The model has no tools.
+- A runtime that hangs or floods is bounded by timeouts, a concurrency
+  semaphore, a separate queue and worker, and response-size limits.
+  Analysis never waits for it.
 
 **I. Compromised internal service.**
 

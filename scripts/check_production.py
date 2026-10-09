@@ -15,6 +15,9 @@ and fails on anything that would weaken the production baseline
 - network segmentation: the documented networks, internal except the public
   and egress ones; each service only on the networks it needs;
 - the evaluator: no network, the gVisor runtime, production mode;
+- local AI (Phase 29): the AI worker on its own queue; Ollama only with the
+  local-ai profile, a pinned image, no published port, on the internal "ai"
+  network (plus egress for explicit model pulls);
 - fixed production values: APP_ENV=production, APP_DEBUG=false, secure
   cookies, explicit trusted proxies, gVisor evaluator isolation, no fake
   billing, JSON logs;
@@ -24,7 +27,8 @@ and fails on anything that would weaken the production baseline
 - production images: non-root users, no dev targets.
 
 Usage: scripts/check_production.py [--external] <rendered-compose.json>
-(render with ``--profile migrate`` so the one-shot migration is included).
+(render with ``--profile migrate --profile local-ai`` so the one-shot
+migration and the optional local AI runtime are included).
 ``--external`` checks the production file combined with every
 docker/enterprise/compose.external-*.yml overlay (Phase 27): the bundled data
 services are off, and only the scheduler, the migration job and the analyzer
@@ -41,12 +45,15 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 
-SERVICES = {"nginx", "frontend", "backend", "queue", "scheduler", "migrate", "analyzer", "evaluator", "postgres", "redis", "minio", "minio-init"}
+SERVICES = {"nginx", "frontend", "backend", "queue", "ai-worker", "scheduler", "migrate", "analyzer", "evaluator", "postgres", "redis", "minio", "minio-init", "ollama"}
 NETWORKS = {
     "nginx": {"public", "web", "app"},
     "frontend": {"web"},
-    "backend": {"app", "data", "storage", "egress"},
+    "backend": {"app", "data", "storage", "egress", "ai"},
     "queue": {"data", "storage", "analysis", "egress"},
+    # Local AI (Phase 29): the AI worker and the optional Ollama runtime.
+    "ai-worker": {"data", "ai", "egress"},
+    "ollama": {"ai", "egress"},
     "scheduler": {"data"},
     "migrate": {"data"},
     "analyzer": {"analysis"},
@@ -160,7 +167,15 @@ def check_compose(model: dict[str, Any], external: bool = False) -> list[str]:
     if environment.get("EVALUATOR_PRODUCTION") != "true" or environment.get("EVALUATOR_ISOLATION") != "gvisor":
         errors.append("service evaluator: EVALUATOR_PRODUCTION=true and EVALUATOR_ISOLATION=gvisor are required")
 
-    for name in ("backend", "queue", "scheduler", "migrate"):
+    ollama = services.get("ollama", {})
+    if "local-ai" not in (ollama.get("profiles") or []):
+        errors.append("service ollama: must only run explicitly (profile local-ai)")
+    if not re.fullmatch(r"ollama/ollama:\d+\.\d+\.\d+", str(ollama.get("image", ""))):
+        errors.append("service ollama: the image must be pinned to a released version")
+    if ollama.get("ports") or ollama.get("expose"):
+        errors.append("service ollama: must not publish or expose ports")
+
+    for name in ("backend", "queue", "ai-worker", "scheduler", "migrate"):
         environment = (services.get(name) or {}).get("environment") or {}
         for key, value in FIXED_BACKEND_ENV.items():
             if environment.get(key) != value:

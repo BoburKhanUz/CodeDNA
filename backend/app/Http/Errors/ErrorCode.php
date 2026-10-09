@@ -38,6 +38,10 @@ enum ErrorCode: string
     case AiAssessmentDisabled = 'AI_ASSESSMENT_DISABLED';
     case AssessmentEvidenceUnavailable = 'ASSESSMENT_EVIDENCE_UNAVAILABLE';
     case AssessmentInputTooLarge = 'ASSESSMENT_INPUT_TOO_LARGE';
+    // Local AI intelligence (Phase 29).
+    case AiUnavailable = 'AI_UNAVAILABLE';
+    case InsightEvidenceUnavailable = 'INSIGHT_EVIDENCE_UNAVAILABLE';
+    case InsightInputTooLarge = 'INSIGHT_INPUT_TOO_LARGE';
     // Coding challenges (Phase 16).
     case ChallengesDisabled = 'CHALLENGES_DISABLED';
     case ChallengeNoEligibleGap = 'CHALLENGE_NO_ELIGIBLE_GAP';
@@ -110,6 +114,7 @@ enum ErrorCode: string
             self::CsrfTokenMismatch => 419,
             self::ProjectArchived, self::InvalidSourceType, self::AnalysisNotCompleted,
             self::AiAssessmentDisabled, self::AssessmentEvidenceUnavailable, self::AssessmentInputTooLarge,
+            self::InsightEvidenceUnavailable, self::InsightInputTooLarge,
             self::ChallengesDisabled, self::ChallengeNoEligibleGap, self::ChallengeNoneAvailable,
             self::ChallengeEvaluationUnavailable, self::ChallengeEvaluationPending, self::ChallengeClosed,
             self::RoadmapNoSkillGaps, self::RoadmapNoActionableGaps, self::RoadmapEvidenceInvalid,
@@ -127,7 +132,7 @@ enum ErrorCode: string
             self::RateLimited, self::GitHubRateLimited, self::ProviderRateLimited => 429,
             self::InternalError => 500,
             self::ServiceUnavailable, self::GitHubNotConfigured, self::GitHubUnavailable, self::BillingUnavailable,
-            self::ProviderNotConfigured, self::ProviderUnavailable => 503,
+            self::ProviderNotConfigured, self::ProviderUnavailable, self::AiUnavailable => 503,
         };
     }
 
@@ -157,6 +162,9 @@ enum ErrorCode: string
             self::AiAssessmentDisabled => 'AI assessment is not enabled on this server.',
             self::AssessmentEvidenceUnavailable => 'There is no skill gap analysis that can be interpreted for this project.',
             self::AssessmentInputTooLarge => 'The evidence of this analysis exceeds the AI input limit.',
+            self::AiUnavailable => 'The local AI service or its model is not available right now. Nothing was queued.',
+            self::InsightEvidenceUnavailable => 'There is no deterministic result here that AI can interpret yet.',
+            self::InsightInputTooLarge => 'The evidence exceeds the configured AI input or context limit.',
             self::ChallengesDisabled => 'Coding challenges are not enabled on this server.',
             self::ChallengeNoEligibleGap => 'There is no material skill gap with a supported challenge category.',
             self::ChallengeNoneAvailable => 'Every challenge for this skill gap analysis has already been assigned.',

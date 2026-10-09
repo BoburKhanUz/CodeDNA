@@ -63,7 +63,7 @@ would include the feature, so the message can say why.
 | `SOURCE_UPLOADS` | `PROJECTS` | count | monthly | Each new uploaded snapshot |
 | `SOURCE_UPLOAD_BYTES` | `PROJECTS` | bytes | monthly | The archive size of each new uploaded snapshot |
 | `ANALYSES` | `SOURCE_ANALYSIS` | count | monthly | Each new analysis run |
-| `AI_ASSESSMENTS` | `AI_ASSESSMENT` | count | monthly | Each new AI assessment |
+| `AI_ASSESSMENTS` | `AI_ASSESSMENT` | count | monthly | Each new AI assessment or AI insight (Phase 29) |
 | `CHALLENGE_SUBMISSIONS` | `CODING_CHALLENGES` | count | monthly | Each new submission |
 | `GITHUB_IMPORTS` | `GITHUB_INTEGRATION` | count | monthly | Each new repository import from any provider (Phase 28: GitHub, GitLab and Bitbucket Cloud share this counter; the keys keep their Phase 19 names, the labels read "Repository imports" and "Repository integrations"). A failed import is refunded |
 
@@ -114,6 +114,7 @@ once per resource:
 |---|---|
 | Analysis run | `FAILED` or `CANCELLED` |
 | AI assessment | `FAILED` |
+| AI insight | `FAILED` |
 | Challenge submission | `ERROR` (the evaluator could not judge it; a failing solution is not refunded) |
 | GitHub import | `FAILED` |
 

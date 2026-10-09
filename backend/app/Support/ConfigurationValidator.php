@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Support;
 
 use App\Enums\Repositories\RepositoryProviderKey;
+use App\Services\Ai\OllamaClient;
 use App\Services\Assessment\AssessmentSpecification;
 use App\Services\Assessment\Provider\FakeAiProvider;
 use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
@@ -15,6 +16,7 @@ use App\Services\Competency\CompetencySpecification;
 use App\Services\Dna\ScoringSpecification;
 use App\Services\GitHub\GitHubSettings;
 use App\Services\Growth\GrowthRules;
+use App\Services\Insights\InsightSpecification;
 use App\Services\Repositories\ProviderSettings;
 use App\Services\Roadmap\RoadmapCatalog;
 use App\Services\Roadmap\RoadmapRules;
@@ -527,12 +529,15 @@ final class ConfigurationValidator
         if (! in_array($ai['version'] ?? null, AssessmentSpecification::VERSIONS, true)) {
             $problems[] = 'CODEDNA_ASSESSMENT_VERSION must be one of: '.implode(', ', AssessmentSpecification::VERSIONS).'.';
         }
+        if (! in_array($ai['insights_version'] ?? null, InsightSpecification::VERSIONS, true)) {
+            $problems[] = 'CODEDNA_INSIGHTS_VERSION must be one of: '.implode(', ', InsightSpecification::VERSIONS).'.';
+        }
         if (! is_bool($ai['enabled'] ?? null)) {
             $problems[] = 'AI_ENABLED must be true or false.';
         }
         $provider = $ai['provider'] ?? null;
-        if (! in_array($provider, [OpenAiCompatibleProvider::NAME, FakeAiProvider::NAME], true)) {
-            $problems[] = 'AI_PROVIDER must be "openai_compatible" or "fake".';
+        if (! in_array($provider, [OllamaClient::NAME, OpenAiCompatibleProvider::NAME, FakeAiProvider::NAME], true)) {
+            $problems[] = 'AI_PROVIDER must be "ollama", "openai_compatible" or "fake".';
         }
         if ($provider === FakeAiProvider::NAME && self::isDeployed($environment)) {
             $problems[] = 'AI_PROVIDER "fake" is not allowed in production.';
@@ -540,18 +545,18 @@ final class ConfigurationValidator
         if (! in_array($ai['structured_output'] ?? null, OpenAiCompatibleProvider::STRUCTURED_OUTPUT_MODES, true)) {
             $problems[] = 'AI_STRUCTURED_OUTPUT must be one of: '.implode(', ', OpenAiCompatibleProvider::STRUCTURED_OUTPUT_MODES).'.';
         }
+        if (! is_bool($ai['allow_remote_endpoint'] ?? null)) {
+            $problems[] = 'AI_ALLOW_REMOTE_ENDPOINT must be true or false.';
+        }
+        if (! is_string($ai['keep_alive'] ?? null) || preg_match('/^(?:-1|0|[0-9]{1,5}(?:s|m|h)?)$/', $ai['keep_alive']) !== 1) {
+            $problems[] = 'AI_KEEP_ALIVE must be a duration such as 5m, 300s, 0 or -1.';
+        }
 
-        if (($ai['enabled'] ?? false) === true && $provider === OpenAiCompatibleProvider::NAME) {
+        if (($ai['enabled'] ?? false) === true && in_array($provider, [OllamaClient::NAME, OpenAiCompatibleProvider::NAME], true)) {
             if (! is_string($ai['model'] ?? null) || preg_match('#^[A-Za-z0-9._:/-]{1,128}$#', $ai['model']) !== 1) {
                 $problems[] = 'AI_MODEL must be set to a model identifier when AI is enabled.';
             }
-            $url = $ai['base_url'] ?? null;
-            $scheme = self::isDeployed($environment) ? 'https' : 'https?';
-            if (! is_string($url) || preg_match('#^'.$scheme.'://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*$#', $url) !== 1) {
-                $problems[] = self::isDeployed($environment)
-                    ? 'AI_BASE_URL must be an https:// URL without query or credentials in production.'
-                    : 'AI_BASE_URL must be an http(s):// URL without query or credentials.';
-            }
+            $problems = [...$problems, ...$this->aiEndpointProblems($ai, $environment)];
         }
 
         $ranges = [
@@ -561,6 +566,10 @@ final class ConfigurationValidator
             'AI_MAX_OUTPUT_BYTES' => [$ai['max_output_bytes'] ?? null, 1024, 262144],
             'AI_MAX_OUTPUT_TOKENS' => [$ai['max_output_tokens'] ?? null, 256, 32768],
             'AI_MAX_ATTEMPTS' => [$ai['max_attempts'] ?? null, 1, 5],
+            'AI_CONTEXT_TOKENS' => [$ai['context_tokens'] ?? null, 2048, 262144],
+            'AI_MAX_CONCURRENCY' => [$ai['max_concurrency'] ?? null, 1, 16],
+            'AI_SLOT_WAIT_SECONDS' => [$ai['slot_wait_seconds'] ?? null, 1, 120],
+            'AI_HEALTH_CACHE_SECONDS' => [$ai['health_cache_seconds'] ?? null, 5, 3600],
             'AI_STALE_AFTER_SECONDS' => [$ai['stale_after_seconds'] ?? null, 60, 86400],
             'AI_QUEUED_STALE_AFTER_SECONDS' => [$ai['queued_stale_after_seconds'] ?? null, 60, 604800],
         ];
@@ -575,10 +584,44 @@ final class ConfigurationValidator
         $timeout = $ai['timeout_seconds'] ?? null;
         $job = $ai['job_timeout_seconds'] ?? null;
         $retryAfter = $config->get('queue.connections.'.($ai['queue_connection'] ?? 'analysis').'.retry_after');
+        $slotWait = $ai['slot_wait_seconds'] ?? null;
         if (! is_int($job) || ! is_int($timeout) || $job <= $timeout) {
             $problems[] = 'AI_JOB_TIMEOUT_SECONDS must be greater than AI_TIMEOUT_SECONDS.';
+        } elseif (is_int($slotWait) && $job <= $timeout + $slotWait) {
+            $problems[] = 'AI_JOB_TIMEOUT_SECONDS must be greater than AI_TIMEOUT_SECONDS plus AI_SLOT_WAIT_SECONDS.';
         } elseif (! is_int($retryAfter) || $job >= $retryAfter) {
             $problems[] = 'AI_JOB_TIMEOUT_SECONDS must be lower than the queue retry_after.';
+        }
+
+        return $problems;
+    }
+
+    /**
+     * The model endpoint (Phase 29, docs/operations/local-ai.md#trust-boundary).
+     * A URL without credentials, query or fragment. In production:
+     * - a service on the private network (a single-label host such as
+     *   "ollama") may use http;
+     * - anything else (a qualified host name or an IP address) is a separate
+     *   trust boundary: it needs https and AI_ALLOW_REMOTE_ENDPOINT=true.
+     * The hosted default of openai_compatible always needs https there.
+     *
+     * @param  array<string, mixed>  $ai
+     * @return list<string>
+     */
+    private function aiEndpointProblems(array $ai, string $environment): array
+    {
+        $url = $ai['base_url'] ?? null;
+        $valid = is_string($url) && preg_match('#^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*$#', $url) === 1;
+        if (! self::isDeployed($environment)) {
+            return $valid ? [] : ['AI_BASE_URL must be an http(s):// URL without query or credentials.'];
+        }
+        $external = $valid && self::isExternalHost((string) parse_url((string) $url, PHP_URL_HOST));
+        if (! $valid || ($external && ! str_starts_with((string) $url, 'https://'))) {
+            return ['AI_BASE_URL must be an https:// URL without query or credentials in production.'];
+        }
+        $problems = [];
+        if ($external && ($ai['allow_remote_endpoint'] ?? false) !== true) {
+            $problems[] = 'AI_BASE_URL points outside the private network: set AI_ALLOW_REMOTE_ENDPOINT=true to accept this trust boundary.';
         }
 
         return $problems;

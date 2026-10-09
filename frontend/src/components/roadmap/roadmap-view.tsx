@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiErrorAlert } from "@/components/auth/api-error-alert";
+import { InsightPanel } from "@/components/insights/insight-panel";
 import { StatusBadge } from "@/components/projects/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -346,6 +347,8 @@ function RoadmapDetail({
       </Card>
 
       <DevelopmentFocus roadmap={roadmap} />
+
+      {roadmap.status === "ACTIVE" ? <InsightPanel projectId={project.id} kind="ROADMAP_GUIDANCE" subjectId={roadmap.id} canRequest={editable} /> : null}
 
       {roadmap.tracks.map((track) => (
         <TrackCard key={track.key} project={project} roadmap={roadmap} track={track} editable={editable} sending={sending} onComplete={onComplete} />

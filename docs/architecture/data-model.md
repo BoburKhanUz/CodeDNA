@@ -374,6 +374,47 @@ is stored here or read from here.
 - **What is never stored:** API keys, headers, prompt text and raw
   responses.
 
+### ai_insights
+
+Phase 29 ([ai-intelligence-v1.md](ai-intelligence-v1.md#storage)). AI
+explanations of one growth snapshot, learning roadmap or challenge
+submission. **Non-authoritative**, like `ai_assessments`: no deterministic
+table references or reads this one.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | ulid PK | |
+| `user_id`, `project_id` | ulid | the project's owner and project; part of every subject FK |
+| `kind` | varchar(32) | `GROWTH_INTERPRETATION` \| `ROADMAP_GUIDANCE` \| `CHALLENGE_FEEDBACK` |
+| `growth_snapshot_id`, `roadmap_snapshot_id`, `challenge_submission_id` | ulid null | exactly the one matching `kind` (CHECK); composite FK `(id, project_id, user_id)` → the subject table, `RESTRICT` |
+| `requested_by` | ulid | FK → users; who asked |
+| `insight_version`, `input_schema_version`, `output_schema_version`, `prompt_version` | varchar(32) | |
+| `prompt_fingerprint`, `specification_fingerprint`, `input_fingerprint` | char(64) | SHA-256 hex (CHECK) |
+| `output_fingerprint` | char(64) null | present ⇔ `SUCCEEDED` |
+| `provider`, `model` | varchar(32), varchar(128) | format CHECKs |
+| `status` | varchar(16) | `QUEUED` \| `RUNNING` \| `SUCCEEDED` \| `FAILED` |
+| `attempts` | smallint | model calls, 0–10 |
+| `claim_token`, `lease_expires_at` | uuid, timestamp null | present ⇔ `RUNNING` |
+| `input` | jsonb | object ≤ 512 KiB: the evidence exactly as the model received it |
+| `output` | jsonb null | validated `insight/v1` object ≤ 256 KiB; present ⇔ `SUCCEEDED` |
+| `provider_metadata` | jsonb null | served model, token counts when reported, duration; ≤ 4 KiB |
+| `failure_code`, `failure_detail` | varchar null | present ⇔ `FAILED`; fixed codes and rule identifiers only |
+| `started_at`, `completed_at`, `created_at`, `updated_at` | timestamp | `completed_at` present ⇔ terminal |
+
+- **Partial unique index:** `ai_insights_identity_active_unique` on
+  `(project_id, kind, input_fingerprint, insight_version,
+  prompt_fingerprint, provider, model)` `WHERE status IN ('QUEUED',
+  'RUNNING', 'SUCCEEDED')`.
+- **Indexes:** `(project_id, kind, created_at)`, `(status, updated_at)` and
+  one per subject column.
+- **Trigger:** `ai_insights_terminal_immutable` refuses any update of a
+  `SUCCEEDED` or `FAILED` row.
+- **Supporting index:** the same migration adds
+  `challenge_submissions_owner_unique (id, project_id, user_id)` as the
+  target of the challenge FK.
+- **What is never stored:** API keys, URLs, headers, prompt text, raw model
+  responses, source code and challenge test values.
+
 ### challenge_definitions, challenge_instances, challenge_submissions
 
 Phase 16 ([coding-challenges-v1.md](coding-challenges-v1.md)). A practice
@@ -676,7 +717,7 @@ enums (`app/Enums`) through Eloquent enum casts:
 | `DnaSnapshotStatus` | `READY`, `INSUFFICIENT_DATA` |
 | `CompetencySnapshotStatus` | `ASSESSED`, `INSUFFICIENT_DATA` (competency statuses and levels live in the JSONB) |
 | `SkillGapSnapshotStatus`, `SkillGapStatus`, `GapPriority` | see `skill_gap_snapshots` and `skill_gap_results` |
-| `AssessmentStatus` | `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED` (see `ai_assessments`) |
+| `AssessmentStatus` | `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED` (see `ai_assessments`; also used by `ai_insights`) |
 | `ChallengeStatus` | `ASSIGNED`, `EVALUATING`, `PASSED`, `FAILED` (see `challenge_instances`) |
 | `SubmissionStatus` | `QUEUED`, `RUNNING`, `PASSED`, `FAILED`, `ERROR` (see `challenge_submissions`) |
 | `ChallengeDifficulty` | `BEGINNER`, `INTERMEDIATE`, `ADVANCED` |

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiErrorAlert } from "@/components/auth/api-error-alert";
+import { InsightPanel } from "@/components/insights/insight-panel";
 import { CodeEditor } from "@/components/challenge/code-editor";
 import { EvaluationFeedback } from "@/components/challenge/evaluation-feedback";
 import { Button } from "@/components/ui/button";
@@ -307,6 +308,9 @@ export function ChallengeDetail({ projectId, challengeId }: { projectId: string;
             Feedback
           </h2>
           <EvaluationFeedback submission={selected} />
+          {selected.status === "PASSED" || selected.status === "FAILED" ? (
+            <InsightPanel projectId={project.id} kind="CHALLENGE_FEEDBACK" subjectId={selected.id} canRequest={!archived} />
+          ) : null}
         </section>
       ) : null}
 

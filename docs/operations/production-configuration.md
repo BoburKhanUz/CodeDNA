@@ -70,7 +70,7 @@ Set in `docker-compose.prod.yml` and checked by `make prod-config`:
 | `ANALYZER_ALLOWED_SOURCE_HOSTS`, `ANALYZER_LOCAL_SOURCE_HOSTS` | `minio` | Hostnames pre-signed URLs may use |
 | `ANALYZER_HMAC_SECRET_PREVIOUS` | empty | Only during an HMAC rotation |
 | `GITHUB_APP_*` | empty (off) | All or nothing; the private key as PEM in `GITHUB_APP_PRIVATE_KEY` |
-| `AI_*` | disabled | `AI_ENABLED=true` needs a model, an https base URL and a key |
+| `AI_*` | disabled | `AI_ENABLED=true` needs a pulled model. The default is the bundled local Ollama runtime (`--profile local-ai`, internal http). A remote endpoint needs https and `AI_ALLOW_REMOTE_ENDPOINT=true` ([local AI](local-ai.md)) |
 | `CHALLENGE_ENABLED`, `CHALLENGE_EVALUATOR` | `true`, `spool` | `CHALLENGE_EVALUATOR=none` disables execution entirely |
 | `EVALUATOR_RUNTIME` | `runsc` | Name of the registered gVisor runtime |
 | Source, analyzer and challenge limits | as in development | Same ranges, validated at boot |

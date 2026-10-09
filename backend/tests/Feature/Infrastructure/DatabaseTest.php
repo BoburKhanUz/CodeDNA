@@ -33,7 +33,7 @@ final class DatabaseTest extends TestCase
         // (Phase 15), challenges (Phase 16), roadmaps (Phase 17) growth (Phase 18), GitHub (Phase 19)
         // billing (Phase 23) and organizations (Phase 24), nothing else.
         $this->assertSame([
-            'ai_assessments', 'analysis_results', 'analysis_runs',
+            'ai_assessments', 'ai_insights', 'analysis_results', 'analysis_runs',
             'billing_customers', 'billing_organization_usage_counters', 'billing_plan_features', 'billing_plan_quotas', 'billing_plans',
             'billing_subscription_events', 'billing_subscriptions', 'billing_usage_counters', 'billing_usage_events', 'billing_webhook_events',
             'challenge_definitions', 'challenge_instances', 'challenge_submissions', 'competency_snapshots', 'developer_profiles', 'dna_snapshots', 'failed_jobs', 'github_accounts', 'github_connections', 'github_imports', 'github_oauth_states', 'growth_observations', 'growth_snapshots', 'migrations',

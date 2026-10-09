@@ -157,6 +157,21 @@ Since Phase 27 CodeDNA has an **enterprise / self-hosted foundation**:
 
 See [enterprise architecture](docs/enterprise/enterprise-architecture.md).
 
+Since Phase 29 CodeDNA has an optional **local AI** layer:
+
+- An AI gateway targets a local [Ollama](https://ollama.com) runtime by
+  default. Ollama is optional, is never exposed, and its model is never
+  downloaded automatically. The gateway enforces timeouts, context budgets,
+  a concurrency limit and health checks.
+- Evidence-grounded, non-authoritative explanations of growth, learning
+  roadmaps and challenge results are checked against the deterministic
+  evidence before they are shown. AI never changes a score.
+- AI work runs on its own worker and queue, so it never delays analysis.
+  No external AI API or credential is required.
+
+See [local AI intelligence](docs/architecture/ai-intelligence-v1.md) and
+[local AI operations](docs/operations/local-ai.md).
+
 Nothing in the repository is a production value or credential. The full plan is in
 [docs/architecture/overview.md](docs/architecture/overview.md#delivery-phases).
 
@@ -180,10 +195,10 @@ code runs only in the network-less evaluator and never changes CodeDNA.
 ## Documentation
 
 - Product: [vision](docs/product/vision.md) · [MVP](docs/product/mvp.md)
-- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md) · [coding challenges](docs/architecture/coding-challenges-v1.md) · [challenge evaluator](docs/architecture/challenge-evaluator.md) · [learning roadmap](docs/architecture/learning-roadmap-v1.md) · [growth tracking](docs/architecture/growth-tracking-v1.md) · [GitHub integration](docs/architecture/github-integration-v1.md) · [repository providers](docs/integrations/provider-architecture.md) ([GitLab](docs/integrations/gitlab.md), [Bitbucket Cloud](docs/integrations/bitbucket-cloud.md), [OAuth setup](docs/integrations/oauth-setup.md), [import security](docs/integrations/import-security.md), [troubleshooting](docs/integrations/troubleshooting.md)) · [historical DNA](docs/architecture/historical-dna-v1.md)
+- Architecture: [overview](docs/architecture/overview.md) · [infrastructure](docs/architecture/infrastructure.md) · [backend](docs/architecture/backend.md) · [data model](docs/architecture/data-model.md) · [frontend](docs/architecture/frontend.md) · [analyzer & IR](docs/architecture/analyzer.md) · [data flow](docs/architecture/data-flow.md) · [coding challenges](docs/architecture/coding-challenges-v1.md) · [challenge evaluator](docs/architecture/challenge-evaluator.md) · [learning roadmap](docs/architecture/learning-roadmap-v1.md) · [growth tracking](docs/architecture/growth-tracking-v1.md) · [GitHub integration](docs/architecture/github-integration-v1.md) · [repository providers](docs/integrations/provider-architecture.md) ([GitLab](docs/integrations/gitlab.md), [Bitbucket Cloud](docs/integrations/bitbucket-cloud.md), [OAuth setup](docs/integrations/oauth-setup.md), [import security](docs/integrations/import-security.md), [troubleshooting](docs/integrations/troubleshooting.md)) · [historical DNA](docs/architecture/historical-dna-v1.md) · [local AI intelligence](docs/architecture/ai-intelligence-v1.md)
 - Testing: [test strategy](docs/testing/test-strategy.md) · [QA matrix](docs/testing/qa-matrix.md)
 - Security: [threat model](docs/security/threat-model.md) · [security hardening](docs/security/security-hardening.md) (after pulling Phase 21, run `make setup` once to add `REDIS_PASSWORD` to `.env`) · [production security baseline](docs/operations/security-baseline.md)
-- Operations: [production deployment](docs/operations/production-deployment.md) · [production configuration](docs/operations/production-configuration.md) · [backup and restore](docs/operations/backup-and-restore.md) · [rollback](docs/operations/rollback.md)
+- Operations: [production deployment](docs/operations/production-deployment.md) · [local AI](docs/operations/local-ai.md) · [production configuration](docs/operations/production-configuration.md) · [backup and restore](docs/operations/backup-and-restore.md) · [rollback](docs/operations/rollback.md)
 - Performance: [architecture](docs/performance/performance-architecture.md) · [benchmarking](docs/performance/benchmarking.md) · [load testing](docs/performance/load-testing.md) · [database](docs/performance/database-performance.md) · [queues](docs/performance/queue-performance.md) · [scaling guide](docs/performance/scaling-guide.md)
 - Enterprise / self-hosted: [architecture](docs/enterprise/enterprise-architecture.md) · [installation](docs/enterprise/self-hosted-installation.md) · [configuration](docs/enterprise/configuration-reference.md) · [licensing](docs/enterprise/licensing.md) · [upgrade and rollback](docs/enterprise/upgrade-and-rollback.md) · [security and data ownership](docs/enterprise/security-and-data-ownership.md) · [troubleshooting](docs/enterprise/troubleshooting.md)
 - Billing: [architecture](docs/billing/billing-architecture.md) · [subscription state machine](docs/billing/subscription-state-machine.md) · [entitlements and quotas](docs/billing/entitlements-and-quotas.md)

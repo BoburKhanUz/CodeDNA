@@ -16,6 +16,12 @@ language (Phase 15). Related:
 > hash, data quality or version. If AI text conflicts with deterministic
 > data, the deterministic data always wins.
 
+**Since Phase 29** every provider call goes through the
+[AI gateway](ai-intelligence-v1.md#ai-gateway) (context budget, concurrency
+limit, metrics) and the default provider is a local Ollama runtime
+([local AI operations](../operations/local-ai.md)). The assessment
+specification, validation and storage below are unchanged.
+
 ## Purpose and scope
 
 An assessment is a short, structured interpretation of one skill gap
@@ -271,10 +277,19 @@ The defenses are layered:
 
 ## Providers
 
+### Ollama (`AI_PROVIDER=ollama`, default since Phase 29)
+
+Ollama's native `POST {AI_BASE_URL}/api/chat` (non-streaming) with the JSON
+schema as `format`, `temperature: 0`, a fixed seed, `num_predict` and
+`num_ctx`. Error handling maps to the same failures as below (a missing
+model is `PROVIDER_REJECTED`, `done_reason: length` is `OUTPUT_TOO_LARGE`).
+See [ai-intelligence-v1.md](ai-intelligence-v1.md#ai-gateway).
+
 ### OpenAI-compatible (`AI_PROVIDER=openai_compatible`)
 
-Any Chat Completions endpoint: hosted services or local servers such as
-vLLM, llama.cpp or Ollama.
+Any Chat Completions endpoint: local servers such as vLLM, llama.cpp or LM
+Studio, or a remote service (in production a remote endpoint needs
+`AI_ALLOW_REMOTE_ENDPOINT=true`).
 
 - **Request:** `POST {AI_BASE_URL}/chat/completions` with
   - the configured model, `temperature: 0` and `max_tokens`
@@ -463,12 +478,12 @@ All settings live in `config/codedna.php` `ai`, from the environment only.
 | Variable | Default | Rule |
 |---|---|---|
 | `AI_ENABLED` | `false` | Boolean; POST answers `AI_ASSESSMENT_DISABLED` while false, and a queued or retried job then fails as `ASSESSMENT_FAILED` (`ai_disabled`) without calling the provider |
-| `AI_PROVIDER` | `openai_compatible` | `openai_compatible` or `fake` (never in production) |
-| `AI_MODEL` | empty | Required when enabled with `openai_compatible` |
-| `AI_BASE_URL` | `https://api.openai.com/v1` | https in production; http allowed locally |
+| `AI_PROVIDER` | `ollama` | `ollama`, `openai_compatible` or `fake` (never in production) |
+| `AI_MODEL` | `qwen2.5-coder:7b` | Required when enabled with `ollama` or `openai_compatible` |
+| `AI_BASE_URL` | `http://ollama:11434` | http only for a single-label internal host in production; a remote host needs https and `AI_ALLOW_REMOTE_ENDPOINT=true` |
 | `AI_API_KEY` | empty | Optional (local servers); never stored, logged or sent to the frontend |
 | `AI_STRUCTURED_OUTPUT` | `json_schema` | `json_schema`, `json_object` or `none` |
-| `AI_CONNECT_TIMEOUT_SECONDS` / `AI_TIMEOUT_SECONDS` | 5 / 60 | Provider timeout < `AI_JOB_TIMEOUT_SECONDS` (90) < queue `retry_after` (360) |
+| `AI_CONNECT_TIMEOUT_SECONDS` / `AI_TIMEOUT_SECONDS` | 5 / 120 | Provider timeout + `AI_SLOT_WAIT_SECONDS` < `AI_JOB_TIMEOUT_SECONDS` (180) < queue `retry_after` (360) |
 | `AI_MAX_INPUT_BYTES` / `AI_MAX_OUTPUT_BYTES` / `AI_MAX_OUTPUT_TOKENS` | 32768 / 16384 / 2000 | Bounded ranges |
 | `AI_MAX_ATTEMPTS` | 3 | 1–5 |
 | `CODEDNA_ASSESSMENT_VERSION` | `1.0.0` | A defined specification |
@@ -478,13 +493,15 @@ user.
 
 ### Local providers
 
-For a local OpenAI-compatible server, for example Ollama:
+The default is the bundled Ollama service (`--profile local-ai`); see
+[local AI operations](../operations/local-ai.md). For another local
+OpenAI-compatible server:
 
 ```dotenv
 AI_ENABLED=true
 AI_PROVIDER=openai_compatible
-AI_BASE_URL=http://host.docker.internal:11434/v1
-AI_MODEL=llama3.1:8b
+AI_BASE_URL=http://llama-server:8080/v1
+AI_MODEL=your-model
 AI_STRUCTURED_OUTPUT=json_object
 ```
 

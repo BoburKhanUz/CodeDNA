@@ -18,6 +18,9 @@
 #     non-root users, no-new-privileges, dropped capabilities, resource
 #     limits, no bind mounts except the TLS secrets; network segmentation;
 #   - fail fast: unsafe overrides stop the backend at start;
+#   - local AI (Phase 29): ai-worker hardened like the other workers, the
+#     Ollama runtime opt-in, AI off by default, remote endpoints refused
+#     without the explicit opt-in;
 #   - no generated secret appears in logs, image metadata or the frontend.
 #
 # Nothing here is a real credential; everything is removed at the end
@@ -94,7 +97,7 @@ if [ "${SMOKE_BUILD:-1}" = "1" ]; then
 fi
 
 echo "== start"
-dc up -d --no-build --wait --wait-timeout 300 nginx frontend backend queue scheduler analyzer postgres redis minio
+dc up -d --no-build --wait --wait-timeout 300 nginx frontend backend queue ai-worker scheduler analyzer postgres redis minio
 dc run --rm migrate >/dev/null
 dc up -d --no-build evaluator
 pass "stack started and migrations applied with the explicit one-shot"
@@ -239,7 +242,7 @@ for c in $(dc ps -q); do
     writable=$(docker inspect "$c" --format '{{range .Mounts}}{{if and (eq .Type "bind") .RW}}{{.Destination}} {{end}}{{end}}' | tr -d ' ')
     expect "$name: secrets are read-only" "$writable" ""
 done
-for svc in nginx frontend backend queue scheduler analyzer redis minio; do
+for svc in nginx frontend backend queue ai-worker scheduler analyzer redis minio; do
     uid=$(dc exec -T "$svc" id -u)
     if [ "$uid" != 0 ]; then
         pass "$svc runs as uid $uid"
@@ -272,6 +275,29 @@ for target in "backend 9000" "postgres 5432" "redis 6379" "minio 9000" "analyzer
 done
 expect "backend cannot reach the analyzer" "$(reach backend analyzer 8000)" blocked
 expect "scheduler has no internet" "$(reach scheduler 1.1.1.1 443)" blocked
+expect "ai-worker cannot reach the analyzer" "$(reach ai-worker analyzer 8000)" blocked
+
+echo "== local AI (Phase 29)"
+expect "the local AI runtime is opt-in (profile local-ai)" "$(dc ps --services | grep -c '^ollama$' || true)" 0
+ai_status=$(dc exec -T backend php artisan ai:status --json 2>&1 || true)
+if grep -q '"enabled": false' <<<"$ai_status"; then
+    pass "AI is disabled by default"
+else
+    fail "AI is disabled by default" "$ai_status"
+fi
+# Control: AI enabled with the internal default endpoint starts (no runtime needed to boot).
+if dc run --rm --no-deps -e AI_ENABLED=true backend php -r 'exit(0);' >/dev/null 2>&1; then
+    pass "backend starts with AI enabled on the internal endpoint"
+else
+    fail "backend starts with AI enabled on the internal endpoint"
+fi
+for override in 'AI_BASE_URL=http://ai.example.com:11434' 'AI_BASE_URL=https://ai.example.com/v1'; do
+    if dc run --rm --no-deps -e AI_ENABLED=true -e "$override" backend php -r 'exit(0);' >/dev/null 2>&1; then
+        fail "backend refuses a remote AI endpoint without the opt-in ($override)"
+    else
+        pass "backend refuses a remote AI endpoint without the opt-in ($override)"
+    fi
+done
 
 echo "== fail fast"
 # Control: the unchanged configuration starts, so each refusal below is real.

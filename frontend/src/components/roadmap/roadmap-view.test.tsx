@@ -8,6 +8,7 @@ import { completeStep } from "@/lib/roadmap/client";
 import { formatMinutes, rankExplanation } from "@/lib/roadmap/format";
 import { apiErrorResponse, jsonResponse, page, project } from "@/test/responses";
 import { afterFirstStep, OLD_ROADMAP_ID, ROADMAP_ID, roadmap, step, summaryOf } from "@/test/roadmap";
+import { aiReady } from "@/test/insights";
 import { resetRouter, router } from "@/test/router";
 import { gapsSnapshot, insufficientSnapshot, noGapsSnapshot, skillGapSummary } from "@/test/skill-gap";
 
@@ -37,6 +38,8 @@ interface Scenario {
 function respondWith({ roadmaps = [], gaps = [skillGapSummary(gapsSnapshot)], projectOverride = {}, post }: Scenario) {
   fetchMock.mockImplementation(async (input, init) => {
     const url = String(input);
+    if (url.endsWith("/ai/status")) return jsonResponse({ data: aiReady });
+    if (url.includes("/insights")) return jsonResponse({ data: [] });
     if (init?.method === "POST") return post ? post(url) : jsonResponse({ data: roadmap() }, 201);
     const detail = /\/roadmaps\/([0-9a-z]{26})$/.exec(url);
     if (detail) {
@@ -62,6 +65,20 @@ describe("RoadmapView", () => {
     expect(await screen.findByTestId("roadmap-notice")).toHaveTextContent(NOTICE);
     expect(screen.getByRole("heading", { level: 1, name: "Learning Roadmap" })).toBeInTheDocument();
     expect(within(screen.getByRole("navigation", { name: "Related pages" })).getByRole("link", { name: "Growth" })).toHaveAttribute("href", `/app/projects/${project.id}/growth`);
+  });
+
+  it("offers AI guidance for an active roadmap, read-only when the project is archived", async () => {
+    respondWith({ roadmaps: [roadmap()] });
+    const { unmount } = render(<RoadmapView projectId={project.id} />);
+    const panel = await screen.findByTestId("insight-panel");
+    expect(panel).toHaveAttribute("data-kind", "ROADMAP_GUIDANCE");
+    expect(within(panel).getByTestId("insight-request")).toBeEnabled();
+    unmount();
+
+    respondWith({ roadmaps: [roadmap()], projectOverride: { status: "ARCHIVED" } });
+    render(<RoadmapView projectId={project.id} />);
+    expect(await screen.findByTestId("insight-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("insight-request")).not.toBeInTheDocument();
   });
 
   it("shows the development focus: why, current, target, gap, priority and evidence quality", async () => {

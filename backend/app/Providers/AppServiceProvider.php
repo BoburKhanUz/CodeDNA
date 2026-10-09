@@ -11,11 +11,18 @@ use App\Enums\Challenge\SubmissionStatus;
 use App\Enums\GitHub\GitHubImportStatus;
 use App\Exceptions\InvalidConfigurationException;
 use App\Models\AiAssessment;
+use App\Models\AiInsight;
 use App\Models\AnalysisRun;
 use App\Models\ChallengeSubmission;
 use App\Models\GitHubImport;
 use App\Models\RepositoryProviderImport;
 use App\Policies\ViewDecisions;
+use App\Services\Ai\AiGateway;
+use App\Services\Ai\FakeModelClient;
+use App\Services\Ai\GatewayAiProvider;
+use App\Services\Ai\HttpModelTransport;
+use App\Services\Ai\ModelClient;
+use App\Services\Ai\OllamaClient;
 use App\Services\Assessment\Provider\AiProvider;
 use App\Services\Assessment\Provider\FakeAiProvider;
 use App\Services\Assessment\Provider\OpenAiCompatibleProvider;
@@ -51,12 +58,24 @@ class AppServiceProvider extends ServiceProvider
     {
         // The AI provider behind the assessment pipeline (Phase 15), chosen
         // only by configuration (docs/architecture/ai-assessment-v1.md#providers).
+        // Phase 29: one model client, chosen only by configuration, behind the
+        // AI gateway (context budget, concurrency slots, metrics). There is no
+        // fallback from one provider to another.
+        $this->app->bind(ModelClient::class, static function ($app): ModelClient {
+            $config = (array) $app['config']->get('codedna.ai');
+
+            return match ($config['provider'] ?? null) {
+                FakeModelClient::NAME => new FakeModelClient,
+                OpenAiCompatibleProvider::NAME => new OpenAiCompatibleProvider($app->make(Http::class), $config),
+                default => new OllamaClient(new HttpModelTransport($app->make(Http::class), $config), $config),
+            };
+        });
         $this->app->bind(AiProvider::class, static function ($app): AiProvider {
             $config = (array) $app['config']->get('codedna.ai');
 
             return ($config['provider'] ?? null) === FakeAiProvider::NAME
                 ? new FakeAiProvider
-                : new OpenAiCompatibleProvider($app->make(Http::class), $config);
+                : new GatewayAiProvider($app->make(AiGateway::class), (int) $config['max_output_tokens']);
         });
 
         // Coding challenges (Phase 16): the server-owned catalog, and the only
@@ -167,6 +186,9 @@ class AppServiceProvider extends ServiceProvider
             in_array($run->status, [AnalysisRunStatus::Failed, AnalysisRunStatus::Cancelled], true)));
         AiAssessment::updated(static fn (AiAssessment $assessment) => $refund(QuotaKey::AiAssessments, 'ai_assessment', $assessment,
             $assessment->status === AssessmentStatus::Failed));
+        // Phase 29: AI insights share the AI assessment quota.
+        AiInsight::updated(static fn (AiInsight $insight) => $refund(QuotaKey::AiAssessments, 'ai_insight', $insight,
+            $insight->status === AssessmentStatus::Failed));
         ChallengeSubmission::updated(static fn (ChallengeSubmission $submission) => $refund(QuotaKey::ChallengeSubmissions, 'challenge_submission', $submission,
             $submission->status === SubmissionStatus::Error));
         GitHubImport::updated(static fn (GitHubImport $import) => $refund(QuotaKey::GitHubImports, 'github_import', $import,

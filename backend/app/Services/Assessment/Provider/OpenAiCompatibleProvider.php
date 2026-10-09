@@ -5,12 +5,17 @@ declare(strict_types=1);
 namespace App\Services\Assessment\Provider;
 
 use App\Enums\Assessment\AssessmentFailure;
+use App\Services\Ai\AiRequest;
+use App\Services\Ai\HttpModelTransport;
+use App\Services\Ai\ModelClient;
+use App\Services\Ai\ModelHealth;
 use App\Services\Assessment\AssessmentInput;
 use App\Services\Assessment\AssessmentPrompt;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as Http;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use JsonException;
+use Throwable;
 
 /**
  * Any endpoint that implements the OpenAI Chat Completions API
@@ -28,17 +33,25 @@ use JsonException;
  * Failures are normalized: timeouts, transport errors, 429 and 5xx are
  * retryable; 401/403, other 4xx, refusals, truncated or oversized output
  * and malformed envelopes are not.
+ *
+ * Since Phase 29 it is also a ModelClient behind the AI gateway; a local
+ * Ollama server is better served by OllamaClient (native API).
  */
-final class OpenAiCompatibleProvider implements AiProvider
+final class OpenAiCompatibleProvider implements AiProvider, ModelClient
 {
     public const NAME = 'openai_compatible';
 
     public const STRUCTURED_OUTPUT_MODES = ['json_schema', 'json_object', 'none'];
 
+    private readonly HttpModelTransport $transport;
+
     /**
      * @param  array<string, mixed>  $config  config('codedna.ai')
      */
-    public function __construct(private readonly Http $http, private readonly array $config) {}
+    public function __construct(Http $http, private readonly array $config)
+    {
+        $this->transport = new HttpModelTransport($http, $config);
+    }
 
     public function name(): string
     {
@@ -52,99 +65,76 @@ final class OpenAiCompatibleProvider implements AiProvider
 
     public function generateAssessment(AssessmentInput $input, AssessmentPrompt $prompt): AiProviderResponse
     {
-        $request = $this->http
-            ->acceptJson()
-            ->asJson()
-            ->connectTimeout((int) $this->config['connect_timeout_seconds'])
-            ->timeout((int) $this->config['timeout_seconds'])
-            ->withoutRedirecting()
-            // Read as a stream so the size cap applies while reading (Phase 21).
-            ->withOptions(['stream' => true]);
-        $key = (string) ($this->config['api_key'] ?? '');
-        if ($key !== '') {
-            $request = $request->withToken($key);
-        }
+        return $this->complete(AiRequest::fromAssessmentPrompt($prompt, (int) $this->config['max_output_tokens']));
+    }
 
-        try {
-            $response = $request->post(rtrim((string) $this->config['base_url'], '/').'/chat/completions', $this->body($prompt));
-        } catch (ConnectionException $e) {
-            // cURL error 28: the connect or total timeout fired.
-            if (str_contains($e->getMessage(), 'cURL error 28')) {
-                throw AiProviderException::retryable(AssessmentFailure::ProviderTimeout, 'transport_timeout');
-            }
-            throw AiProviderException::retryable(AssessmentFailure::ProviderUnavailable, 'transport_error');
-        }
+    public function complete(AiRequest $request): AiProviderResponse
+    {
+        $response = $this->transport->send(fn (PendingRequest $http): Response => $http->post($this->transport->url('/chat/completions'), $this->body($request)));
 
         return $this->parse($response);
     }
 
     /**
+     * GET {base_url}/models: reachable, and whether the configured model is
+     * listed (servers without the endpoint report the model as unknown).
+     */
+    public function health(): ModelHealth
+    {
+        $timeout = max(1, min(10, (int) $this->config['connect_timeout_seconds'] * 2));
+        try {
+            $response = $this->transport->send(fn (PendingRequest $http): Response => $http->get($this->transport->url('/models')), $timeout);
+            if ($response->status() === 404) {
+                return new ModelHealth(true, null, null, 'models_endpoint_missing');
+            }
+            if ($response->status() !== 200) {
+                return new ModelHealth(false, null, null, 'status_'.$response->status());
+            }
+            $data = json_decode($this->transport->body($response, 1048576), true, 8, JSON_THROW_ON_ERROR)['data'] ?? [];
+        } catch (AiProviderException $e) {
+            return new ModelHealth(false, null, null, $e->detail);
+        } catch (Throwable) {
+            return new ModelHealth(false, null, null, 'invalid_response');
+        }
+        $ids = array_filter(array_map(fn (mixed $m): ?string => is_array($m) && is_string($m['id'] ?? null) ? $m['id'] : null, is_array($data) ? $data : []));
+        $available = in_array($this->model(), $ids, true);
+
+        return new ModelHealth(true, $available, null, $available ? null : 'model_not_found');
+    }
+
+    /**
      * @return array<string, mixed>
      */
-    private function body(AssessmentPrompt $prompt): array
+    private function body(AiRequest $request): array
     {
         $body = [
             'model' => $this->model(),
             'temperature' => 0,
-            'max_tokens' => (int) $this->config['max_output_tokens'],
+            'max_tokens' => $request->maxOutputTokens,
             'messages' => [
-                ['role' => 'system', 'content' => $prompt->system],
-                ['role' => 'user', 'content' => $prompt->user],
+                ['role' => 'system', 'content' => $request->system],
+                ['role' => 'user', 'content' => $request->user],
             ],
         ];
 
         return match ($this->config['structured_output'] ?? 'json_schema') {
             'json_schema' => $body + ['response_format' => [
                 'type' => 'json_schema',
-                'json_schema' => ['name' => $prompt->schemaName, 'strict' => true, 'schema' => $prompt->schema],
+                'json_schema' => ['name' => $request->schemaName, 'strict' => true, 'schema' => $request->schema],
             ]],
             'json_object' => $body + ['response_format' => ['type' => 'json_object']],
             default => $body,
         };
     }
 
-    /**
-     * The body, refused as soon as it exceeds the content limit plus some
-     * envelope overhead (Phase 21): a misbehaving endpoint cannot make the
-     * worker buffer an unbounded response. The declared length is checked
-     * first, then the bytes actually read.
-     */
-    private function boundedBody(Response $response, int $status): string
-    {
-        $limit = (int) $this->config['max_output_bytes'] + 16384;
-        $declared = $response->header('Content-Length');
-        if ($declared !== '' && ctype_digit($declared) && (int) $declared > $limit) {
-            throw AiProviderException::permanent(AssessmentFailure::OutputTooLarge, 'envelope_too_large', $status);
-        }
-        $stream = $response->toPsrResponse()->getBody();
-        if ($stream->isSeekable()) {
-            $stream->rewind();
-        }
-        $raw = '';
-        while (! $stream->eof()) {
-            $raw .= $stream->read(65536);
-            if (strlen($raw) > $limit) {
-                $stream->close();
-                throw AiProviderException::permanent(AssessmentFailure::OutputTooLarge, 'envelope_too_large', $status);
-            }
-        }
-
-        return $raw;
-    }
-
     private function parse(Response $response): AiProviderResponse
     {
         $status = $response->status();
         if ($status !== 200) {
-            throw match (true) {
-                $status === 429 => AiProviderException::retryable(AssessmentFailure::ProviderRateLimited, 'rate_limited', $status, $this->retryAfter($response)),
-                $status === 408 || $status >= 500 => AiProviderException::retryable(AssessmentFailure::ProviderUnavailable, 'server_error', $status, $this->retryAfter($response)),
-                $status === 401 || $status === 403 => AiProviderException::permanent(AssessmentFailure::ProviderAuthFailed, 'auth_rejected', $status),
-                default => AiProviderException::permanent(AssessmentFailure::ProviderRejected, 'request_rejected', $status),
-            };
+            throw $this->transport->failure($response);
         }
 
-        $raw = $this->boundedBody($response, $status);
+        $raw = $this->transport->body($response, $this->transport->envelopeLimit());
         try {
             $decoded = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
         } catch (JsonException) {
@@ -176,12 +166,5 @@ final class OpenAiCompatibleProvider implements AiProvider
             inputTokens: $count($usage['prompt_tokens'] ?? null),
             outputTokens: $count($usage['completion_tokens'] ?? null),
         );
-    }
-
-    private function retryAfter(Response $response): ?int
-    {
-        $value = $response->header('Retry-After');
-
-        return preg_match('/^\d{1,4}$/', $value) === 1 ? (int) $value : null;
     }
 }

@@ -6,6 +6,7 @@ import type { GrowthOverview, GrowthSnapshot, Project } from "@/lib/api/types";
 import { formatDelta } from "@/lib/growth/format";
 import { apiErrorResponse, jsonResponse, page, project } from "@/test/responses";
 import { compared, incomparable, insufficient, notEstablished, NOTICE, OLD_GROWTH_ID, overview, summaryOf, unchanged } from "@/test/growth";
+import { aiReady } from "@/test/insights";
 import { resetRouter, router } from "@/test/router";
 
 vi.mock("next/navigation", async () => {
@@ -32,6 +33,8 @@ interface Scenario {
 function respondWith({ growth, timeline, snapshots = [], projectOverride = {} }: Scenario) {
   fetchMock.mockImplementation(async (input) => {
     const url = String(input);
+    if (url.endsWith("/ai/status")) return jsonResponse({ data: aiReady });
+    if (url.includes("/insights")) return jsonResponse({ data: [] });
     const detail = /\/growth\/([0-9a-z]{26})$/.exec(url);
     if (detail) {
       const found = [...snapshots, ...(growth.latest ? [growth.latest] : [])].find((s) => s.id === detail[1]);
@@ -60,6 +63,17 @@ describe("GrowthView", () => {
       expect(within(nav).getByRole("link", { name })).toHaveAttribute("href", `/app/projects/${project.id}/${path}`);
     }
     // Read-only: the page only ever reads.
+    expect(new Set(methods())).toEqual(new Set(["GET"]));
+  });
+
+  it("offers an AI explanation of a compared snapshot, separate from the measured growth", async () => {
+    respondWith({ growth: overview(compared()) });
+    render(<GrowthView projectId={project.id} />);
+
+    const panel = await screen.findByTestId("insight-panel");
+    expect(panel).toHaveAttribute("data-kind", "GROWTH_INTERPRETATION");
+    expect(within(panel).getByTestId("insight-ai-label")).toHaveTextContent("AI-generated");
+    expect(within(panel).getByTestId("insight-request")).toBeEnabled();
     expect(new Set(methods())).toEqual(new Set(["GET"]));
   });
 

@@ -152,45 +152,70 @@ return [
     ],
 
     /*
-    | AI assessment and interpretation (docs/architecture/ai-assessment-v1.md).
-    | Non-authoritative: the AI explains stored deterministic results and
-    | never changes them. Disabled by default; generation runs only when a
-    | user requests it, on its own queue. The provider, model, URL and key
-    | come only from the environment; the key is never stored, logged or
-    | sent to the frontend. Timeouts must keep
-    | timeout < job timeout < queue retry_after (validated at boot).
+    | AI assessment and interpretation (docs/architecture/ai-assessment-v1.md)
+    | and the local AI intelligence layer (Phase 29,
+    | docs/architecture/ai-intelligence-v1.md). Non-authoritative: the AI
+    | explains stored deterministic results and never changes them. Disabled
+    | by default; generation runs only when a user requests it, on its own
+    | queue. The default provider is a local Ollama server; nothing ever falls
+    | back to another provider. The provider, model, URL and key come only
+    | from the environment; the key is never stored, logged or sent to the
+    | frontend. Timeouts must keep slot wait + timeout < job timeout < queue
+    | retry_after (validated at boot).
     */
     'ai' => [
         'enabled' => (bool) env('AI_ENABLED', false),
-        // "openai_compatible" (any Chat Completions endpoint) or "fake"
-        // (deterministic template, never allowed in production).
-        'provider' => (string) env('AI_PROVIDER', 'openai_compatible'),
-        'model' => (string) env('AI_MODEL', ''),
-        'base_url' => rtrim((string) env('AI_BASE_URL', 'https://api.openai.com/v1'), '/'),
+        // "ollama" (a local Ollama server, native API), "openai_compatible"
+        // (any Chat Completions endpoint) or "fake" (deterministic template,
+        // never allowed in production).
+        'provider' => (string) env('AI_PROVIDER', 'ollama'),
+        'model' => (string) env('AI_MODEL', 'qwen2.5-coder:7b'),
+        'base_url' => rtrim((string) env('AI_BASE_URL', 'http://ollama:11434'), '/'),
         'api_key' => (string) env('AI_API_KEY', ''),
+        // A provider outside the private network (a host name with a dot or an
+        // IP address) is a separate trust boundary: in production it needs
+        // https and this explicit opt-in (docs/operations/local-ai.md).
+        'allow_remote_endpoint' => (bool) env('AI_ALLOW_REMOTE_ENDPOINT', false),
         // "json_schema" (strict structured output), "json_object" or "none",
-        // for local servers without structured output support.
+        // for servers without structured output support. Ollama always
+        // receives the JSON schema as its "format".
         'structured_output' => (string) env('AI_STRUCTURED_OUTPUT', 'json_schema'),
         'connect_timeout_seconds' => (int) env('AI_CONNECT_TIMEOUT_SECONDS', 5),
-        'timeout_seconds' => (int) env('AI_TIMEOUT_SECONDS', 60),
+        'timeout_seconds' => (int) env('AI_TIMEOUT_SECONDS', 120),
         // Bounds on what is sent and accepted (bytes of canonical input JSON,
-        // bytes of response content, and the max_tokens sent).
+        // bytes of response content, and the max_tokens / num_predict sent).
         'max_input_bytes' => (int) env('AI_MAX_INPUT_BYTES', 32768),
         'max_output_bytes' => (int) env('AI_MAX_OUTPUT_BYTES', 16384),
         'max_output_tokens' => (int) env('AI_MAX_OUTPUT_TOKENS', 2000),
-        // Provider calls per assessment (first included), for timeouts, 429 and
-        // 5xx only, with the delay before each retry (Retry-After honoured if
-        // longer, up to the last value). Invalid output is never retried.
+        // The model's context window (Ollama num_ctx). A request whose
+        // estimated prompt tokens plus max_output_tokens exceed it is refused
+        // before it is sent, never truncated.
+        'context_tokens' => (int) env('AI_CONTEXT_TOKENS', 8192),
+        // Generations at once, across every worker (a Redis semaphore), and how
+        // long a job waits for one before it is retried later.
+        'max_concurrency' => (int) env('AI_MAX_CONCURRENCY', 1),
+        'slot_wait_seconds' => (int) env('AI_SLOT_WAIT_SECONDS', 10),
+        // How long Ollama keeps the model loaded after a request.
+        'keep_alive' => (string) env('AI_KEEP_ALIVE', '5m'),
+        // How long a connectivity / model availability check is cached.
+        'health_cache_seconds' => (int) env('AI_HEALTH_CACHE_SECONDS', 60),
+        // Provider calls per assessment or insight (first included), for
+        // timeouts, 429 and 5xx only, with the delay before each retry
+        // (Retry-After honoured if longer, up to the last value). Invalid
+        // output is never retried.
         'max_attempts' => (int) env('AI_MAX_ATTEMPTS', 3),
         'backoff_seconds' => [20, 60],
-        'job_timeout_seconds' => (int) env('AI_JOB_TIMEOUT_SECONDS', 90),
-        // QUEUED or RUNNING assessments untouched for this long are failed by
-        // assessment:fail-stale.
+        'job_timeout_seconds' => (int) env('AI_JOB_TIMEOUT_SECONDS', 180),
+        // QUEUED or RUNNING assessments and insights untouched for this long
+        // are failed by assessment:fail-stale / insight:fail-stale.
         'stale_after_seconds' => (int) env('AI_STALE_AFTER_SECONDS', 900),
         'queued_stale_after_seconds' => (int) env('AI_QUEUED_STALE_AFTER_SECONDS', 3600),
         'queue_connection' => 'analysis',
         'queue' => 'assessment',
         'version' => (string) env('CODEDNA_ASSESSMENT_VERSION', '1.0.0'),
+        // Evidence-grounded insights (Phase 29): growth, learning roadmap and
+        // challenge feedback interpretations.
+        'insights_version' => (string) env('CODEDNA_INSIGHTS_VERSION', '1.0.0'),
     ],
 
     /*

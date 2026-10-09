@@ -141,15 +141,24 @@ x-backend-environment: &backend-environment
   BITBUCKET_API_URL: https://api.bitbucket.org
   BITBUCKET_WEB_URL: https://bitbucket.org
   BITBUCKET_ARCHIVE_ORIGINS: https://bitbucket.org
+  # AI (Phases 15 and 29): local Ollama by default (profile local-ai); a remote
+  # endpoint needs https and AI_ALLOW_REMOTE_ENDPOINT=true (validated at boot).
+  CODEDNA_INSIGHTS_VERSION: ${CODEDNA_INSIGHTS_VERSION:-1.0.0}
   AI_ENABLED: ${AI_ENABLED:-false}
-  AI_PROVIDER: ${AI_PROVIDER:-openai_compatible}
-  AI_MODEL: ${AI_MODEL:-}
-  AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+  AI_PROVIDER: ${AI_PROVIDER:-ollama}
+  AI_MODEL: ${AI_MODEL:-qwen2.5-coder:7b}
+  AI_BASE_URL: ${AI_BASE_URL:-http://ollama:11434}
   AI_API_KEY: ${AI_API_KEY:-}
+  AI_ALLOW_REMOTE_ENDPOINT: ${AI_ALLOW_REMOTE_ENDPOINT:-false}
   AI_STRUCTURED_OUTPUT: ${AI_STRUCTURED_OUTPUT:-json_schema}
-  AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
-  AI_JOB_TIMEOUT_SECONDS: ${AI_JOB_TIMEOUT_SECONDS:-90}
+  AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-120}
+  AI_JOB_TIMEOUT_SECONDS: ${AI_JOB_TIMEOUT_SECONDS:-180}
   AI_MAX_ATTEMPTS: ${AI_MAX_ATTEMPTS:-3}
+  AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-2000}
+  AI_CONTEXT_TOKENS: ${AI_CONTEXT_TOKENS:-8192}
+  AI_MAX_CONCURRENCY: ${AI_MAX_CONCURRENCY:-1}
+  AI_SLOT_WAIT_SECONDS: ${AI_SLOT_WAIT_SECONDS:-10}
+  AI_KEEP_ALIVE: ${AI_KEEP_ALIVE:-5m}
   # Coding challenges: only through an evaluator that attests gVisor (or
   # CHALLENGE_EVALUATOR=none to disable execution entirely).
   CHALLENGE_ENABLED: ${CHALLENGE_ENABLED:-true}
@@ -290,6 +299,8 @@ services:
       - data
       - storage
       - egress
+      # The local AI runtime, for the cached availability check (Phase 29).
+      - ai
     mem_limit: 768m
     cpus: 2
     pids_limit: 256
@@ -314,7 +325,7 @@ services:
       - artisan
       - queue:work
       - analysis
-      - --queue=analysis,assessment,challenge,github
+      - --queue=analysis,challenge,github
       - --timeout=${ANALYSIS_JOB_TIMEOUT_SECONDS:-330}
       - --sleep=3
       - --tries=0
@@ -340,6 +351,70 @@ services:
     pids_limit: 128
     healthcheck:
       disable: true
+
+  # AI worker (Phase 29): AI assessments and insights only, apart from the
+  # analysis queue, so slow local inference never delays an analysis. It
+  # reaches Ollama on the internal "ai" network (egress only for a deliberately
+  # configured remote endpoint).
+  ai-worker:
+    <<: *backend
+    command:
+      - php
+      - artisan
+      - queue:work
+      - analysis
+      - --queue=assessment
+      - --timeout=${AI_JOB_TIMEOUT_SECONDS:-180}
+      - --sleep=3
+      - --tries=0
+      - --max-jobs=200
+      - --max-time=3600
+      - --memory=192
+    stop_signal: SIGTERM
+    stop_grace_period: 200s
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - data
+      - ai
+      - egress
+    mem_limit: 384m
+    cpus: 0.5
+    pids_limit: 64
+    healthcheck:
+      disable: true
+
+  # Local AI runtime (Phase 29, docs/operations/local-ai.md), optional: started
+  # only with --profile local-ai. Hardened like every service (read-only root,
+  # no capabilities); models live in their own volume and are pulled
+  # explicitly by an operator, never at start. "egress" exists only for those
+  # pulls; drop it after pulling for a fully offline runtime. No published
+  # port. For an NVIDIA GPU add docker/ollama/compose.gpu.yml.
+  ollama:
+    <<: *hardening
+    image: ollama/ollama:0.12.6
+    profiles: ["local-ai"]
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - ai
+      - egress
+    mem_limit: ${OLLAMA_MEM_LIMIT:-12g}
+    cpus: ${OLLAMA_CPUS:-4}
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # Exactly one scheduler (never scale this service): it runs the stale-run
   # sweepers and subscription expiry, each withoutOverlapping().
@@ -637,9 +712,14 @@ networks:
   analysis:
     internal: true
   egress:
+  # Laravel <-> the local AI runtime (Phase 29); no route to the internet.
+  ai:
+    internal: true
 
 volumes:
   challenge-spool:
   postgres_data:
   redis_data:
   minio_data:
+  # Local AI models (Phase 29), pulled explicitly; never in an image or the repository.
+  ollama_models:

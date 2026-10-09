@@ -172,10 +172,10 @@ compose-config: ## Validate docker-compose.yml without starting anything
 .PHONY: prod-config
 prod-config: ## Render docker-compose.prod.yml (alone and with the enterprise external-service overlays) and check the production baseline
 	@mkdir -p tmp
-	$(PROD_CHECK_ENV) $(PROD_COMPOSE) --profile migrate config --format json > tmp/prod-compose.json
+	$(PROD_CHECK_ENV) $(PROD_COMPOSE) --profile migrate --profile local-ai config --format json > tmp/prod-compose.json
 	python3 scripts/check_production.py tmp/prod-compose.json
 	$(PROD_CHECK_ENV) docker compose -f docker-compose.prod.yml $(addprefix -f ,$(wildcard docker/enterprise/compose.external-*.yml)) \
-		--env-file .env.production.example --profile migrate config --format json > tmp/prod-compose-external.json
+		--env-file .env.production.example --profile migrate --profile local-ai config --format json > tmp/prod-compose-external.json
 	python3 scripts/check_production.py --external tmp/prod-compose-external.json
 
 .PHONY: prod-build

@@ -1,0 +1,15 @@
+# NVIDIA GPU for the local AI runtime (Phase 29, docs/operations/local-ai.md#gpu).
+# Optional overlay, for development or production:
+#   docker compose -f docker-compose.yml -f docker/ollama/compose.gpu.yml --profile local-ai up -d ollama
+# Requires the NVIDIA driver and the NVIDIA Container Toolkit on the host;
+# without them Docker refuses to start the service. Without this overlay
+# Ollama runs on the CPU (slower, same results).
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
