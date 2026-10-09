@@ -324,13 +324,18 @@ describe("RoadmapView", () => {
     expect(await screen.findByTestId("development-focus")).toBeInTheDocument();
   });
 
-  it("offers no AI, chat or arbitrary content", async () => {
+  it("offers no AI, chat or arbitrary content outside the labeled AI panel", async () => {
     respondWith({ roadmaps: [roadmap()] });
     render(<RoadmapView projectId={project.id} />);
 
     await screen.findByTestId("development-focus");
+    // Since Phase 29 the only AI content is the optional, labeled insight
+    // panel; wait for it, so the check below never races its loading.
+    expect(await screen.findByTestId("insight-ai-label")).toHaveTextContent("AI-generated");
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent(/\bAI\b|chat|hint/i);
+    const deterministic = document.body.cloneNode(true) as HTMLElement;
+    deterministic.querySelectorAll('[data-testid="insight-panel"]').forEach((panel) => panel.remove());
+    expect(deterministic.textContent).not.toMatch(/\bAI\b|chat|hint/i);
   });
 });
 
