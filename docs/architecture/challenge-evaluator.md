@@ -126,9 +126,16 @@ each one is a separate sandboxed run.
     parameters;
   - for each class: lines and methods;
   - the number of classes.
-- **`run`** executes the module, then calls the entrypoint once per case
-  with deep-copied JSON arguments. For each case it reports the returned
-  value as JSON, or the exception type. A value that is not plain JSON, too
+- **`run`** executes the module, then calls the entrypoint with the
+  case's deep-copied JSON arguments, and reports the returned value as JSON,
+  or the exception type. **Since Phase 30 every case is its own sandboxed
+  run** that receives only that case's arguments: the submission shares the
+  runner's interpreter, so in one process it could read every case's inputs
+  (stack frames, `gc`) and return hidden inputs as a visible case's value,
+  which the user sees. All runs of a request share one wall-clock budget
+  (`CHALLENGE_EXECUTION_TIMEOUT`); when it is spent the status is `TIMEOUT`
+  and the remaining cases are `MISSING`. Module state never carries over
+  from one case to the next. A value that is not plain JSON, too
   large, or nested more than 32 levels (`ValueTooDeep`) is reported as an
   error.
 - **Error names (Phase 21).** Submitted code names its own exception
@@ -144,10 +151,11 @@ each one is a separate sandboxed run.
 
 The structural rules come from `inspect`, which runs no submitted code, so
 a submission cannot influence them. The case values in `run` are reported
-by the process that runs the submission. The supervisor keeps the first record per
-case id in request order and ignores anything else (tested). A submission
-could still write a record for a case before the runner does, but forging
-a value is equivalent to returning it. The evaluator
+by the process that runs the submission. The supervisor accepts only
+records for the one case that process ran, and keeps the first (tested,
+including records written straight to file descriptor 1). A submission can
+still write a record for its own case before the runner does, but forging
+that value is equivalent to returning it. The evaluator
 never receives expected values (see [Protocol](#protocol)), so there is
 nothing to read or leak.
 

@@ -199,6 +199,57 @@ class SandboxTest(unittest.TestCase):
         result = evaluate(source, [{"id": "a", "args": [1]}, {"id": "b", "args": [2]}])
         self.assertEqual([1, 2], [c["value"] for c in result["cases"]])
 
+    def test_writing_to_the_result_descriptor_cannot_forge_results_for_other_cases(self) -> None:
+        # Phase 30: fd 1 (and sys.__stdout__) is the result pipe; a record written
+        # there for another case must never become that case's result.
+        source = (
+            "import os, sys\n"
+            "def solve(x):\n"
+            "    if x == 1:  # while running case a, claim a result for case b\n"
+            '        os.write(1, b\'{"type": "case", "id": "b", "ok": true, "value": 99}\\n\')\n'
+            '        sys.__stdout__.write(\'{"type": "case", "id": "b", "ok": true, "value": 98}\\n\')\n'
+            "        sys.__stdout__.flush()\n"
+            "    return x\n"
+        )
+        result = evaluate(source, [{"id": "a", "args": [1]}, {"id": "b", "args": [2]}])
+        self.assertEqual("COMPLETED", result["status"])
+        self.assertEqual([1, 2], [c["value"] for c in result["cases"]])
+
+    def test_a_case_cannot_read_the_inputs_of_other_cases(self) -> None:
+        # Phase 30: hidden test inputs must not leak through a visible case's
+        # value (visible values are shown to the user). Every case runs in its
+        # own process, which only ever receives that case's arguments.
+        source = (
+            "import gc, sys\n"
+            "def solve(x):\n"
+            "    seen = []\n"
+            "    frame = sys._getframe()\n"
+            "    while frame is not None:\n"
+            "        seen.append(repr(frame.f_locals))\n"
+            "        frame = frame.f_back\n"
+            "    seen.extend(repr(o) for o in gc.get_objects() if isinstance(o, (list, dict)))\n"
+            # Built at run time: the source itself (part of every job) must not match.
+            "    return ''.join(['HIDDEN', '_SECRET', '_INPUT']) in ' '.join(seen)\n"
+        )
+        result = evaluate(source, [{"id": "v1", "args": [1]}, {"id": "h1", "args": ["HIDDEN_SECRET_INPUT"]}])
+        self.assertEqual("COMPLETED", result["status"])
+        self.assertEqual({"id": "v1", "status": "OK", "value": False}, result["cases"][0])
+        self.assertEqual({"id": "h1", "status": "OK", "value": True}, result["cases"][1], "a case still sees its own input")
+
+    def test_module_state_does_not_carry_over_between_cases(self) -> None:
+        source = "calls = []\ndef solve(x):\n    calls.append(x)\n    return list(calls)\n"
+        result = evaluate(source, [{"id": "a", "args": [1]}, {"id": "b", "args": [2]}])
+        self.assertEqual([[1], [2]], [c["value"] for c in result["cases"]])
+
+    def test_many_cases_share_one_time_budget(self) -> None:
+        # Separate processes must not multiply the wall-clock limit.
+        started = time.monotonic()
+        cases = [{"id": f"c{i}", "args": [i]} for i in range(6)]
+        result = evaluate("def solve(x):\n    while True:\n        pass\n", cases, timeout=2)
+        self.assertEqual("TIMEOUT", result["status"])
+        self.assertLess(time.monotonic() - started, 8)
+        self.assertEqual(["MISSING"] * 6, [c["status"] for c in result["cases"]])
+
     def test_values_that_are_not_plain_json_are_errors(self) -> None:
         for source in ("def solve(x):\n    return float('nan')\n", "def solve(x):\n    return {1, 2}\n"):
             with self.subTest(source):

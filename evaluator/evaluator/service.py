@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import signal
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -71,34 +73,52 @@ def evaluate(slot: Slot, conf: Config, request: dict[str, Any]) -> dict[str, Any
     if not inspection["syntax_valid"]:
         return protocol.result(request["id"], "SYNTAX_ERROR", inspection=inspection, duration_ms=duration)
 
-    executed = sandbox.run(
-        slot,
-        limits,
-        {"mode": "run", "source": request["source"], "entrypoint": request["entrypoint"], "cases": request["cases"]},
-    )
-    records = protocol.parse_records(executed.lines)
+    # Phase 30: every case runs in its own sandbox process, which receives only
+    # that case's arguments. The submission shares its interpreter with the
+    # runner, so in a single process it could read every case's inputs (frames,
+    # gc) and return hidden inputs as a visible case's value, or write result
+    # records for other cases to the result pipe. All runs share one
+    # wall-clock budget, so separate processes never multiply the time limit.
     case_ids = [case["id"] for case in request["cases"]]
-    load = next((r for r in records if r["type"] == "load"), None)
-    finished = any(r["type"] == "done" for r in records)
+    deadline = time.monotonic() + limits.wall_seconds
+    results: list[dict[str, Any]] = []
+    status = "COMPLETED"
     load_error = None
-    if executed.timed_out:
-        status = "TIMEOUT"
-    elif executed.output_truncated:
-        status = "OUTPUT_LIMIT"
-    elif load is not None and load.get("ok") is not True:
-        status = "LOAD_ERROR"
-        load_error = protocol.error_name(load.get("error"))
-    elif not finished:
-        status = "CRASHED"
-    else:
-        status = "COMPLETED"
+    for case in request["cases"]:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            status = "TIMEOUT"
+            break
+        executed = sandbox.run(
+            slot,
+            replace(limits, wall_seconds=max(1, math.ceil(remaining))),
+            {"mode": "run", "source": request["source"], "entrypoint": request["entrypoint"], "cases": [case]},
+        )
+        duration += executed.duration_ms
+        records = protocol.parse_records(executed.lines)
+        load = next((r for r in records if r["type"] == "load"), None)
+        finished = any(r["type"] == "done" for r in records)
+        # Only this case's id is accepted from this process.
+        results.extend(protocol.case_results([case["id"]], records))
+        if executed.timed_out:
+            status = "TIMEOUT"
+        elif executed.output_truncated:
+            status = "OUTPUT_LIMIT"
+        elif load is not None and load.get("ok") is not True:
+            status = "LOAD_ERROR"
+            load_error = protocol.error_name(load.get("error"))
+        elif not finished:
+            status = "CRASHED"
+        if status != "COMPLETED":
+            break
+    results.extend({"id": case_id, "status": "MISSING"} for case_id in case_ids[len(results) :])
     return protocol.result(
         request["id"],
         status,
         load_error=load_error,
         inspection=inspection,
-        cases=protocol.case_results(case_ids, records),
-        duration_ms=duration + executed.duration_ms,
+        cases=results,
+        duration_ms=duration,
     )
 
 
