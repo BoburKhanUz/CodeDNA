@@ -15,6 +15,7 @@ import { isApiError } from "@/lib/api/errors";
 import type { Paginated, Project, SourceSnapshot } from "@/lib/api/types";
 import { archiveProject, getProject, isProjectId, listSourceSnapshots } from "@/lib/projects/client";
 import { formatBytes, formatDate, formatDateTime, languageLabel, sourceTypeLabel } from "@/lib/projects/format";
+import { useConfiguredProviders } from "@/lib/projects/use-configured-providers";
 
 type State =
   | { status: "loading" }
@@ -32,6 +33,9 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   // Bumped when an analysis completes, so the CodeDNA summary is read again.
   const [dnaKey, setDnaKey] = useState(0);
   const analysisCompleted = useCallback(() => setDnaKey((key) => key + 1), []);
+  // Import links only for providers this server has configured (V1.0.0: none).
+  const providers = useConfiguredProviders(isProjectId(projectId));
+  const anyProvider = providers.github || providers.other;
 
   const handleError = useCallback(
     (error: unknown) => {
@@ -168,18 +172,26 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             />
           ) : project.status === "ARCHIVED" ? (
             <p className="text-muted-foreground text-sm">This project is archived. It keeps its history but accepts no new source.</p>
+          ) : anyProvider ? (
+            <p className="text-muted-foreground text-sm">This is a repository project: it receives source by importing from a configured repository provider.</p>
           ) : (
-            <p className="text-muted-foreground text-sm">This is a repository project: it receives source by importing from GitHub, GitLab or Bitbucket Cloud.</p>
+            <p className="text-muted-foreground text-sm" data-testid="no-repository-provider">
+              This is a repository project, and no repository provider is configured on this server, so it cannot receive new source.
+            </p>
           )}
-          {project.status === "ACTIVE" || project.source_type === "REPOSITORY" ? (
+          {(project.status === "ACTIVE" || project.source_type === "REPOSITORY") && anyProvider ? (
             <p className="text-sm" data-testid="github-link">
-              <Link href={`/app/projects/${project.id}/github`} className="font-medium underline underline-offset-4">
-                {project.status === "ACTIVE" ? "Import from GitHub →" : "GitHub connection →"}
-              </Link>
-              {" · "}
-              <Link href={`/app/projects/${project.id}/repositories`} className="font-medium underline underline-offset-4" data-testid="provider-link">
-                {project.status === "ACTIVE" ? "Import from GitLab or Bitbucket →" : "GitLab or Bitbucket connection →"}
-              </Link>
+              {providers.github ? (
+                <Link href={`/app/projects/${project.id}/github`} className="font-medium underline underline-offset-4" data-testid="github-import-link">
+                  {project.status === "ACTIVE" ? "Import from GitHub →" : "GitHub connection →"}
+                </Link>
+              ) : null}
+              {providers.github && providers.other ? " · " : null}
+              {providers.other ? (
+                <Link href={`/app/projects/${project.id}/repositories`} className="font-medium underline underline-offset-4" data-testid="provider-link">
+                  {project.status === "ACTIVE" ? "Import from GitLab or Bitbucket →" : "GitLab or Bitbucket connection →"}
+                </Link>
+              ) : null}
             </p>
           ) : null}
 

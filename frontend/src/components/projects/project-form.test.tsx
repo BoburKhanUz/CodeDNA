@@ -6,6 +6,10 @@ import { ProjectForm } from "@/components/projects/project-form";
 import { apiErrorResponse, jsonResponse, project } from "@/test/responses";
 import { resetRouter, router } from "@/test/router";
 
+// Which repository providers the server reports (useConfiguredProviders has its own tests).
+const providers = vi.hoisted(() => ({ value: { github: true, other: true } }));
+vi.mock("@/lib/projects/use-configured-providers", () => ({ useConfiguredProviders: () => providers.value }));
+
 vi.mock("next/navigation", async () => {
   const { router } = await import("@/test/router");
   return { useRouter: () => router };
@@ -14,6 +18,7 @@ vi.mock("next/navigation", async () => {
 const fetchMock = vi.fn<typeof fetch>();
 
 beforeEach(() => {
+  providers.value = { github: true, other: true };
   resetRouter();
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
@@ -84,6 +89,14 @@ describe("ProjectForm", () => {
     await ui.click(screen.getByRole("button", { name: "Create project" }));
 
     expect(body()).toMatchObject({ source_type: "REPOSITORY", repository_url: "https://git.example.test/acme/mirror.git" });
+  });
+
+  it("offers only uploads when no repository provider is configured (V1.0.0)", async () => {
+    providers.value = { github: false, other: false };
+    render(<ProjectForm />);
+    expect(screen.getByRole("radio", { name: /Upload/ })).toBeChecked();
+    expect(screen.queryByRole("radio", { name: /Repository/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Repository URL")).not.toBeInTheDocument();
   });
 
   it("shows server validation errors on the right field", async () => {

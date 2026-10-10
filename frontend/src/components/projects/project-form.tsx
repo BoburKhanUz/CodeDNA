@@ -16,6 +16,7 @@ import { isApiError } from "@/lib/api/errors";
 import { PROGRAMMING_LANGUAGES, type CreateProjectRequest, type SourceType } from "@/lib/api/types";
 import { PROGRAMMING_LANGUAGE_LABELS } from "@/lib/profile/options";
 import { createProject } from "@/lib/projects/client";
+import { useConfiguredProviders } from "@/lib/projects/use-configured-providers";
 import { slugify } from "@/lib/projects/format";
 
 const FIELDS = ["name", "slug", "description", "source_type", "repository_url", "language", "default_branch"] as const;
@@ -125,7 +126,11 @@ export function ProjectForm() {
     }
   }
 
-  const isRepository = values.source_type === "REPOSITORY";
+  // A repository project only receives source by import: offered only when a
+  // repository provider is configured on this server (V1.0.0: uploads only).
+  const providers = useConfiguredProviders();
+  const canImport = providers.github || providers.other;
+  const isRepository = canImport && values.source_type === "REPOSITORY";
 
   return (
     <Card className="max-w-2xl">
@@ -172,6 +177,7 @@ export function ProjectForm() {
                 <span className="text-muted-foreground block">Upload ZIP archives of the source code.</span>
               </span>
             </label>
+            {canImport ? (
             <label className="flex items-start gap-2 text-sm">
               <input type="radio" name="source_type" value="REPOSITORY" checked={isRepository} onChange={update("source_type")} className="mt-1" />
               <span>
@@ -181,6 +187,7 @@ export function ProjectForm() {
                 </span>
               </span>
             </label>
+            ) : null}
           </fieldset>
           {isRepository ? (
             <Field id="repository_url" label="Repository URL" error={fieldErrors.repository_url} className="sm:col-span-2">

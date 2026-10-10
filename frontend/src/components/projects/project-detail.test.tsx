@@ -13,10 +13,15 @@ vi.mock("next/navigation", async () => {
   return { useRouter: () => router };
 });
 
+// Which repository providers the server reports (useConfiguredProviders has its own tests).
+const providers = vi.hoisted(() => ({ value: { github: true, other: true } }));
+vi.mock("@/lib/projects/use-configured-providers", () => ({ useConfiguredProviders: () => providers.value }));
+
 const fetchMock = vi.fn<typeof fetch>();
 
 beforeEach(() => {
   resetRouter();
+  providers.value = { github: true, other: true };
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
   document.cookie = "XSRF-TOKEN=token; path=/";
@@ -86,7 +91,7 @@ describe("ProjectDetail", () => {
     respondWith({ ...project, source_type: "REPOSITORY", repository_url: "https://git.example.test/a.git" }, page([]));
     render(<ProjectDetail projectId={project.id} />);
 
-    expect(await screen.findByText(/it receives source by importing from GitHub/)).toBeInTheDocument();
+    expect(await screen.findByText(/it receives source by importing from a configured repository provider/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Import from GitHub →" })).toHaveAttribute("href", `/app/projects/${project.id}/github`);
     expect(screen.getByText("https://git.example.test/a.git")).toBeInTheDocument();
     expect(screen.queryByLabelText("ZIP archive")).not.toBeInTheDocument();
@@ -101,6 +106,39 @@ describe("ProjectDetail", () => {
     respondWith({ ...project, status: "ARCHIVED" }, page([]));
     render(<ProjectDetail projectId={project.id} />);
     expect(await screen.findByText(/This project is archived/)).toBeInTheDocument();
+    expect(screen.queryByTestId("github-link")).not.toBeInTheDocument();
+  });
+
+  it("offers no provider import when no repository provider is configured (V1.0.0: uploads only)", async () => {
+    providers.value = { github: false, other: false };
+    respondWith(project, page([]));
+    render(<ProjectDetail projectId={project.id} />);
+    expect(await screen.findByRole("button", { name: "Upload source" })).toBeInTheDocument();
+    expect(screen.queryByTestId("github-link")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Import from GitHub/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /GitLab or Bitbucket/ })).not.toBeInTheDocument();
+  });
+
+  it("links only the providers that are configured", async () => {
+    providers.value = { github: true, other: false };
+    respondWith(project, page([]));
+    const { unmount } = render(<ProjectDetail projectId={project.id} />);
+    expect(await screen.findByTestId("github-import-link")).toHaveAttribute("href", `/app/projects/${project.id}/github`);
+    expect(screen.queryByTestId("provider-link")).not.toBeInTheDocument();
+    unmount();
+
+    providers.value = { github: false, other: true };
+    respondWith(project, page([]));
+    render(<ProjectDetail projectId={project.id} />);
+    expect(await screen.findByTestId("provider-link")).toHaveAttribute("href", `/app/projects/${project.id}/repositories`);
+    expect(screen.queryByTestId("github-import-link")).not.toBeInTheDocument();
+  });
+
+  it("explains that a repository project cannot receive source without a configured provider", async () => {
+    providers.value = { github: false, other: false };
+    respondWith({ ...project, source_type: "REPOSITORY" }, page([]));
+    render(<ProjectDetail projectId={project.id} />);
+    expect(await screen.findByTestId("no-repository-provider")).toHaveTextContent("no repository provider is configured");
     expect(screen.queryByTestId("github-link")).not.toBeInTheDocument();
   });
 
