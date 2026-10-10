@@ -35,8 +35,15 @@ APP_ENV stays `local` in the overlay only because the edge is plain HTTP
 (production configuration refuses insecure URLs and cookies). Everything
 that affects speed is the production setup.
 
+Build the production backend image first. The overlay runs the image
+`make prod-build` tags when `APP_VERSION` is unset (`codedna-backend:local`;
+with `CODEDNA_IMAGE_PREFIX`, `<prefix>-backend:local`). To test another tag,
+set `LOADTEST_BACKEND_IMAGE`; the image is never pulled.
+
 ```bash
+make prod-build                                                   # codedna-backend:local (and the other images)
 make loadtest                                                     # all scenarios, 16 clients, 30 s each
+LOADTEST_BACKEND_IMAGE=codedna-backend:1.0.0 make loadtest        # a release image
 make loadtest LOADTEST_ARGS="--scenarios A,B --concurrency 32 --duration 60 --json out.json"
 ```
 

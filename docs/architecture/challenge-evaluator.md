@@ -259,8 +259,8 @@ in code rather than by convention ([`evaluator/isolation.py`](../../evaluator/ev
   `runtime: runsc`, no network, the same capabilities, tmpfs mounts and
   limits as in development. Its health check requires `isolation ==
   "gvisor"`.
-- **Host check.** `make prod-evaluator-attest` prints the level the image
-  attests under the host's runtime.
+- **Host check.** `make prod-evaluator-attest` runs the configured image
+  under the configured runtime and exits non-zero unless it attests gVisor.
 
 Prerequisites, installation and the operator check are in
 [production deployment](../operations/production-deployment.md#3-install-gvisor-for-the-evaluator).

@@ -4,15 +4,17 @@
 # - Points the backend and queue worker at the benchmark database and Redis
 #   databases of their own: a load test never touches development data or
 #   queues.
-# - Runs the PRODUCTION backend image (make prod-build or the image built by
-#   make loadtest): immutable OPcache, the production PHP-FPM pool, no source
-#   bind mount, APP_DEBUG off. The development image (5 FPM children, debug
+# - Runs the PRODUCTION backend image: by default the one `make prod-build`
+#   tags when APP_VERSION is unset (<prefix>-backend:local; not APP_VERSION,
+#   which the development .env sets to "dev", the development image);
+#   LOADTEST_BACKEND_IMAGE selects another. Immutable OPcache, the production
+#   PHP-FPM pool, no source bind mount, APP_DEBUG off. The development image (5 FPM children, debug
 #   on, OPcache revalidating a bind mount) would measure the laptop setup,
 #   not the application. APP_ENV stays "local" only because this edge is
 #   plain HTTP (production refuses non-https URLs and insecure cookies).
 services:
   backend:
-    image: ${LOADTEST_BACKEND_IMAGE:-codedna-backend:production}
+    image: ${LOADTEST_BACKEND_IMAGE:-${CODEDNA_IMAGE_PREFIX:-codedna}-backend:local}
     pull_policy: never
     build: !reset null
     volumes: !override

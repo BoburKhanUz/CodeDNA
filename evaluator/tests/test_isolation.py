@@ -5,6 +5,7 @@ Pure unit tests: they run anywhere (no sandbox needed).
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import tempfile
@@ -58,6 +59,26 @@ class AttestTest(unittest.TestCase):
     def test_an_unknown_level_is_refused(self) -> None:
         with self.assertRaises(isolation.IsolationError):
             isolation.attest("none", False, proc_version(GVISOR))
+
+
+class HostAttestationTest(unittest.TestCase):
+    """`python3 -m evaluator.isolation`, run by `make prod-evaluator-attest`."""
+
+    def test_an_attested_gvisor_runtime_prints_gvisor_and_succeeds(self) -> None:
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            self.assertEqual(0, isolation.main(proc_version(GVISOR)))
+        self.assertEqual("gvisor\n", out.getvalue())
+
+    def test_a_host_kernel_fails_and_prints_no_level(self) -> None:
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out, mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            self.assertEqual(1, isolation.main(proc_version(HOST)))
+        self.assertEqual("", out.getvalue())
+        self.assertIn("runtime provides container", err.getvalue())
+
+    def test_an_unreadable_version_fails(self) -> None:
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out, mock.patch("sys.stderr", new_callable=io.StringIO):
+            self.assertEqual(1, isolation.main(Path("/nonexistent/version")))
+        self.assertEqual("", out.getvalue())
 
 
 class ConfigTest(unittest.TestCase):

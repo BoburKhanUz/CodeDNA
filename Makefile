@@ -189,9 +189,8 @@ prod-smoke: ## Production-like smoke test: build, start with throwaway values on
 	./scripts/smoke-production.sh
 
 .PHONY: prod-evaluator-attest
-prod-evaluator-attest: ## On a production host: show the isolation the evaluator image attests under runsc
-	docker run --rm --runtime=$${EVALUATOR_RUNTIME:-runsc} --network none --entrypoint python3 \
-		codedna-evaluator:$${APP_VERSION:?set APP_VERSION} -c 'from evaluator import isolation; print(isolation.detect())'
+prod-evaluator-attest: ## On a production host: attest that the configured evaluator image runs under gVisor (fails otherwise)
+	./scripts/attest-evaluator.sh
 
 # ---------------------------------------------------------------------------
 # Performance (Phase 26, docs/performance/benchmarking.md). Everything runs

@@ -152,8 +152,14 @@ pipeline may build them once and push them to a private registry. Then set
 ### 11. Verify the evaluator isolation on this host
 
 ```bash
-APP_VERSION=<release> make prod-evaluator-attest    # must print: gvisor
+make prod-evaluator-attest    # must end with: attest: PASS: gvisor
 ```
+
+It reads the evaluator image and runtime from `docker-compose.prod.yml` and
+`/etc/codedna/production.env` (another file: `CODEDNA_ENV_FILE=...`), as
+`docker compose up` does, runs the image's own attestation under that runtime
+and exits non-zero unless it confirms gVisor. It proves the isolation of the
+image and runtime only; step 16 confirms the running service.
 
 ### 12. Start the data services
 

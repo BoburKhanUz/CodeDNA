@@ -24,6 +24,7 @@ reports less than the level it requires.
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -64,3 +65,22 @@ def attest(required: str, production: bool, proc_version: Path = Path("/proc/ver
     if LEVELS.index(actual) < LEVELS.index(required):
         raise IsolationError(f"EVALUATOR_ISOLATION={required} but the runtime provides {actual}; refusing to execute code")
     return Attestation(level=actual, production=production)
+
+
+def main(proc_version: Path = Path("/proc/version")) -> int:
+    """`python3 -m evaluator.isolation`: the host attestation (`make prod-evaluator-attest`).
+
+    Prints the attested level and exits 0 only when the runtime is gVisor, the
+    level production requires; anything else prints the reason and exits 1.
+    """
+    try:
+        attested = attest("gvisor", True, proc_version)
+    except IsolationError as error:
+        sys.stderr.write(f"attestation failed: {error}\n")
+        return 1
+    sys.stdout.write(f"{attested.level}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
