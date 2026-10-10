@@ -290,8 +290,16 @@ services:
       - --timeout=${ANALYSIS_JOB_TIMEOUT_SECONDS:-330}
       - --sleep=3
       - --tries=0
+    # Ready while the worker can read its queues in Redis (queue:monitor is
+    # read-only and exits 1 when Redis is unreachable). The process itself is
+    # PID 1: if it exits, the container stops.
     healthcheck:
-      disable: true
+      test: ["CMD", "php", "artisan", "queue:monitor", "analysis:analysis,analysis:challenge,analysis:github"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      start_interval: 5s
     depends_on:
       backend:
         condition: service_healthy
@@ -317,8 +325,16 @@ services:
       - --timeout=${AI_JOB_TIMEOUT_SECONDS:-180}
       - --sleep=3
       - --tries=0
+    # Ready while the worker can read its queues in Redis (queue:monitor is
+    # read-only and exits 1 when Redis is unreachable). The process itself is
+    # PID 1: if it exits, the container stops.
     healthcheck:
-      disable: true
+      test: ["CMD", "php", "artisan", "queue:monitor", "analysis:assessment"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      start_interval: 5s
     depends_on:
       backend:
         condition: service_healthy
@@ -357,8 +373,15 @@ services:
     networks:
       - codedna-app
     command: ["php", "artisan", "schedule:work"]
+    # Ready while Redis (queue and schedule locks) is reachable; read-only.
+    # The scheduler is PID 1: if it exits, the container stops.
     healthcheck:
-      disable: true
+      test: ["CMD", "php", "artisan", "queue:monitor", "analysis:analysis"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      start_interval: 5s
     depends_on:
       backend:
         condition: service_healthy

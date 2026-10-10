@@ -357,8 +357,16 @@ services:
     mem_limit: 512m
     cpus: 1
     pids_limit: 128
+    # Ready while the worker can read its queues in Redis (queue:monitor is
+    # read-only and exits 1 when Redis is unreachable). The process itself is
+    # PID 1: if it exits, the container stops.
     healthcheck:
-      disable: true
+      test: ["CMD", "php", "artisan", "queue:monitor", "analysis:analysis,analysis:challenge,analysis:github"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      start_interval: 5s
 
   # AI worker (Phase 29): AI assessments and insights only, apart from the
   # analysis queue, so slow local inference never delays an analysis. It
@@ -390,8 +398,16 @@ services:
     mem_limit: 384m
     cpus: 0.5
     pids_limit: 64
+    # Ready while the worker can read its queues in Redis (queue:monitor is
+    # read-only and exits 1 when Redis is unreachable). The process itself is
+    # PID 1: if it exits, the container stops.
     healthcheck:
-      disable: true
+      test: ["CMD", "php", "artisan", "queue:monitor", "analysis:assessment"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      start_interval: 5s
 
   # Local AI runtime (Phase 29, docs/operations/local-ai.md), optional: started
   # only with --profile local-ai. Hardened like every service (read-only root,
@@ -440,8 +456,15 @@ services:
     mem_limit: 256m
     cpus: 0.5
     pids_limit: 64
+    # Ready while Redis (queue and schedule locks) is reachable; read-only.
+    # The scheduler is PID 1: if it exits, the container stops.
     healthcheck:
-      disable: true
+      test: ["CMD", "php", "artisan", "queue:monitor", "analysis:analysis"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+      start_interval: 5s
 
   # One-shot, run explicitly by the deployment procedure (never at start):
   #   docker compose -f docker-compose.prod.yml --env-file ... run --rm migrate
