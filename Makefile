@@ -180,7 +180,9 @@ prod-config: ## Render docker-compose.prod.yml (alone and with the enterprise ex
 
 .PHONY: prod-build
 prod-build: ## Build every production image (tag: APP_VERSION, default "local")
-	$(PROD_CHECK_ENV) APP_VERSION=$${APP_VERSION:-local} $(PROD_COMPOSE) --profile migrate build
+	@# Read the caller's APP_VERSION first: PROD_CHECK_ENV sets APP_VERSION=check,
+	@# and a later prefix assignment would expand that placeholder instead.
+	version=$${APP_VERSION:-local}; $(PROD_CHECK_ENV) APP_VERSION=$$version $(PROD_COMPOSE) --profile migrate build
 
 .PHONY: prod-smoke
 prod-smoke: ## Production-like smoke test: build, start with throwaway values on loopback, check, remove
