@@ -28,10 +28,9 @@ Thumbs.db
 # ---------------------------------------------------------------------------
 backend/vendor/
 backend/storage/*.key
-backend/storage/logs/
-backend/storage/framework/cache/
-backend/storage/framework/sessions/
-backend/storage/framework/views/
+# storage/logs and storage/framework/{cache,sessions,views} ignore their own
+# contents (Laravel's per-directory .gitignore) so the directories exist in a
+# fresh clone: Laravel needs storage/framework/views to compile Blade views.
 backend/bootstrap/cache/*.php
 backend/public/storage
 backend/.phpunit.result.cache
