@@ -17,6 +17,7 @@ use App\Services\Assessment\Provider\AiProvider;
 use App\Services\Assessment\Provider\AiProviderException;
 use App\Services\Assessment\Provider\FakeAiProvider;
 use App\Services\Insights\InsightEvalSet;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
 use Tests\Support\ScriptedModelClient;
@@ -28,6 +29,8 @@ use Tests\TestCase;
  */
 final class AiGatewayTest extends TestCase
 {
+    use RefreshDatabase;
+
     protected function setUp(): void
     {
         parent::setUp();
