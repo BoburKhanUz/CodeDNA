@@ -104,7 +104,7 @@ class SandboxTest(unittest.TestCase):
         self.assertEqual(
             [
                 [
-                    [3, 3],
+                    [4, 4],
                     [limits.memory_bytes, limits.memory_bytes],
                     [limits.max_processes, limits.max_processes],
                     [limits.max_file_bytes, limits.max_file_bytes],
@@ -270,7 +270,9 @@ class SandboxTest(unittest.TestCase):
         self.assertEqual([], os.listdir("/sandbox/0") if os.access("/sandbox/0", os.R_OK) else [])
 
     def test_deep_recursion_is_an_error_not_a_crash_of_the_service(self) -> None:
-        result = evaluate("import sys\nsys.setrecursionlimit(10**6)\ndef solve(x):\n    return solve(x + 1)\n")
+        # About 3 s of work: with the default 3 s limit the outcome depended on the
+        # machine's speed (sometimes TIMEOUT). The limit is not what this tests.
+        result = evaluate("import sys\nsys.setrecursionlimit(10**6)\ndef solve(x):\n    return solve(x + 1)\n", timeout=10)
         self.assertIn(result["status"], ("COMPLETED", "CRASHED"))
 
     def test_the_slot_directory_is_emptied_after_each_job(self) -> None:

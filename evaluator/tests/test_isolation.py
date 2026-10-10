@@ -109,6 +109,11 @@ class ConfigTest(unittest.TestCase):
             with self.subTest(env=env), self.assertRaises(config.ConfigError):
                 self.load(**env)
 
+    def test_the_wall_clock_expires_before_the_cpu_limit(self) -> None:
+        # Equal limits raced: an endless loop was sometimes CRASHED instead of TIMEOUT.
+        limits = self.load().limits
+        self.assertEqual(limits.wall_seconds + 1, limits.cpu_seconds)
+
     def test_production_gvisor_loads(self) -> None:
         loaded = self.load(EVALUATOR_PRODUCTION="true", EVALUATOR_ISOLATION="gvisor")
         self.assertEqual(("gvisor", True), (loaded.isolation, loaded.production))

@@ -75,8 +75,8 @@ Execution is fixed:
 
 | Limit | Value |
 |---|---|
-| CPU time (`RLIMIT_CPU`) | `CHALLENGE_EXECUTION_TIMEOUT`, default 5 s |
-| Wall clock | Same timeout; then the whole process group is killed |
+| Wall clock | `CHALLENGE_EXECUTION_TIMEOUT`, default 5 s; then the whole process group is killed (`TIMEOUT`) |
+| CPU time (`RLIMIT_CPU`) | The timeout plus 1 s: a backstop, so the wall clock always decides |
 | Address space (`RLIMIT_AS`) | `CHALLENGE_MAX_MEMORY_MB`, default 256 MB |
 | Processes (`RLIMIT_NPROC`) | `CHALLENGE_MAX_PROCESSES`, default 16 (per slot uid) |
 | File size (`RLIMIT_FSIZE`) | 1 MB |

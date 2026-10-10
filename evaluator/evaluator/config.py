@@ -72,7 +72,11 @@ def load() -> Config:
     )
     limits = Limits(
         wall_seconds=timeout,
-        cpu_seconds=timeout,
+        # One second above the wall clock: a CPU-bound submission uses CPU time
+        # as fast as wall time, so equal limits raced and an endless loop was
+        # sometimes killed by RLIMIT_CPU first (reported CRASHED, not TIMEOUT).
+        # The wall clock decides; RLIMIT_CPU stays a backstop.
+        cpu_seconds=timeout + 1,
         memory_bytes=_int("CHALLENGE_MAX_MEMORY_MB", 256, 64, 1024) * 1024 * 1024,
         max_processes=_int("CHALLENGE_MAX_PROCESSES", 16, 1, 64),
         max_file_bytes=_int("CHALLENGE_MAX_FILE_BYTES", 1024 * 1024, 4096, 16 * 1024 * 1024),
