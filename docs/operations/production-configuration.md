@@ -71,7 +71,7 @@ Set in `docker-compose.prod.yml` and checked by `make prod-config`:
 | `ANALYZER_HMAC_SECRET_PREVIOUS` | empty | Only during an HMAC rotation |
 | `GITHUB_APP_*` | empty (off) | All or nothing; the private key as PEM in `GITHUB_APP_PRIVATE_KEY` |
 | `AI_*` | disabled | `AI_ENABLED=true` needs a pulled model. The default is the bundled local Ollama runtime (`--profile local-ai`, internal http). A remote endpoint needs https and `AI_ALLOW_REMOTE_ENDPOINT=true` ([local AI](local-ai.md)) |
-| `CHALLENGE_ENABLED`, `CHALLENGE_EVALUATOR` | `true`, `spool` | `CHALLENGE_EVALUATOR=none` disables execution entirely |
+| `CHALLENGE_ENABLED`, `CHALLENGE_EVALUATOR` | `false`, `none` | Coding challenges are not in V1.0.0. Enabling them: `true`, `spool`, `COMPOSE_PROFILES=challenges` and gVisor attested on the host. `CHALLENGE_ENABLED=true` with `none` is refused at boot |
 | `EVALUATOR_RUNTIME` | `runsc` | Name of the registered gVisor runtime |
 | Source, analyzer and challenge limits | as in development | Same ranges, validated at boot |
 
@@ -115,7 +115,8 @@ naming the variable, never its value:
 
 ## Evaluator sandbox
 
-The evaluator executes untrusted code. Production requires
+The evaluator executes untrusted code; it runs only in a release that enables
+coding challenges (Compose profile `challenges`; not V1.0.0). Production then requires
 [gVisor](production-deployment.md#3-install-gvisor-for-the-evaluator):
 
 1. The image's production target sets `EVALUATOR_PRODUCTION=true` and

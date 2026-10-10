@@ -32,7 +32,9 @@ previous release. Commands assume
 
    ```bash
    sed -i 's/^APP_VERSION=.*/APP_VERSION=<previous>/' /etc/codedna/production.env
-   $DC up -d --wait nginx frontend backend queue scheduler analyzer evaluator
+   $DC up -d --wait nginx frontend backend queue scheduler analyzer
+   # A release with coding challenges enabled: also restart the evaluator
+   # ($DC --profile challenges up -d --wait evaluator).
    ```
 
 3. Check `/api/v1/health` (it reports the running version), sign in, and

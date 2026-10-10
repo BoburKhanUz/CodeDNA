@@ -50,7 +50,7 @@ https() { curl --noproxy '*' -s --resolve "$DOMAIN:$HTTPS_PORT:127.0.0.1" --cace
 url() { printf 'https://%s:%s%s' "$DOMAIN" "$HTTPS_PORT" "$1"; }
 
 cleanup() {
-    dc down -v --remove-orphans >/dev/null 2>&1 || true
+    dc --profile challenges down -v --remove-orphans >/dev/null 2>&1 || true
     rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -97,10 +97,24 @@ if [ "${SMOKE_BUILD:-1}" = "1" ]; then
 fi
 
 echo "== start"
-dc up -d --no-build --wait --wait-timeout 300 nginx frontend backend queue ai-worker scheduler analyzer postgres redis minio
+# The documented production start (no service list, no profile): V1.0.0 runs
+# without coding challenges, so the evaluator is neither created nor needed.
+dc up -d --no-build --wait --wait-timeout 300
 dc run --rm migrate >/dev/null
-dc up -d --no-build evaluator
 pass "stack started and migrations applied with the explicit one-shot"
+if [ -z "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=evaluator")" ]; then
+    pass "challenges off: no evaluator container without the challenges profile"
+else
+    fail "challenges off: no evaluator container without the challenges profile"
+fi
+# shellcheck disable=SC2016 # PHP code, not shell expansions
+challenges=$(dc exec -T backend php -r 'require "vendor/autoload.php"; $app = require "bootstrap/app.php";
+    $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+    echo json_encode([config("codedna.challenges.enabled"), config("codedna.challenges.evaluator"),
+        $app->make(App\Services\Challenge\Evaluator\ChallengeEvaluator::class)->available()]);' 2>/dev/null | tail -1)
+expect "challenges off: enabled=false, evaluator=none, evaluation unavailable" "$challenges" '[false,"none",false]'
+# The evaluator image is still checked below: started explicitly, fail closed.
+dc --profile challenges up -d --no-build evaluator
 
 echo "== TLS edge"
 expect "health over https" "$(https -o /dev/null -w '%{http_code}' "$(url /api/v1/health)")" 200
@@ -239,13 +253,13 @@ fi
 echo "== evaluator (runtime: $runtime)"
 sleep 8
 if [ "$runtime" = runsc ]; then
-    if dc up -d --no-build --wait --wait-timeout 120 evaluator >/dev/null; then
+    if dc --profile challenges up -d --no-build --wait --wait-timeout 120 evaluator >/dev/null; then
         pass "evaluator healthy under gVisor (attested)"
     else
         fail "evaluator healthy under gVisor"
     fi
 else
-    if dc logs evaluator 2>&1 | grep -q 'evaluator.refused reason=EVALUATOR_ISOLATION=gvisor but the runtime provides container'; then
+    if dc --profile challenges logs evaluator 2>&1 | grep -q 'evaluator.refused reason=EVALUATOR_ISOLATION=gvisor but the runtime provides container'; then
         pass "evaluator refuses to run without gVisor (fail closed)"
     else
         fail "evaluator refuses to run without gVisor"
@@ -345,9 +359,14 @@ else
     fail "backend starts with the valid configuration"
 fi
 # Phase 27: an external database or Redis without TLS, and invalid registration settings.
-for override in 'APP_DEBUG=true' 'LOG_LEVEL=debug' 'TRUSTED_PROXIES=*' 'CHALLENGE_EVALUATOR_ISOLATION=container' 'CORS_ALLOWED_ORIGINS=http://evil.example' 'BILLING_PROVIDER=fake' 'APP_KEY=' \
-    'DB_HOST=db.customer.example' 'REDIS_HOST=redis.customer.example' 'REGISTRATION_MODE=invite' 'REGISTRATION_MODE=restricted'; do
-    if dc run --rm --no-deps -e "$override" backend php -r 'exit(0);' >/dev/null 2>&1; then
+for override in 'APP_DEBUG=true' 'LOG_LEVEL=debug' 'TRUSTED_PROXIES=*' 'CORS_ALLOWED_ORIGINS=http://evil.example' 'BILLING_PROVIDER=fake' 'APP_KEY=' \
+    'DB_HOST=db.customer.example' 'REDIS_HOST=redis.customer.example' 'REGISTRATION_MODE=invite' 'REGISTRATION_MODE=restricted' \
+    'CHALLENGE_ENABLED=true' 'CHALLENGE_EVALUATOR=spool CHALLENGE_EVALUATOR_ISOLATION=container'; do
+    # Some overrides are several variables (space-separated).
+    read -r -a assignments <<< "$override"
+    environment=()
+    for assignment in "${assignments[@]}"; do environment+=(-e "$assignment"); done
+    if dc run --rm --no-deps "${environment[@]}" backend php -r 'exit(0);' >/dev/null 2>&1; then
         fail "backend refuses to start with $override"
     else
         pass "backend refuses to start with $override"

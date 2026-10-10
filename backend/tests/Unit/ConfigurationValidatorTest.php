@@ -482,6 +482,20 @@ final class ConfigurationValidatorTest extends TestCase
         $this->assertSame(['AI_JOB_TIMEOUT_SECONDS must be lower than the queue retry_after.'], $this->aiProblems(['timeout_seconds' => 300, 'job_timeout_seconds' => 360]));
     }
 
+    public function test_enabled_challenges_require_the_spool_evaluator(): void
+    {
+        $expected = 'CHALLENGE_ENABLED=true requires CHALLENGE_EVALUATOR=spool (or set CHALLENGE_ENABLED=false).';
+        foreach (['production', 'staging'] as $deployed) {
+            $this->assertSame([$expected], (new ConfigurationValidator)->problems(
+                $this->config(['codedna.challenges' => ['evaluator' => 'none'] + self::CHALLENGES]), $deployed));
+        }
+        // The V1.0.0 configuration, and an enabled release with the attested evaluator.
+        $this->assertSame([], $this->challengeProblems(['enabled' => false, 'evaluator' => 'none']));
+        $this->assertSame([], $this->challengeProblems([]));
+        // Development may run the API without an evaluator.
+        $this->assertSame([], (new ConfigurationValidator)->problems($this->config(['codedna.challenges' => ['evaluator' => 'none'] + self::CHALLENGES]), 'local'));
+    }
+
     public function test_challenge_settings_are_validated(): void
     {
         $this->assertSame([], $this->challengeProblems([]));
@@ -582,7 +596,7 @@ final class ConfigurationValidatorTest extends TestCase
             $this->assertSame([$expected], (new ConfigurationValidator)->problems(
                 $this->config(['codedna.challenges' => ['required_isolation' => 'container'] + self::CHALLENGES]), $deployed));
         }
-        $this->assertSame([], $this->challengeProblems(['evaluator' => 'none', 'required_isolation' => 'container']));
+        $this->assertSame([], $this->challengeProblems(['evaluator' => 'none', 'enabled' => false, 'required_isolation' => 'container']));
         $this->assertSame([], (new ConfigurationValidator)->problems($this->config(['codedna.challenges' => ['required_isolation' => 'container'] + self::CHALLENGES]), 'local'));
         $this->assertSame(['CHALLENGE_EVALUATOR_ISOLATION must be one of: container, gvisor.', $expected], $this->challengeProblems(['required_isolation' => 'none']));
     }

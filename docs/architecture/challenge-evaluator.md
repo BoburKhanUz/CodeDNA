@@ -255,7 +255,8 @@ in code rather than by convention ([`evaluator/isolation.py`](../../evaluator/ev
   level fails closed. Where `gvisor` is required, the queued job checks
   again right before writing a request. A refused submission is retryable,
   and nothing is executed.
-- **Compose.** `docker-compose.prod.yml` runs the evaluator with
+- **Compose.** `docker-compose.prod.yml` runs the evaluator only with the
+  `challenges` profile (not in V1.0.0, which ships with challenges off), with
   `runtime: runsc`, no network, the same capabilities, tmpfs mounts and
   limits as in development. Its health check requires `isolation ==
   "gvisor"`.

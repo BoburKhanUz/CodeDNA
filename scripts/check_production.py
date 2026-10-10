@@ -161,6 +161,8 @@ def check_compose(model: dict[str, Any], external: bool = False) -> list[str]:
     evaluator = services.get("evaluator", {})
     if evaluator.get("network_mode") != "none" or evaluator.get("networks"):
         errors.append("service evaluator: must have no network (network_mode: none)")
+    if evaluator.get("profiles") != ["challenges"]:
+        errors.append("service evaluator: must only run explicitly (profile challenges)")
     if not str(evaluator.get("runtime", "")).startswith("runsc"):
         errors.append("service evaluator: the gVisor runtime (runsc) is required")
     environment = evaluator.get("environment") or {}
@@ -189,6 +191,10 @@ def check_compose(model: dict[str, Any], external: bool = False) -> list[str]:
                 errors.append(f"service {name}: {key} must be {value!r}")
         if not str(environment.get("APP_URL", "")).startswith("https://"):
             errors.append(f"service {name}: APP_URL must be https")
+        # V1.0.0 scope: coding challenges ship disabled. A release that enables
+        # them changes the template deliberately, with gVisor attested on the host.
+        if environment.get("CHALLENGE_ENABLED") != "false" or environment.get("CHALLENGE_EVALUATOR") != "none":
+            errors.append(f"service {name}: the release template must set CHALLENGE_ENABLED=false and CHALLENGE_EVALUATOR=none")
         # Enterprise license (Phase 27): read from the read-only secret only;
         # verification keys are code, never configuration.
         if environment.get("CODEDNA_LICENSE_PATH") != LICENSE_PATH or "codedna_license" not in [

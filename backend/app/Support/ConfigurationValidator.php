@@ -246,6 +246,10 @@ final class ConfigurationValidator
         if ($config->get('codedna.challenges.evaluator') === 'spool' && $config->get('codedna.challenges.required_isolation') !== 'gvisor') {
             $problems[] = 'CHALLENGE_EVALUATOR_ISOLATION must be "gvisor" in production (or set CHALLENGE_EVALUATOR=none).';
         }
+        // Challenges that can be assigned but never evaluated: refuse the contradiction.
+        if ($config->get('codedna.challenges.enabled') === true && $config->get('codedna.challenges.evaluator') === 'none') {
+            $problems[] = 'CHALLENGE_ENABLED=true requires CHALLENGE_EVALUATOR=spool (or set CHALLENGE_ENABLED=false).';
+        }
 
         return $problems;
     }

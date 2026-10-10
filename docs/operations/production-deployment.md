@@ -20,7 +20,7 @@ variable) · [security baseline](security-baseline.md) ·
 | `scheduler` | same image, `schedule:work` (exactly one) | data | — |
 | `migrate` | same image, one-shot (profile `migrate`) | data | — |
 | `analyzer` | `docker/python/Dockerfile` | analysis | — |
-| `evaluator` | `docker/evaluator/Dockerfile`, runtime `runsc` | **none** | — |
+| `evaluator` | `docker/evaluator/Dockerfile`, runtime `runsc`; profile `challenges` (not in V1.0.0) | **none** | — |
 | `postgres` | `postgres:16-alpine` | data | — |
 | `redis` | `redis:7.4-alpine` | data | — |
 | `minio`, `minio-init` | pinned MinIO images | storage (+ analysis) | — |
@@ -31,10 +31,11 @@ The network design and per-container hardening are in the
 ## Prerequisites
 
 - Linux x86_64 host with Docker Engine 25+ and the Compose v2 plugin.
-- **gVisor** (`runsc`) installed and registered as a Docker runtime, so the
-  challenge evaluator can run (see [step 3](#3-install-gvisor-for-the-evaluator)).
-  Without it, everything else works and challenge evaluation is reported as
-  unavailable (fail closed).
+- **gVisor** (`runsc`) only for a release that enables coding challenges
+  ([step 3](#3-install-gvisor-for-the-evaluator)). V1.0.0 ships with
+  challenges off (`CHALLENGE_ENABLED=false`, `CHALLENGE_EVALUATOR=none`): the
+  evaluator belongs to the `challenges` Compose profile and is neither created
+  nor started, so no host runtime is needed.
 - A DNS name for the application, and a TLS certificate chain and key for it.
 - Inbound 80 and 443 only. Nothing else needs to be reachable from outside.
 - Outbound HTTPS from the host for GitHub, the AI provider and an external
@@ -56,7 +57,8 @@ distribution. Check: `docker version` and `docker compose version`.
 
 ### 3. Install gVisor for the evaluator
 
-Install `runsc` from gVisor's release repository, then register it with
+Only for a release that enables coding challenges (not V1.0.0); otherwise skip
+to step 4. Install `runsc` from gVisor's release repository, then register it with
 Docker:
 
 ```bash
@@ -151,6 +153,10 @@ pipeline may build them once and push them to a private registry. Then set
 
 ### 11. Verify the evaluator isolation on this host
 
+Only when enabling coding challenges (not V1.0.0). Then also set
+`CHALLENGE_ENABLED=true`, `CHALLENGE_EVALUATOR=spool` and
+`COMPOSE_PROFILES=challenges` in the environment file.
+
 ```bash
 make prod-evaluator-attest    # must end with: attest: PASS: gvisor
 ```
@@ -202,8 +208,9 @@ docker compose -f docker-compose.prod.yml --env-file /etc/codedna/production.env
 ```
 
 All services must be `healthy` (`queue` and `scheduler` have no health check;
-they must be `running`). The evaluator is healthy only when its heartbeat
-reports `gvisor`.
+they must be `running`). With challenges off (V1.0.0) there is no evaluator
+container. With challenges on, the evaluator is healthy only when its
+heartbeat reports `gvisor`.
 
 ### 17. Verify the edge
 

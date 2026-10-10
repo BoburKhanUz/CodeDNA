@@ -172,17 +172,17 @@ compose-config: ## Validate docker-compose.yml without starting anything
 .PHONY: prod-config
 prod-config: ## Render docker-compose.prod.yml (alone and with the enterprise external-service overlays) and check the production baseline
 	@mkdir -p tmp
-	$(PROD_CHECK_ENV) $(PROD_COMPOSE) --profile migrate --profile local-ai config --format json > tmp/prod-compose.json
+	$(PROD_CHECK_ENV) $(PROD_COMPOSE) --profile migrate --profile local-ai --profile challenges config --format json > tmp/prod-compose.json
 	python3 scripts/check_production.py tmp/prod-compose.json
 	$(PROD_CHECK_ENV) docker compose -f docker-compose.prod.yml $(addprefix -f ,$(wildcard docker/enterprise/compose.external-*.yml)) \
-		--env-file .env.production.example --profile migrate --profile local-ai config --format json > tmp/prod-compose-external.json
+		--env-file .env.production.example --profile migrate --profile local-ai --profile challenges config --format json > tmp/prod-compose-external.json
 	python3 scripts/check_production.py --external tmp/prod-compose-external.json
 
 .PHONY: prod-build
 prod-build: ## Build every production image (tag: APP_VERSION, default "local")
 	@# Read the caller's APP_VERSION first: PROD_CHECK_ENV sets APP_VERSION=check,
 	@# and a later prefix assignment would expand that placeholder instead.
-	version=$${APP_VERSION:-local}; $(PROD_CHECK_ENV) APP_VERSION=$$version $(PROD_COMPOSE) --profile migrate build
+	version=$${APP_VERSION:-local}; $(PROD_CHECK_ENV) APP_VERSION=$$version $(PROD_COMPOSE) --profile migrate --profile challenges build
 
 .PHONY: prod-smoke
 prod-smoke: ## Production-like smoke test: build, start with throwaway values on loopback, check, remove

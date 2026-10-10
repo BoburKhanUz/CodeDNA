@@ -159,10 +159,11 @@ x-backend-environment: &backend-environment
   AI_MAX_CONCURRENCY: ${AI_MAX_CONCURRENCY:-1}
   AI_SLOT_WAIT_SECONDS: ${AI_SLOT_WAIT_SECONDS:-10}
   AI_KEEP_ALIVE: ${AI_KEEP_ALIVE:-5m}
-  # Coding challenges: only through an evaluator that attests gVisor (or
-  # CHALLENGE_EVALUATOR=none to disable execution entirely).
-  CHALLENGE_ENABLED: ${CHALLENGE_ENABLED:-true}
-  CHALLENGE_EVALUATOR: ${CHALLENGE_EVALUATOR:-spool}
+  # Coding challenges: off by default (not in V1.0.0). When enabled, only
+  # through an evaluator that attests gVisor (CHALLENGE_EVALUATOR=spool and
+  # the "challenges" profile); CHALLENGE_EVALUATOR=none disables execution.
+  CHALLENGE_ENABLED: ${CHALLENGE_ENABLED:-false}
+  CHALLENGE_EVALUATOR: ${CHALLENGE_EVALUATOR:-none}
   CHALLENGE_EVALUATOR_ISOLATION: gvisor
   CHALLENGE_EVALUATOR_SPOOL: /var/spool/codedna-challenges
   CHALLENGE_MAX_SOURCE_BYTES: ${CHALLENGE_MAX_SOURCE_BYTES:-16384}
@@ -542,6 +543,11 @@ services:
   # refused by the evaluator itself.
   evaluator:
     <<: *hardening
+    # Coding challenges only (not in V1.0.0): started with
+    # COMPOSE_PROFILES=challenges, after `make prod-evaluator-attest` passes on
+    # this host. Without the profile it is neither created nor started, so a
+    # host without gVisor runs everything else.
+    profiles: ["challenges"]
     build:
       context: ./evaluator
       dockerfile: ../docker/evaluator/Dockerfile

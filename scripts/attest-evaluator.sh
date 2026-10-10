@@ -24,7 +24,7 @@ fail() { echo "attest: FAIL: $*" >&2; exit 1; }
 [[ -r "$ENV_FILE" ]] || fail "cannot read the production env file $ENV_FILE (set CODEDNA_ENV_FILE)"
 
 # Only the evaluator's image and runtime leave the rendered configuration.
-resolved=$(docker compose -f "$ROOT/docker-compose.prod.yml" --env-file "$ENV_FILE" config --format json 2>/dev/null |
+resolved=$(docker compose -f "$ROOT/docker-compose.prod.yml" --env-file "$ENV_FILE" --profile challenges config --format json 2>/dev/null |
     python3 -c '
 import json, sys
 evaluator = json.load(sys.stdin)["services"]["evaluator"]
