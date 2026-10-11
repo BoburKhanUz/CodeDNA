@@ -230,6 +230,8 @@ describe("ProjectGitHubView", () => {
     respondWith({ github: () => projectGitHub({ connection: connection(), latest_import: latest }) });
     render(<ProjectGitHubView projectId={project.id} />);
     expect(await screen.findByTestId("github-latest-import")).toBeInTheDocument();
+    // The initial load ends with the branch list, which its card requests after it mounts.
+    expect(await screen.findByTestId("github-branch-select")).toBeInTheDocument();
     const gets = () => fetchMock.mock.calls.filter(([, init]) => (init?.method ?? "GET") === "GET").map(([input]) => new URL(String(input), "http://localhost").pathname);
     const before = gets().length;
 
