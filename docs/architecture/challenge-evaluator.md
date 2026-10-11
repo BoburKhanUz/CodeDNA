@@ -263,6 +263,16 @@ in code rather than by convention ([`evaluator/isolation.py`](../../evaluator/ev
 - **Host check.** `make prod-evaluator-attest` runs the configured image
   under the configured runtime and exits non-zero unless it attests gVisor.
 
+**Required before challenges are enabled (V1.0.0 status: not attested).**
+gVisor has never been attested on a production-equivalent host: CI, the
+production smoke test and development run `runc`, so they prove only the
+refusal, never a working gVisor sandbox. Before `CHALLENGE_ENABLED=true` on
+any deployment, `make prod-evaluator-attest` must end with
+`attest: PASS: gvisor` on that host (or one built identically: same kernel,
+Docker, `runsc` version and platform), and the running evaluator must report
+`isolation == "gvisor"` ([step 16](../operations/production-deployment.md#16-check-health)).
+Record the gVisor version and the result with the release.
+
 Prerequisites, installation and the operator check are in
 [production deployment](../operations/production-deployment.md#3-install-gvisor-for-the-evaluator).
 Tests: `evaluator/tests/test_isolation.py` (attestation, strict

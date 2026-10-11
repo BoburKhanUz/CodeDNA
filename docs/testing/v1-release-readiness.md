@@ -1,51 +1,223 @@
-# V1 Release Readiness (Phase 30)
+# V1 Release Readiness
 
-The evidence and decision for releasing CodeDNA V1, produced by the Phase 30
-release validation (V1-RC1 → findings and fixes → V1-RC2). Every result
-below comes from a command that was actually run; anything that was not run
-says so.
+The evidence and decision for releasing CodeDNA V1.0.0. Every result below
+comes from a command that was actually run; anything that was not run says
+so. The Phase 30 validation that preceded it (V1-RC1 and V1-RC2) is kept as
+a [record](#phase-30-record-v1-rc2) at the end.
 
 ## Contents
 
 - [Decision](#decision)
-- [Release candidates](#release-candidates)
-- [Environment](#environment)
-- [Test results](#test-results)
-- [End-to-end journey](#end-to-end-journey)
-- [Findings and fixes](#findings-and-fixes)
-- [Security review](#security-review)
-- [Local AI](#local-ai)
-- [Performance and reliability](#performance-and-reliability)
-- [Deployment and migrations](#deployment-and-migrations)
+- [Scope](#scope)
+- [Candidate](#candidate)
 - [Release gates](#release-gates)
-- [Remaining issues](#remaining-issues)
-- [Next steps](#next-steps)
+- [Evidence](#evidence)
+- [Security review](#security-review)
+- [Known limitations](#known-limitations)
+- [Outstanding issues](#outstanding-issues)
+- [Before go-live](#before-go-live)
+- [Phase 30 record (V1-RC2)](#phase-30-record-v1-rc2)
 
 ## Decision
 
 | Question | Answer |
 |---|---|
-| V1.0.0 | **NO-GO.** Mandatory deployment gates are unverified, not failed: CI has not executed for this branch, a clean production image build could not run here, and the gVisor evaluator has not been attested on a production host. |
-| Limited beta | **Not approved yet.** Every product, security and data-integrity gate passes on V1-RC2. The beta can start without code changes once gates G1–G3 below pass on the beta host and in CI. |
-| Release candidate | V1-RC2, `5a013a1` |
+| V1.0.0 | **NO-GO** until the staging load test runs on an authorized staging target and the preflight passes on the production host. Every gate that could run here passes; none failed |
+| Release candidate | `29cfd40` plus the preflight and documentation commits that follow it (no application code changes after `29cfd40`) |
 
-There is no unresolved P0 or P1 defect. Two P1 defects were found and fixed
-in Phase 30 (uploads above ~32 MiB failed in production; the UI could not
-start an analysis), with regression tests.
+There is no known unresolved P0 or P1 defect.
 
-## Release candidates
+## Scope
 
-| Candidate | Commit | What changed |
+V1.0.0 is uploads-only and deterministic:
+
+- **Included:** ZIP upload, analysis, CodeDNA, competencies, skill gaps,
+  learning roadmap, growth, historical DNA, accounts, projects, teams and
+  plans as built.
+- **Excluded:** repository import from GitHub, GitLab and Bitbucket Cloud
+  (not verified against live providers). With no provider configured, the
+  UI offers upload only and the provider APIs answer `503`.
+- **Off:** `AI_ENABLED=false`. AI never changes a score in any
+  configuration.
+- **Off:** `CHALLENGE_ENABLED=false`, `CHALLENGE_EVALUATOR=none`. The
+  evaluator is in the `challenges` Compose profile and is not started.
+  Challenge requests answer `409 CHALLENGES_DISABLED`; boot validation
+  refuses `CHALLENGE_ENABLED=true` with `none`.
+
+`make prod-preflight`
+([deployment step 14a](../operations/production-deployment.md#14a-run-the-release-preflight))
+refuses a production configuration outside this scope.
+
+## Candidate
+
+| Commit | Change |
+|---|---|
+| `fc784d8` | Evaluator: the wall clock, not `RLIMIT_CPU`, ends a timed-out run (fixed a CI race) |
+| `8c77ac8` | V1.0.0 ships with challenges off; evaluator only in the `challenges` profile; boot validation, static checks and smoke checks for it |
+| `29cfd40` | Frontend: repository import offered only for providers the server reports as configured (fails closed) |
+| `d0ece8d` | `make prod-preflight` (`scripts/preflight-production.sh`) |
+| following | Documentation: README scope, this report, gVisor requirement |
+
+## Release gates
+
+| Gate | Status | Evidence |
 |---|---|---|
-| Baseline | `43718b2` | Phase 29, the starting point |
-| V1-RC1 | `6c0047f` | Fixes and coverage from the baseline audit (see [Findings](#findings-and-fixes)) |
-| V1-RC2 | `5a013a1` | RC1 review: residual risks recorded (`ca14498`); a flaky test found by the RC2 run fixed (`5a013a1`) |
+| CI and regression | PASS | CI run [#36](https://github.com/BoburKhanUz/CodeDNA/actions/runs/38102598270) on `29cfd40`: every job green. Nightly regression [#35](https://github.com/BoburKhanUz/CodeDNA/actions/runs/38042546506) on `fc784d8`. CI on the final commit is recorded in the release report |
+| Production images and smoke test | PASS | CI #36 built fresh production images and ran `scripts/smoke-production.sh`: 113 PASS, 0 FAIL, including "no evaluator container", "challenges off" and the boot refusal of `CHALLENGE_ENABLED=true` |
+| Upload-based end-to-end journey | PASS | API 37/37, browser 19/19, restart 3/3 ([evidence](#evidence)) |
+| Security review | PASS | [Security review](#security-review); no P0/P1 finding. No third-party penetration test |
+| Production configuration preflight | BLOCKED | The procedure is built and tested (positive and negative cases), but it has not run against the real production environment file and host (no access) |
+| Staging load test | BLOCKED | No authorized staging target. The harness (`make loadtest`) is development-stack only; targets: reads p95 < 300 ms, zero 5xx |
+| Documentation | PASS | README scope, deployment step 14a, gVisor requirement, this report; `make check` clean |
+| Backup and restore | PASS | Documented drill on local data: PostgreSQL dump restored with `--exit-on-error`, equal row counts; object storage mirrored out and back, 0 differences. Repeat on the production host before go-live |
 
-RC1 and RC2 differ in documentation and one test only; the production code
-and images are the same. The RC2 run caught one flaky frontend test that
-RC1 and the baseline passed by chance (see P3-6).
+## Evidence
 
-## Environment
+### CI run #36 (`29cfd40`)
+
+| Area | Result |
+|---|---|
+| Analyzer (pytest) | 336 passed |
+| Backend (PHPUnit) | OK, 2065 tests, 21,258 assertions |
+| Frontend (Vitest) | 579 passed (54 files); production build compiled |
+| Evaluator | 65 tests OK |
+| Linters | Pint (708 files), ruff, mypy, ESLint, TypeScript clean |
+| Runtime smoke (`make verify`) | 121 PASS, 0 FAIL |
+| Production smoke | 113 PASS, 0 FAIL on images built by the run |
+| Dependency audits, secret scan | no vulnerabilities, no leaks |
+
+### End-to-end journey
+
+Development stack (all real services: Laravel, PostgreSQL, Redis, MinIO,
+analyzer) with `AI_ENABLED=false CHALLENGE_ENABLED=false
+CHALLENGE_EVALUATOR=none`, through Nginx.
+
+- **API (37/37):**
+  - Registration of two users, an upload project.
+  - Six unsafe archives refused with controlled `4xx` codes and nothing
+    stored: path traversal, absolute path, symlink, a 250 MiB single-file
+    bomb, an aggregate bomb, and a non-ZIP file.
+  - Two uploads and analyses succeeded. DNA, competencies, skill gaps,
+    roadmap (201), growth and timeline worked, and analysis history paged.
+  - Another user's project answered 404; anonymous requests 401.
+  - Excluded features answered controlled errors: GitHub
+    `503 GITHUB_NOT_CONFIGURED`, GitLab `503 PROVIDER_NOT_CONFIGURED`,
+    challenges `409 CHALLENGES_DISABLED`, AI `409 AI_ASSESSMENT_DISABLED`.
+  - The upload rate limit returned 429 with `Retry-After` and recovered.
+  - Logout returned 204, then the session answered 401.
+- **Browser, Chromium (19/19):**
+  - Register, then create a project from a form with no Repository option,
+    and see no provider links on the project.
+  - Upload and analyze in the browser; a refresh keeps the result.
+  - DNA, competencies, skill gaps, roadmap, growth and history pages render.
+  - An unknown project shows a not-found state, and sign-out redirects to
+    `/login`.
+  - No 5xx and no console errors.
+- **Restart (3/3):** after `docker compose down` (volumes kept) and `up`,
+  login works, both snapshots persist and the DNA score is unchanged.
+- **Logs:** 723,988 lines scanned. None contained an environment secret or
+  the test password, a bearer token, session or XSRF value, a PEM block, or
+  uploaded source text.
+
+### Preflight
+
+`scripts/preflight-production.sh` against a production-compose test
+environment:
+
+- The static checks pass for the V1.0.0 configuration.
+- Each of these fails as expected: `AI_ENABLED=true`,
+  `CHALLENGE_ENABLED=true`, `CHALLENGE_EVALUATOR=spool`,
+  `COMPOSE_PROFILES=challenges`, and a world-readable environment file.
+- With the data services up and migrations applied, the runtime part passes
+  (11 PASS). It fails with Redis stopped.
+- It printed no secret values.
+
+### Backup and restore drill
+
+[Restore drill](../operations/backup-and-restore.md#restore-drill) on the
+development data:
+
+- **PostgreSQL:** `pg_dump --format=custom`, checksum verified, restored into
+  a scratch `postgres:16-alpine` with `--exit-on-error`. Row counts were equal
+  for users (118), projects (118), source snapshots (124), analysis runs
+  (110), DNA snapshots (110) and migrations (23). It took 12 s.
+- **Object storage:** `mc mirror` of the source bucket out (147 objects) and
+  back into a scratch bucket (147 objects), with 0 differences reported by
+  `mc diff`; the scratch bucket was then removed.
+
+## Security review
+
+**No new P0 or P1 finding.**
+
+- **Scope enforcement.** Challenges and AI are off, and their endpoints
+  refuse before anything is recorded, queued or written to the spool
+  (`ChallengeEvaluatorBindingTest`, production smoke). The evaluator is not
+  part of the default production stack. Boot validation, `check_production.py`
+  and the preflight each refuse a configuration that would enable them.
+- **Providers.** With none configured, the UI does not advertise import,
+  the hook fails closed on any error, and the API answers `503`.
+- **Uploads.** Traversal, absolute paths, symlinks, bombs and non-ZIP files
+  were refused over HTTP. Rate limiting held.
+- **Authentication and tenant isolation.** Cross-user 404, anonymous 401
+  and logout invalidation were checked end to end, in addition to the Phase
+  30 matrices.
+- **Secrets.** CI secret scan and dependency audits are clean. No secret,
+  token or source text appeared in the logs of the full journey. The
+  preflight prints no secrets.
+
+Not done: third-party penetration test, live provider review (excluded from
+V1.0.0), gVisor on a real host (challenges off). Accepted P3 residual risks
+are in [security hardening](../security/security-hardening.md#residual-risks).
+
+## Known limitations
+
+- **No repository import.** Repository import is excluded. Sources are
+  uploaded as ZIP files: at most 50 MiB compressed, 200 MiB uncompressed,
+  20,000 files and 25 MiB per file.
+- **No AI explanations or coding challenges.** Both are off.
+- **The UI still advertises coding challenges.** Roadmaps contain a
+  `CHALLENGE` step and the UI still links to Coding Challenges; starting
+  one shows `409 CHALLENGES_DISABLED`. Roadmap steps, including the
+  `CHALLENGE` step, can be completed in order (normal prerequisite rule
+  only). Tracked as P2,
+  [BoburKhanUz/CodeDNA#1](https://github.com/BoburKhanUz/CodeDNA/issues/1).
+- **Capacity unknown.** It is not measured on the release images or a
+  staging host.
+- **Delayed nightly CI.** GitHub starts the scheduled nightly regression
+  hours after its cron time.
+
+## Outstanding issues
+
+| Issue | Severity | Blocks V1.0.0 | Next action |
+|---|---|---|---|
+| Staging load test not run | release gate | yes | Authorize a staging target; run `make benchmark-seed loadtest` against it |
+| Preflight not run on the production host | release gate | yes | `make prod-preflight` on the host (deployment step 14a) |
+| Challenges still advertised while disabled ([BoburKhanUz/CodeDNA#1](https://github.com/BoburKhanUz/CodeDNA/issues/1)) | P2 | no | Hide challenge links when disabled |
+| gVisor not attested on a production-equivalent host | security | no (challenges off) | `make prod-evaluator-attest` before challenges are ever enabled |
+| Live provider imports unverified | integration | no (excluded) | One test account per provider before enabling |
+| Model quality on the target GPU unknown | AI | no (AI off) | `php artisan ai:eval` on the GPU before enabling AI |
+
+## Before go-live
+
+1. Run the load test on an authorized staging target with the release
+   images. It must show reads p95 < 300 ms and zero 5xx.
+2. On the production host:
+   - `make prod-build` and `make prod-smoke`;
+   - the migration job;
+   - `make prod-preflight`, which must end with `Preflight passed.`;
+   - a backup and a restore drill.
+3. Then re-decide V1.0.0.
+
+## Phase 30 record (V1-RC2)
+
+The validation of V1-RC2 (`5a013a1`) before the V1.0.0 scope decision. It
+covered challenges and AI, which V1.0.0 ships disabled. Its open gates
+(G1–G6) are superseded by the [release gates](#release-gates) above: CI runs
+(G1), clean images build and pass the smoke test in CI (G2), and G3–G5 are
+out of scope while challenges, providers and AI are off. G6 is the staging
+load test gate.
+
+### Environment
 
 - Cloud sandbox: 4 CPUs, 15 GB RAM, **no GPU**, Docker 29.6.2 with the
   `runc` runtime only (**no gVisor**).
@@ -56,9 +228,9 @@ RC1 and the baseline passed by chance (see P3-6).
   `docker-compose.prod.yml` through `scripts/smoke-production.sh`, on
   loopback with throwaway secrets.
 
-## Test results
+### Test results
 
-All on V1-RC2 unless noted. "Doubles" means HTTP fakes or scripted clients;
+All on V1-RC2 (`5a013a1`) unless noted. "Doubles" means HTTP fakes or scripted clients;
 "local services" means the real PostgreSQL, Redis, MinIO, analyzer and
 evaluator containers.
 
@@ -83,7 +255,7 @@ assertions; 562; 57), `make check` and `make verify` passed. The baseline
 `lint-frontend` failed only because a host-side build had left root-owned
 files in `frontend/.next` (environmental; passed after `chown`).
 
-## End-to-end journey
+### End-to-end journey (Phase 30)
 
 Real UI in Chromium against the development stack (`make up`), with no
 mocks: Laravel, PostgreSQL, Redis, MinIO, the analyzer and the evaluator
@@ -112,7 +284,7 @@ doubles requests (React StrictMode).
 Repository connection was not part of the journey: no provider account is
 available (see G4).
 
-## Findings and fixes
+### Findings and fixes
 
 | ID | Severity | Finding | Fix | Regression test |
 |---|---|---|---|---|
@@ -127,7 +299,7 @@ available (see G4).
 | P3-5 | P3 | Stale UI copy: "Importing from repositories is not available yet" | Copy updated (`dbeac45`) | — |
 | P3-6 | P3 | Flaky Phase 17 roadmap test (found by the RC2 run) | Scoped to the deterministic content (`5a013a1`) | 8/8 and full-suite runs |
 
-## Security review
+### Security review (Phase 30)
 
 Three read-only code audits (authorization and IDOR across every route;
 uploads, analyzer, evaluator and provider imports; billing, sessions and
@@ -167,7 +339,7 @@ Accepted P3 residual risks are listed in
 The audit was not exhaustive: live provider behavior and gVisor were not
 available, and no third-party penetration test was performed.
 
-## Local AI
+### Local AI
 
 AI is optional and disabled by default; every deterministic page is
 complete without it (verified by the journey with AI disabled).
@@ -185,7 +357,7 @@ Interpretation: the validator fails closed as designed; the 0.5B model is
 not useful enough for user-facing explanations. Model quality on the target
 GPU is unknown until `php artisan ai:eval` runs there.
 
-## Performance and reliability
+### Performance and reliability
 
 | Check | Result |
 |---|---|
@@ -196,7 +368,7 @@ GPU is unknown until `php artisan ai:eval` runs there.
 | Upload capacity (production) | 45 MiB alone and two concurrent: 201 |
 | AI disabled | `ai:status` contacts nothing and exits 0; AI requests refused; no deterministic page depends on AI |
 
-## Deployment and migrations
+### Deployment and migrations
 
 | Check | Result |
 |---|---|
@@ -208,51 +380,3 @@ GPU is unknown until `php artisan ai:eval` runs there.
 | AI default changes (Phase 29) | Verified in code: `AI_ENABLED` defaults to false; `openai_compatible` installations relying on the old default URL must set `AI_BASE_URL` and `AI_MODEL`; a remote production endpoint is refused without `AI_ALLOW_REMOTE_ENDPOINT=true` (tests and production smoke) |
 | Clean production image build | **BLOCKED here** (proxy TLS inside builds); see G2 |
 | Ollama off unless `--profile local-ai`; AI worker hardened; no new published ports | production smoke |
-
-## Release gates
-
-| Gate | Status |
-|---|---|
-| No unresolved P0/P1 | PASS |
-| Critical journey (register → growth) | PASS |
-| Authentication, authorization, tenant isolation | PASS |
-| Deterministic scoring and history integrity | PASS (score-invariance tests, migrations, journey) |
-| AI safety and score invariance | PASS |
-| AI disabled and unavailable behavior | PASS |
-| Uploads and analysis reliability | PASS |
-| Migrations, rollback, backup restore | PASS |
-| Production smoke test | PASS (layered images) |
-| Dependency audits and secret scan | PASS |
-| **G1** CI executes the suites | **BLOCKED**: every recent run of `.github/workflows/ci.yml` on this branch failed within seconds without a runner (`runner_id` 0, no logs); likely the Actions account or billing |
-| **G2** Clean production image build and smoke from scratch | **BLOCKED** here; runs in CI (`make prod-build`, `make prod-smoke`) once G1 is fixed |
-| **G3** gVisor evaluator attested on the production host | **NOT RUN** (`make prod-evaluator-attest`); alternatively start with challenges disabled (`CHALLENGE_EVALUATOR=none` fails closed) |
-| **G4** Live GitHub App, GitLab and Bitbucket OAuth and imports | **NOT RUN** (no credentials); Bitbucket archive redirect hosts still unverified live |
-| **G5** Real model on the target GPU | **NOT RUN**; AI stays disabled until it passes |
-| **G6** HTTP load test on the release images | **NOT RUN** in Phase 30 |
-
-## Remaining issues
-
-| Issue | Severity | User impact | Next action | Blocks beta | Blocks V1.0.0 |
-|---|---|---|---|---|---|
-| G1 CI not executing | release process | No independent, repeatable verification | Fix the Actions account or runners; re-run CI on RC2 | yes | yes |
-| G2 Clean image build unverified | deployment | A release could fail to build | `make prod-build && make prod-smoke` in CI or a networked host | yes | yes |
-| G3 gVisor not attested | security | Challenges cannot run (fail closed) until attested | `make prod-evaluator-attest` on the host | yes, or disable challenges | yes |
-| G4 Providers not verified live | integration | Imports could fail against real providers | One test account per provider; or launch the beta with uploads only | no, if providers stay off | yes |
-| G5 Model quality unknown on the GPU | AI usefulness | None while AI stays disabled | `ai:eval` with `qwen2.5-coder:7b` on the RTX 3060 | no (AI off) | no, if AI ships disabled |
-| G6 HTTP load test not repeated | performance | Capacity unknown for the new images | `make benchmark-seed loadtest` on the release images | no | yes |
-| Validator over-strictness (mixed improved/unchanged sentence) | P3 | Some accurate explanations discarded | Rule refinement with tests | no | no |
-| Accepted P3 residual risks | P3 | See [security hardening](../security/security-hardening.md#residual-risks) | As planned there | no | no |
-| Limitations: Git LFS and submodules not imported; one self-managed GitLab; no Bitbucket Data Center; rotating `APP_KEY` needs `APP_PREVIOUS_KEYS` or reconnects | documented | As documented in [GitLab](../integrations/gitlab.md), [Bitbucket Cloud](../integrations/bitbucket-cloud.md) and [OAuth setup](../integrations/oauth-setup.md) | — | no | no |
-
-## Next steps
-
-1. Fix GitHub Actions for the repository and re-run CI on RC2 (G1, G2).
-2. On the beta host: `make prod-build`, `make prod-smoke`,
-   `make prod-evaluator-attest` (G2, G3).
-3. Decide the beta scope: uploads only, or verify one account per provider
-   first (G4).
-4. Keep `AI_ENABLED=false` for the beta; run `php artisan ai:eval` with
-   `qwen2.5-coder:7b` on the RTX 3060 and enable AI only if the accepted
-   answers are useful (G5).
-5. Repeat the HTTP load test on the release images (G6).
-6. Then re-run this checklist and decide V1.0.0.

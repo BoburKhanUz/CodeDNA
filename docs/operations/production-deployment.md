@@ -153,7 +153,10 @@ pipeline may build them once and push them to a private registry. Then set
 
 ### 11. Verify the evaluator isolation on this host
 
-Only when enabling coding challenges (not V1.0.0). Then also set
+Only when enabling coding challenges (not V1.0.0). This check is
+**required** before challenges are enabled on any host: gVisor has not been
+attested on a production-equivalent host for V1.0.0 (CI and the smoke test
+run `runc`). Then also set
 `CHALLENGE_ENABLED=true`, `CHALLENGE_EVALUATOR=spool` and
 `COMPOSE_PROFILES=challenges` in the environment file.
 

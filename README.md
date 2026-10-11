@@ -11,7 +11,30 @@ ASSESS ─► ANALYZE ─► IDENTIFY GAPS ─► LEARN ─► PRACTICE ─► R
    └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## V1.0.0 release scope
+
+V1.0.0 ships a deliberately narrow, deterministic product. The code for the
+excluded features is in the repository, but they are switched off and not
+supported in this release:
+
+| Feature | V1.0.0 |
+|---|---|
+| Source by ZIP upload, analysis, CodeDNA, competencies, skill gaps, learning roadmap, growth, historical DNA | **Included** |
+| Repository import from GitHub, GitLab or Bitbucket Cloud | **Excluded.** Not verified against live providers. With no provider configured the UI offers upload only and the provider APIs answer `503` (`GITHUB_NOT_CONFIGURED`, `PROVIDER_NOT_CONFIGURED`) |
+| AI explanations (`AI_ENABLED`) | **Off** (`false`). AI requests answer `409 AI_ASSESSMENT_DISABLED`; AI never changes a score in any configuration |
+| Coding challenges (`CHALLENGE_ENABLED`, `CHALLENGE_EVALUATOR`) | **Off** (`false`, `none`). The evaluator is in the `challenges` Compose profile and is not started; challenge requests answer `409 CHALLENGES_DISABLED`. Enabling them requires a gVisor attestation on the host first ([challenge evaluator](docs/architecture/challenge-evaluator.md#production-sandbox)) |
+
+Deterministic scoring is the only source of CodeDNA scores. Known
+limitations, the evidence and the open gates are in
+[V1 release readiness](docs/testing/v1-release-readiness.md). Deploy with
+[production deployment](docs/operations/production-deployment.md), including
+`make prod-preflight` (step 14a), which refuses a configuration outside this
+scope.
+
 ## Project status
+
+The phases below record what was built; see the V1.0.0 scope above for
+what is switched on in the release.
 
 | Phase | Scope | Status |
 |---|---|---|
