@@ -188,6 +188,30 @@ Migrations never run at container start. `--force` is used only by this
 one-shot. Read the release notes for migrations that need a maintenance
 window.
 
+### 14a. Run the release preflight
+
+```bash
+make prod-preflight    # must end with: Preflight passed.
+```
+
+Run on every deployment, after the migrations and before the start. Against
+`/etc/codedna/production.env` (another file: `CODEDNA_ENV_FILE=...`) it checks:
+
+- the V1.0.0 scope: `AI_ENABLED=false`, `CHALLENGE_ENABLED=false`,
+  `CHALLENGE_EVALUATOR=none`, and neither the `challenges` nor the `local-ai`
+  Compose profile active (no evaluator and no Ollama container);
+- that the environment file is not readable by other users;
+- the production baseline (`scripts/check_production.py`);
+- at runtime, in one-off backend containers that are removed: the
+  configuration passes boot validation, PostgreSQL, Redis and object storage
+  are reachable, no migration is pending (`php artisan codedna:preflight`), and
+  AI is off (`php artisan ai:status`, which contacts nothing while AI is
+  disabled).
+
+It prints the scope settings and check results only, never secret values.
+`PREFLIGHT_STATIC_ONLY=1` skips the runtime part (no containers). Do not
+start the application while it fails.
+
 ### 15. Start the application
 
 ```bash
@@ -263,6 +287,8 @@ before stopping (grace period 360 s). PHP-FPM finishes in-flight requests
 - **Preflight:** `docker compose -f docker-compose.prod.yml --env-file /etc/codedna/production.env run --rm --no-deps backend php artisan codedna:preflight`
   checks the database, Redis, object storage, pending migrations and the
   license before a start or upgrade, without writing anything.
+  `make prod-preflight` ([step 14a](#14a-run-the-release-preflight)) runs it
+  together with the V1.0.0 scope checks.
 - **Behind a load balancer:** a TCP (layer-4) load balancer works unchanged.
   An HTTP load balancer that terminates TLS changes the client address
   Nginx sees. Then add a `real_ip` configuration listing only the load

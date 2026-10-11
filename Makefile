@@ -188,6 +188,10 @@ prod-build: ## Build every production image (tag: APP_VERSION, default "local")
 prod-smoke: ## Production-like smoke test: build, start with throwaway values on loopback, check, remove
 	./scripts/smoke-production.sh
 
+.PHONY: prod-preflight
+prod-preflight: ## On a production host: check the V1.0.0 scope (AI and challenges off), the baseline and runtime dependencies
+	./scripts/preflight-production.sh
+
 .PHONY: prod-evaluator-attest
 prod-evaluator-attest: ## On a production host: attest that the configured evaluator image runs under gVisor (fails otherwise)
 	./scripts/attest-evaluator.sh
