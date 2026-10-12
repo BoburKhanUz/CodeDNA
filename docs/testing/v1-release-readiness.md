@@ -62,7 +62,7 @@ refuses a production configuration outside this scope.
 
 | Gate | Status | Evidence |
 |---|---|---|
-| CI and regression | FAIL | Push CI green: run [#36](https://github.com/BoburKhanUz/CodeDNA/actions/runs/38102598270) on `29cfd40`, run [#37](https://github.com/BoburKhanUz/CodeDNA/actions/runs/38104170546) on `ae40912`. Nightly regression [#38](https://github.com/BoburKhanUz/CodeDNA/actions/runs/38130158587) on `ae40912` failed in its second of three repeated runs: a race in a GitHub panel test that predates this release (the initial branch request counted as a poll; reproduced under CPU load, fixed in the test). PASS once a nightly passes on the fixed commit; previous nightly [#35](https://github.com/BoburKhanUz/CodeDNA/actions/runs/38042546506) on `fc784d8` passed |
+| CI and regression | PASS | Push CI [#39](https://github.com/BoburKhanUz/CodeDNA/actions/runs/38133802850) and nightly regression [#40](https://github.com/BoburKhanUz/CodeDNA/actions/runs/38238005009) both passed on `7960d5a` (`7960d5a8843421a7a2c394d5c0f0aef0745cfc3e`). Nightly repeated all test suites three times without failures; secret scan and foundation jobs passed. The earlier #38 race is fixed in the test. |
 | Production images and smoke test | PASS | CI #36 built fresh production images and ran `scripts/smoke-production.sh`: 113 PASS, 0 FAIL, including "no evaluator container", "challenges off" and the boot refusal of `CHALLENGE_ENABLED=true` |
 | Upload-based end-to-end journey | PASS | API 37/37, browser 19/19, restart 3/3 ([evidence](#evidence)) |
 | Security review | PASS | [Security review](#security-review); no P0/P1 finding. No third-party penetration test |
