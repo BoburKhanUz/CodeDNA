@@ -67,7 +67,7 @@ refuses a production configuration outside this scope.
 | Upload-based end-to-end journey | PASS | API 37/37, browser 19/19, restart 3/3 ([evidence](#evidence)) |
 | Security review | PASS | [Security review](#security-review); no P0/P1 finding. No third-party penetration test |
 | Production configuration preflight | BLOCKED | The procedure is built and tested (positive and negative cases), but it has not run against the real production environment file and host (no access) |
-| Staging load test | BLOCKED | No authorized staging target. The harness (`make loadtest`) is development-stack only; targets: reads p95 < 300 ms, zero 5xx |
+| Staging load test | BLOCKED | No authorized staging target. A [preliminary run](#preliminary-load-test-not-staging) on one shared 4-CPU container had zero 5xx and exact quotas. Isolated reads were within or at the 300 ms p95 target; mixed load with analyses running was above it (scenario B p95 358–411 ms) |
 | Documentation | PASS | README scope, deployment step 14a, gVisor requirement, this report; `make check` clean |
 | Backup and restore | PASS | Documented drill on local data: PostgreSQL dump restored with `--exit-on-error`, equal row counts; object storage mirrored out and back, 0 differences. Repeat on the production host before go-live |
 
@@ -145,6 +145,53 @@ development data:
   back into a scratch bucket (147 objects), with 0 differences reported by
   `mc diff`; the scratch bucket was then removed.
 
+### Preliminary load test (not staging)
+
+[`make loadtest`](../performance/load-testing.md) run on 2026-10-15 in the
+cloud development container, at the owner's request, as an indication only.
+
+**Setup:**
+
+- **Host:** one host with 4 CPUs and 15 GB RAM. PostgreSQL, Redis, MinIO,
+  the analyzer, the queue worker, the frontend and the load generator all
+  shared it.
+- **Backend image:** the release code `7960d5a`, layered on the last
+  production backend image. A clean image build cannot download packages
+  here; `composer.lock` and the contracts are unchanged since that image.
+- **Data:** `make benchmark-seed BENCH_SCALE=medium` (10,000 users, 12,000
+  projects, ~94,000 analyses).
+- **Load:** 16 clients, 30 s per scenario, persistent database
+  connections.
+- **Runs:** two. The first ran all scenarios A–F; the second ran A, B, C
+  and E.
+
+| Scenario | req/s | p95, run 1 | p95, run 2 | Target p95 < 300 ms | Phase 26 p95 |
+|---|---|---|---|---|---|
+| A (profile, billing, project list) | 161–172 | 194 ms | 176 ms | met | 159 ms |
+| B (project, DNA, history, growth) | 105–111 | 289 ms | 307 ms | at the limit | 255 ms |
+| C (organization, analytics) | 124–133 | 229 ms | 213 ms | met | 239 ms |
+| E, A part (mixed load) | — | 280 ms | 244 ms | met | 217 ms |
+| E, B part (mixed load) | — | 411 ms | 358 ms | **missed** | 291 ms |
+| E, C part (mixed load) | — | 327 ms | 293 ms | at the limit | 250 ms |
+| D (start an analysis, 202) | paced | 67 ms | — | — | 57 ms |
+| F (concurrent project creation) | — | 223 ms | — | — | 209 ms |
+
+**Results:**
+
+- **No server errors:** zero 5xx over about 37,000 requests.
+- **Quotas exact:** under concurrent creation, no writer exceeded its
+  quota. Every other request got `402` (quota) or `429` (rate limit).
+- **Analyses:** every analysis the worker processed succeeded; none failed.
+  In run 2, 27 analyses were still queued when the harness flushed its
+  Redis databases on exit, as designed.
+- **Database connections:** at most 17, out of a limit of 100.
+- **Mixed load:** during scenario E the analysis queue reached 65. The
+  analyzer then competed with PHP-FPM for the same 4 CPUs, and read latency
+  rose above the target.
+
+Whether a separate analyzer host removes the miss is not shown here. The
+staging load test remains required.
+
 ## Security review
 
 **No new P0 or P1 finding.**
@@ -181,8 +228,10 @@ are in [security hardening](../security/security-hardening.md#residual-risks).
   `CHALLENGE` step, can be completed in order (normal prerequisite rule
   only). Tracked as P2,
   [BoburKhanUz/CodeDNA#1](https://github.com/BoburKhanUz/CodeDNA/issues/1).
-- **Capacity unknown.** It is not measured on the release images or a
-  staging host.
+- **Capacity unknown.** It has not been measured on a staging host. On
+  one shared 4-CPU container, project, DNA and history reads exceed the
+  300 ms p95 target while analyses run
+  ([preliminary load test](#preliminary-load-test-not-staging)).
 - **Delayed nightly CI.** GitHub starts the scheduled nightly regression
   hours after its cron time.
 
@@ -190,7 +239,8 @@ are in [security hardening](../security/security-hardening.md#residual-risks).
 
 | Issue | Severity | Blocks V1.0.0 | Next action |
 |---|---|---|---|
-| Staging load test not run | release gate | yes | Authorize a staging target; run `make benchmark-seed loadtest` against it |
+| Staging load test not run | release gate | yes | Authorize a staging target; run `make benchmark-seed loadtest` on it, with the analyzer on its own CPUs |
+| Reads over target under mixed load in the preliminary run (B p95 358–411 ms) | performance | decided by the staging run | Confirm on staging; if it holds there, profile scenario B with `make benchmark-api` |
 | Preflight not run on the production host | release gate | yes | `make prod-preflight` on the host (deployment step 14a) |
 | Challenges still advertised while disabled ([BoburKhanUz/CodeDNA#1](https://github.com/BoburKhanUz/CodeDNA/issues/1)) | P2 | no | Hide challenge links when disabled |
 | gVisor not attested on a production-equivalent host | security | no (challenges off) | `make prod-evaluator-attest` before challenges are ever enabled |
