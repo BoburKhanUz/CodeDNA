@@ -222,12 +222,14 @@ are in [security hardening](../security/security-hardening.md#residual-risks).
   uploaded as ZIP files: at most 50 MiB compressed, 200 MiB uncompressed,
   20,000 files and 25 MiB per file.
 - **No AI explanations or coding challenges.** Both are off.
-- **The UI still advertises coding challenges.** Roadmaps contain a
-  `CHALLENGE` step and the UI still links to Coding Challenges; starting
-  one shows `409 CHALLENGES_DISABLED`. Roadmap steps, including the
-  `CHALLENGE` step, can be completed in order (normal prerequisite rule
-  only). Tracked as P2,
-  [BoburKhanUz/CodeDNA#1](https://github.com/BoburKhanUz/CodeDNA/issues/1).
+- **Roadmaps keep a `CHALLENGE` step.** Roadmaps still contain one,
+  because roadmap rules are versioned and immutable. While challenges are
+  off, the UI no longer links to or recommends challenges
+  ([BoburKhanUz/CodeDNA#1](https://github.com/BoburKhanUz/CodeDNA/issues/1),
+  via `GET /api/v1/challenges/status`). The step shows a neutral note and
+  can be marked as done in order. Its catalog description still mentions
+  a coding challenge. A typed challenges URL explains that challenges are
+  not enabled and offers no way to start one.
 - **Capacity unknown.** It has not been measured on a staging host. On
   one shared 4-CPU container, project, DNA and history reads exceed the
   300 ms p95 target while analyses run
@@ -242,7 +244,7 @@ are in [security hardening](../security/security-hardening.md#residual-risks).
 | Staging load test not run | release gate | yes | Authorize a staging target; run `make benchmark-seed loadtest` on it, with the analyzer on its own CPUs |
 | Reads over target under mixed load in the preliminary run (B p95 358–411 ms) | performance | decided by the staging run | Confirm on staging; if it holds there, profile scenario B with `make benchmark-api` |
 | Preflight not run on the production host | release gate | yes | `make prod-preflight` on the host (deployment step 14a) |
-| Challenges still advertised while disabled ([BoburKhanUz/CodeDNA#1](https://github.com/BoburKhanUz/CodeDNA/issues/1)) | P2 | no | Hide challenge links when disabled |
+| Roadmaps keep a `CHALLENGE` step while challenges are off; links are hidden ([BoburKhanUz/CodeDNA#1](https://github.com/BoburKhanUz/CodeDNA/issues/1)) | P3 | no | Decide whether a new roadmap rules version should omit the step when challenges are off |
 | gVisor not attested on a production-equivalent host | security | no (challenges off) | `make prod-evaluator-attest` before challenges are ever enabled |
 | Live provider imports unverified | integration | no (excluded) | One test account per provider before enabling |
 | Model quality on the target GPU unknown | AI | no (AI off) | `php artisan ai:eval` on the GPU before enabling AI |

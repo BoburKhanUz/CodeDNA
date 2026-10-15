@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { isApiError } from "@/lib/api/errors";
 import type { FocusEntry, Project, Roadmap, RoadmapStep, RoadmapSummary, RoadmapTrack, SkillGapSnapshotSummary } from "@/lib/api/types";
 import { challengeStatusLabel, competencyName, difficultyLabel } from "@/lib/challenge/format";
+import { useChallengesEnabled } from "@/lib/challenge/use-challenges-enabled";
 import { levelLabel } from "@/lib/competency/format";
 import { formatPercent, formatScore } from "@/lib/dna/format";
 import { getProject, isProjectId } from "@/lib/projects/client";
@@ -45,6 +46,7 @@ export function RoadmapView({ projectId, roadmapId }: { projectId: string; roadm
   const valid = isProjectId(projectId) && (roadmapId === undefined || isProjectId(roadmapId));
   const [state, setState] = useState<State>(() => (valid ? { status: "loading" } : { status: "not-found" }));
   const [action, setAction] = useState<Action>({ status: "idle" });
+  const challenges = useChallengesEnabled(valid) === true;
 
   const handleError = useCallback(
     (error: unknown) => {
@@ -167,9 +169,11 @@ export function RoadmapView({ projectId, roadmapId }: { projectId: string; roadm
           <Link href={`/app/projects/${project.id}/skill-gaps`} className="text-muted-foreground underline-offset-4 hover:underline">
             Skill Gaps
           </Link>
-          <Link href={`/app/projects/${project.id}/challenges`} className="text-muted-foreground underline-offset-4 hover:underline">
-            Coding Challenges
-          </Link>
+          {challenges ? (
+            <Link href={`/app/projects/${project.id}/challenges`} className="text-muted-foreground underline-offset-4 hover:underline">
+              Coding Challenges
+            </Link>
+          ) : null}
           <Link href={`/app/projects/${project.id}/growth`} className="text-muted-foreground underline-offset-4 hover:underline">
             Growth
           </Link>
@@ -201,6 +205,7 @@ export function RoadmapView({ projectId, roadmapId }: { projectId: string; roadm
           sending={sending}
           onGenerate={generate}
           onComplete={complete}
+          challenges={challenges}
         />
       )}
     </div>
@@ -262,6 +267,7 @@ function RoadmapDetail({
   sending,
   onGenerate,
   onComplete,
+  challenges,
 }: {
   project: Project;
   roadmap: Roadmap;
@@ -271,6 +277,8 @@ function RoadmapDetail({
   sending: boolean;
   onGenerate: () => void;
   onComplete: (roadmap: Roadmap, step: RoadmapStep) => void;
+  /** Whether the server offers coding challenges. */
+  challenges: boolean;
 }) {
   const newest = history[0]?.id === roadmap.id;
   const newerAnalysis = newest && newestGaps !== null && newestGaps.id !== roadmap.skill_gap_snapshot_id;
@@ -351,7 +359,16 @@ function RoadmapDetail({
       {roadmap.status === "ACTIVE" ? <InsightPanel projectId={project.id} kind="ROADMAP_GUIDANCE" subjectId={roadmap.id} canRequest={editable} /> : null}
 
       {roadmap.tracks.map((track) => (
-        <TrackCard key={track.key} project={project} roadmap={roadmap} track={track} editable={editable} sending={sending} onComplete={onComplete} />
+        <TrackCard
+          key={track.key}
+          project={project}
+          roadmap={roadmap}
+          track={track}
+          editable={editable}
+          sending={sending}
+          onComplete={onComplete}
+          challenges={challenges}
+        />
       ))}
 
       {history.length > 1 ? <History project={project} history={history} current={roadmap.id} /> : null}
@@ -425,6 +442,7 @@ function TrackCard({
   editable,
   sending,
   onComplete,
+  challenges,
 }: {
   project: Project;
   roadmap: Roadmap;
@@ -432,6 +450,7 @@ function TrackCard({
   editable: boolean;
   sending: boolean;
   onComplete: (roadmap: Roadmap, step: RoadmapStep) => void;
+  challenges: boolean;
 }) {
   return (
     <Card data-testid={`track-${track.key}`}>
@@ -453,7 +472,16 @@ function TrackCard({
         </p>
         <ol className="grid gap-2" aria-label={`Steps of ${track.title}`}>
           {track.steps.map((step) => (
-            <StepItem key={step.key} project={project} roadmap={roadmap} step={step} editable={editable} sending={sending} onComplete={onComplete} />
+            <StepItem
+              key={step.key}
+              project={project}
+              roadmap={roadmap}
+              step={step}
+              editable={editable}
+              sending={sending}
+              onComplete={onComplete}
+              challenges={challenges}
+            />
           ))}
         </ol>
       </CardContent>
@@ -468,6 +496,7 @@ function StepItem({
   editable,
   sending,
   onComplete,
+  challenges,
 }: {
   project: Project;
   roadmap: Roadmap;
@@ -475,6 +504,7 @@ function StepItem({
   editable: boolean;
   sending: boolean;
   onComplete: (roadmap: Roadmap, step: RoadmapStep) => void;
+  challenges: boolean;
 }) {
   const done = step.completed_at !== null;
 
@@ -487,7 +517,7 @@ function StepItem({
       </div>
       <p>{step.description}</p>
       <p className="text-muted-foreground">Goal: {step.objective}</p>
-      {step.type === "CHALLENGE" ? <ChallengePractice project={project} step={step} /> : null}
+      {step.type === "CHALLENGE" ? <ChallengePractice project={project} step={step} challenges={challenges} /> : null}
       {step.type === "REASSESS" ? (
         <p>
           <Link href={`/app/projects/${project.id}`} className="underline underline-offset-4">
@@ -513,7 +543,15 @@ function StepItem({
   );
 }
 
-function ChallengePractice({ project, step }: { project: Project; step: RoadmapStep }) {
+function ChallengePractice({ project, step, challenges }: { project: Project; step: RoadmapStep; challenges: boolean }) {
+  if (!challenges) {
+    // Never advertise a feature the server does not offer (V1.0.0: challenges off).
+    return (
+      <p className="text-muted-foreground" data-testid="step-challenge-unavailable">
+        Coding challenges are not available on this server. Practise the technique on your own code; the step can still be marked as done.
+      </p>
+    );
+  }
   if (step.challenge === null) {
     return <p className="text-muted-foreground">No matching challenge is available for this competency.</p>;
   }

@@ -32,13 +32,16 @@ interface Scenario {
   gaps?: SkillGapSnapshotSummary[];
   projectOverride?: Partial<Project>;
   post?: (url: string) => Response;
+  /** Whether the server offers coding challenges (GET /api/v1/challenges/status). */
+  challengesEnabled?: boolean;
 }
 
 /** GET /roadmaps lists the given roadmaps; GET /roadmaps/{id} returns the matching one. */
-function respondWith({ roadmaps = [], gaps = [skillGapSummary(gapsSnapshot)], projectOverride = {}, post }: Scenario) {
+function respondWith({ roadmaps = [], gaps = [skillGapSummary(gapsSnapshot)], projectOverride = {}, post, challengesEnabled = true }: Scenario) {
   fetchMock.mockImplementation(async (input, init) => {
     const url = String(input);
     if (url.endsWith("/ai/status")) return jsonResponse({ data: aiReady });
+    if (url.endsWith("/api/v1/challenges/status")) return jsonResponse({ data: { enabled: challengesEnabled, evaluation_available: challengesEnabled } });
     if (url.includes("/insights")) return jsonResponse({ data: [] });
     if (init?.method === "POST") return post ? post(url) : jsonResponse({ data: roadmap() }, 201);
     const detail = /\/roadmaps\/([0-9a-z]{26})$/.exec(url);
@@ -165,6 +168,20 @@ describe("RoadmapView", () => {
       `/app/projects/${project.id}/challenges`,
     );
     expect(screen.getByTestId("step-fd-challenge")).toHaveTextContent("No matching challenge is available for this competency.");
+  });
+
+  it("neither links to nor recommends coding challenges while the server has them disabled", async () => {
+    const practised = roadmap();
+    practised.tracks[0].steps[2] = { ...practised.tracks[0].steps[2], practice: { challenge_id: "01k6p0a1b2c3d4e5f6g7h8j9ch", definition_key: "CODE_HYGIENE_001", status: "PASSED" } };
+    respondWith({ roadmaps: [practised], challengesEnabled: false });
+    render(<RoadmapView projectId={project.id} />);
+
+    const step = await screen.findByTestId("step-ch-challenge");
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/api/v1/challenges/status"))).toBe(true));
+    expect(within(step).getByTestId("step-challenge-unavailable")).toHaveTextContent("Coding challenges are not available on this server.");
+    expect(within(step).queryByTestId("step-challenge")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Coding Challenges|Open your challenge/ })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("link").filter((link) => link.getAttribute("href")?.includes("/challenges"))).toEqual([]);
   });
 
   describe("without a roadmap", () => {

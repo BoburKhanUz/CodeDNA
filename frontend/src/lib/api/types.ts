@@ -1729,6 +1729,13 @@ export interface AiInsight {
   completed_at: string | null;
 }
 
+/** GET /api/v1/challenges/status — whether coding challenges are offered on this server. */
+export interface ChallengeServerStatus {
+  enabled: boolean;
+  /** Enabled and an attested evaluator is ready now. */
+  evaluation_available: boolean;
+}
+
 /** GET /api/v1/ai/status — whether AI explanations can be requested now. Never a URL or key. */
 export interface AiStatus {
   enabled: boolean;

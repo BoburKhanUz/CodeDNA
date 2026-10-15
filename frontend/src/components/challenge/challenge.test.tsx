@@ -40,15 +40,18 @@ interface Scenario {
   hasSkillGaps?: boolean;
   projectOverride?: Partial<Project>;
   post?: (url: string, body: unknown) => Response;
+  /** Whether the server offers coding challenges (GET /api/v1/challenges/status). */
+  challengesEnabled?: boolean;
 }
 
-function respondWith({ challenges = [], submissions = [], hasSkillGaps = true, projectOverride = {}, post }: Scenario) {
+function respondWith({ challenges = [], submissions = [], hasSkillGaps = true, projectOverride = {}, post, challengesEnabled = true }: Scenario) {
   const queue = [...submissions];
   const details = [...challenges];
   fetchMock.mockImplementation(async (input, init) => {
     const url = String(input);
     if (url.endsWith("/ai/status")) return jsonResponse({ data: aiReady });
     if (url.includes("/insights")) return jsonResponse({ data: [] });
+    if (url.endsWith("/api/v1/challenges/status")) return jsonResponse({ data: { enabled: challengesEnabled, evaluation_available: challengesEnabled } });
     if (init?.method === "POST") return post ? post(url, JSON.parse(String(init.body))) : jsonResponse({ data: challenge() }, 201);
     if (url.includes(`/submissions/${SUBMISSION_ID}`)) return jsonResponse({ data: queue.length > 1 ? queue.shift() : queue[0] });
     if (url.includes(`/challenges/${CHALLENGE_ID}`)) return jsonResponse({ data: details.length > 1 ? details.shift() : details[0] });
@@ -111,6 +114,27 @@ describe("ChallengeList", () => {
 
     await ui.click(await screen.findByRole("button", { name: "Get a challenge" }));
     expect(await screen.findByText("There is no material skill gap with a matching challenge. Run a static analysis first.")).toBeInTheDocument();
+  });
+
+  it("offers no new challenge while the server has challenges disabled, and keeps earlier ones readable", async () => {
+    respondWith({ challenges: [challenge()], challengesEnabled: false });
+    render(<ChallengeList projectId={project.id} />);
+
+    expect(await screen.findByTestId(`challenge-${CHALLENGE_ID}`)).toBeInTheDocument();
+    expect(await screen.findByTestId("challenges-disabled")).toHaveTextContent("Coding challenges are not enabled on this server.");
+    expect(screen.queryByTestId("challenge-assign")).not.toBeInTheDocument();
+    expect(posts()).toEqual([]);
+  });
+
+  it("shows neither the button nor the disabled notice until the server reports the challenge status", async () => {
+    respondWith({});
+    const mocked = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation((input, init) => (String(input).endsWith("/api/v1/challenges/status") ? new Promise(() => {}) : mocked(input, init)));
+    render(<ChallengeList projectId={project.id} />);
+
+    expect(await screen.findByTestId("challenges-empty")).toBeInTheDocument();
+    expect(screen.queryByTestId("challenges-disabled")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("challenge-assign")).not.toBeInTheDocument();
   });
 
   it("keeps archived projects read-only", async () => {

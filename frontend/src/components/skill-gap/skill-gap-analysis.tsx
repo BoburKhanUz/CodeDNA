@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { isApiError } from "@/lib/api/errors";
 import { GAP_PRIORITIES, type Project, type SkillGapResult, type SkillGapSnapshot } from "@/lib/api/types";
+import { useChallengesEnabled } from "@/lib/challenge/use-challenges-enabled";
 import { listCompetencySnapshots } from "@/lib/competency/client";
 import { levelLabel } from "@/lib/competency/format";
 import { componentLabel, evidenceStatusLabel, formatPercent, formatScore } from "@/lib/dna/format";
@@ -174,6 +175,7 @@ async function fetchSkillGaps(projectId: string): Promise<State> {
 
 function Report({ snapshot, projectId }: { snapshot: SkillGapSnapshot; projectId: string }) {
   const { summary, thresholds } = snapshot;
+  const challenges = useChallengesEnabled() === true;
 
   return (
     <div className="grid gap-6">
@@ -256,22 +258,24 @@ function Report({ snapshot, projectId }: { snapshot: SkillGapSnapshot; projectId
         </CardContent>
       </Card>
 
-      <Card data-testid="challenge-link">
-        <CardHeader>
-          <CardTitle>
-            <h2>Coding Challenges</h2>
-          </CardTitle>
-          <CardDescription>
-            Practise on short exercises selected from these gaps, checked by deterministic tests. Completing a challenge does not
-            immediately change your CodeDNA score or skill gap. Reassessment occurs from new code analysis.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Link href={`/app/projects/${projectId}/challenges`} className="text-sm font-medium underline underline-offset-4">
-            View Coding Challenges →
-          </Link>
-        </CardContent>
-      </Card>
+      {challenges ? (
+        <Card data-testid="challenge-link">
+          <CardHeader>
+            <CardTitle>
+              <h2>Coding Challenges</h2>
+            </CardTitle>
+            <CardDescription>
+              Practise on short exercises selected from these gaps, checked by deterministic tests. Completing a challenge does not
+              immediately change your CodeDNA score or skill gap. Reassessment occurs from new code analysis.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href={`/app/projects/${projectId}/challenges`} className="text-sm font-medium underline underline-offset-4">
+              View Coding Challenges →
+            </Link>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card data-testid="assessment-link">
         <CardHeader>

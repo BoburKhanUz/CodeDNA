@@ -23,9 +23,13 @@ beforeEach(() => {
   fetchMock.mockReset();
 });
 
-function respondWith(snapshot: SkillGapSnapshot | null, options: { hasCompetencies?: boolean } = {}) {
+function respondWith(snapshot: SkillGapSnapshot | null, options: { hasCompetencies?: boolean; challengesEnabled?: boolean } = {}) {
   fetchMock.mockImplementation(async (input) => {
     const url = String(input);
+    if (url.endsWith("/api/v1/challenges/status")) {
+      const enabled = options.challengesEnabled ?? true;
+      return jsonResponse({ data: { enabled, evaluation_available: enabled } });
+    }
     if (url.includes("/skill-gaps/")) return snapshot ? jsonResponse({ data: snapshot }) : apiErrorResponse(404, "RESOURCE_NOT_FOUND");
     if (url.includes("/skill-gaps")) return jsonResponse(page(snapshot ? [skillGapSummary(snapshot)] : []));
     if (url.includes("/competencies")) return jsonResponse(page(options.hasCompetencies ? [competencySummary(assessedMatrix)] : []));
@@ -90,6 +94,16 @@ describe("SkillGapAnalysis", () => {
     const card = await screen.findByTestId("challenge-link");
     expect(within(card).getByRole("link", { name: "View Coding Challenges →" })).toHaveAttribute("href", `/app/projects/${project.id}/challenges`);
     expect(card).toHaveTextContent("Completing a challenge does not immediately change your CodeDNA score or skill gap. Reassessment occurs from new code analysis.");
+  });
+
+  it("does not link to coding challenges while the server has them disabled", async () => {
+    respondWith(gapsSnapshot, { challengesEnabled: false });
+    render(<SkillGapAnalysis projectId={project.id} />);
+
+    expect(await screen.findByTestId("roadmap-link")).toBeInTheDocument();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/api/v1/challenges/status"))).toBe(true));
+    expect(screen.queryByTestId("challenge-link")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Coding Challenges/ })).not.toBeInTheDocument();
   });
 
   it("links to the learning roadmap and says it does not change the gaps", async () => {

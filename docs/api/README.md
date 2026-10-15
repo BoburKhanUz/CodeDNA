@@ -57,6 +57,7 @@ is `frontend/src/lib/api/types.ts`; keep it in sync with the backend.
 | `POST` | `/api/v1/projects/{project}/assessments` | owner | 202 / 200 | Request an AI interpretation of a skill gap analysis (200 = the existing one) |
 | `GET` | `/api/v1/projects/{project}/assessments/{assessment}` | owner | 200 | One AI assessment: status, output, evidence, versions, lineage |
 | `GET` | `/api/v1/ai/status` | authenticated | 200 | Whether AI explanations can be requested now (no URL or key) |
+| `GET` | `/api/v1/challenges/status` | authenticated | 200 | Whether coding challenges are offered on this server (no evaluator details) |
 | `GET` | `/api/v1/projects/{project}/insights?kind=&subject_id=` | project viewer | 200 | AI insights of one growth snapshot, roadmap or challenge submission (newest first, at most 10) |
 | `POST` | `/api/v1/projects/{project}/insights` | project assessor | 202 / 200 | Request an AI insight (200 = the existing one) |
 | `GET` | `/api/v1/projects/{project}/insights/{insight}` | project viewer | 200 | One AI insight: status, output, evidence, versions |
@@ -992,6 +993,18 @@ the API.
   submission answer `409 PROJECT_ARCHIVED`.
 - There is no update or delete (`405`). Challenges and attempts are
   immutable records.
+
+### `GET /api/v1/challenges/status`
+
+```json
+{ "data": { "enabled": false, "evaluation_available": false } }
+```
+
+`enabled` is `CHALLENGE_ENABLED`. `evaluation_available` is `enabled` and
+an evaluator with a fresh, attested heartbeat. The UI shows challenge links
+and recommendations only when `enabled` is `true`, and treats any error as
+`false`. V1.0.0 ships with both `false`. Nothing about the evaluator (name,
+isolation, paths) is returned.
 
 ### `POST /api/v1/projects/{project}/challenges`
 

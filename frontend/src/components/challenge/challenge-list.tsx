@@ -13,6 +13,7 @@ import { isApiError } from "@/lib/api/errors";
 import type { ChallengeSummary, Project } from "@/lib/api/types";
 import { assignChallenge, listChallenges } from "@/lib/challenge/client";
 import { challengeStatusLabel, competencyName, difficultyLabel } from "@/lib/challenge/format";
+import { useChallengesEnabled } from "@/lib/challenge/use-challenges-enabled";
 import { getProject, isProjectId } from "@/lib/projects/client";
 import { formatDateTime } from "@/lib/projects/format";
 import { listSkillGapSnapshots } from "@/lib/skill-gap/client";
@@ -36,6 +37,7 @@ export function ChallengeList({ projectId }: { projectId: string }) {
   const valid = isProjectId(projectId);
   const [state, setState] = useState<State>(() => (valid ? { status: "loading" } : { status: "not-found" }));
   const [assigning, setAssigning] = useState<{ status: "idle" | "sending" } | { status: "error"; error: unknown }>({ status: "idle" });
+  const offered = useChallengesEnabled(valid);
 
   const handleError = useCallback(
     (error: unknown) => {
@@ -130,6 +132,12 @@ export function ChallengeList({ projectId }: { projectId: string }) {
         </p>
       </div>
 
+      {offered === false ? (
+        <p className="text-muted-foreground max-w-3xl rounded-lg border p-3 text-sm" data-testid="challenges-disabled">
+          Coding challenges are not enabled on this server. Challenges assigned earlier stay readable; no new ones can be started.
+        </p>
+      ) : null}
+
       {assigning.status === "error" ? <ApiErrorAlert error={assigning.error} /> : null}
 
       {challenges.length === 0 ? (
@@ -178,7 +186,7 @@ export function ChallengeList({ projectId }: { projectId: string }) {
         </ul>
       )}
 
-      {hasSkillGaps && !archived ? (
+      {offered === true && hasSkillGaps && !archived ? (
         <Button className="w-fit" onClick={assign} disabled={assigning.status === "sending"} data-testid="challenge-assign">
           {assigning.status === "sending" ? "Selecting…" : challenges.length === 0 ? "Get a challenge" : "Get the next challenge"}
         </Button>

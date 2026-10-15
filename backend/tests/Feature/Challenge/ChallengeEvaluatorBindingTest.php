@@ -20,6 +20,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use Tests\Support\ChallengeFixtures;
+use Tests\Support\FakeChallengeEvaluator;
 use Tests\TestCase;
 
 /**
@@ -92,6 +93,31 @@ final class ChallengeEvaluatorBindingTest extends TestCase
 
         config(['codedna.challenges.evaluator' => 'spool']);
         $this->assertInstanceOf(SpoolChallengeEvaluator::class, app(ChallengeEvaluator::class));
+    }
+
+    public function test_the_status_reports_challenges_off_in_the_v1_configuration(): void
+    {
+        config(['codedna.challenges.enabled' => false, 'codedna.challenges.evaluator' => 'none']);
+        $this->getJson('/api/v1/challenges/status')->assertUnauthorized();
+
+        $this->asUser($this->owner)->getJson('/api/v1/challenges/status')
+            ->assertOk()->assertExactJson(['data' => ['enabled' => false, 'evaluation_available' => false]]);
+    }
+
+    public function test_the_status_reports_enabled_and_evaluation_availability_separately(): void
+    {
+        config(['codedna.challenges.enabled' => true, 'codedna.challenges.evaluator' => 'none']);
+        $this->asUser($this->owner)->getJson('/api/v1/challenges/status')
+            ->assertOk()->assertExactJson(['data' => ['enabled' => true, 'evaluation_available' => false]]);
+
+        $this->app->instance(ChallengeEvaluator::class, new FakeChallengeEvaluator('pass'));
+        $this->asUser($this->owner)->getJson('/api/v1/challenges/status')
+            ->assertOk()->assertExactJson(['data' => ['enabled' => true, 'evaluation_available' => true]]);
+
+        // A working evaluator never makes a disabled feature available.
+        config(['codedna.challenges.enabled' => false]);
+        $this->asUser($this->owner)->getJson('/api/v1/challenges/status')
+            ->assertOk()->assertExactJson(['data' => ['enabled' => false, 'evaluation_available' => false]]);
     }
 
     public function test_the_v1_configuration_refuses_challenges_and_records_nothing(): void

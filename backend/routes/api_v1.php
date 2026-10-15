@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\Auth\PasswordController;
 use App\Http\Controllers\Api\V1\Auth\RegisterController;
 use App\Http\Controllers\Api\V1\Billing\BillingController;
 use App\Http\Controllers\Api\V1\Billing\BillingWebhookController;
+use App\Http\Controllers\Api\V1\Challenge\ChallengeStatusController;
 use App\Http\Controllers\Api\V1\GitHub\GitHubAccountController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\InstallationController;
@@ -87,6 +88,12 @@ Route::get('installation', InstallationController::class)
 Route::get('ai/status', AiStatusController::class)
     ->middleware('auth:sanctum')
     ->name('ai.status');
+
+// Coding challenge status: whether the server offers challenges, so the UI
+// shows challenge links only when they work. Never the evaluator details.
+Route::get('challenges/status', ChallengeStatusController::class)
+    ->middleware('auth:sanctum')
+    ->name('challenges.status');
 
 Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');

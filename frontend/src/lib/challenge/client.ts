@@ -2,10 +2,12 @@ import { api } from "@/lib/api/client";
 import type {
   Challenge,
   ChallengeResponse,
+  ChallengeServerStatus,
   ChallengeSubmission,
   ChallengeSubmissionResponse,
   ChallengeSubmissionSummary,
   ChallengeSummary,
+  DataEnvelope,
   Paginated,
 } from "@/lib/api/types";
 import { isProjectId } from "@/lib/projects/client";
@@ -28,6 +30,11 @@ function id(value: string, what: string): string {
     throw new Error(`Invalid ${what} ID.`);
   }
   return value.toLowerCase();
+}
+
+/** Whether this server offers coding challenges (V1.0.0: off). */
+export async function getChallengeStatus(): Promise<ChallengeServerStatus> {
+  return (await api.get<DataEnvelope<ChallengeServerStatus>>("/api/v1/challenges/status")).data;
 }
 
 /** Newest first. */
